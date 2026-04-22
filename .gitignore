@@ -37,6 +37,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local project data
+/data/
+
 # vercel
 .vercel
 

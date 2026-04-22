@@ -15,10 +15,13 @@ import SwipeFileNode from "./nodes/SwipeFileNode";
 import PromptNode from "./nodes/PromptNode";
 import GeneratorNode from "./nodes/GeneratorNode";
 import PreviewNode from "./nodes/PreviewNode";
+import SketchNode from "./nodes/SketchNode";
 import CustomEdge from "./edges/CustomEdge";
 import Sidebar from "./panels/Sidebar";
 import ZoomBar from "./panels/ZoomBar";
 import ContextMenu from "./panels/ContextMenu";
+import ProjectBar from "./panels/ProjectBar";
+import SketchEditor from "./panels/SketchEditor";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { DragEvent } from "react";
 import { useReactFlow, OnConnectStart } from "@xyflow/react";
@@ -29,6 +32,7 @@ const nodeTypes = {
   prompt: PromptNode,
   generator: GeneratorNode,
   preview: PreviewNode,
+  sketch: SketchNode,
 };
 
 const edgeTypes = {
@@ -40,10 +44,25 @@ const defaultEdgeOptions = {
   animated: false,
 };
 
+const STAR_ICON = (color: string, fill = false) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill={fill ? color : "none"} stroke={fill ? "none" : color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
+  </svg>
+);
+
 function CanvasInner() {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, addNodeAndConnect, loadProject, saving } =
     useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
+  const [providers, setProviders] = useState<Record<string, boolean>>({ gemini: true });
+  const [favoriteModel, setFavoriteModel] = useState("gemini-3.1-flash-image-preview");
+
+  useEffect(() => {
+    fetch("/api/settings").then((r) => r.json()).then((s) => {
+      setProviders({ gemini: !!s.hasGemini, ideogram: !!s.hasIdeogram, openai: !!s.hasOpenai, grok: !!s.hasGrok });
+      if (s.favoriteModel) setFavoriteModel(s.favoriteModel);
+    }).catch(() => {});
+  }, []);
 
   // Load project on mount
   useEffect(() => {
@@ -179,40 +198,38 @@ function CanvasInner() {
     [screenToFlowPosition]
   );
 
-  const contextMenuItems = contextMenu
+  const promptIcon = (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 6h16M4 12h16M4 18h10" />
+    </svg>
+  );
+  const faceIcon = (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F1A0FA" strokeWidth="1.5" strokeLinecap="round">
+      <circle cx="12" cy="8" r="5" /><path d="M20 21a8 8 0 0 0-16 0" />
+    </svg>
+  );
+  const imageIcon = (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF9092" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4 4-6 5 7" />
+    </svg>
+  );
+
+  const contextMenuSections = contextMenu
     ? [
         {
-          label: "Text Prompt",
-          icon: (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 6h16M4 12h16M4 18h10" />
-            </svg>
-          ),
-          onClick: () => addNode("prompt", contextMenu.flowPos),
+          title: "Inputs",
+          items: [
+            { label: "Prompt", icon: promptIcon, onClick: () => addNode("prompt", contextMenu.flowPos) },
+            { label: "Sketch", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addNode("sketch", contextMenu.flowPos) },
+            { label: "Face Reference", icon: faceIcon, onClick: () => addNode("faceReference", contextMenu.flowPos) },
+            { label: "Image / Logo", icon: imageIcon, onClick: () => addNode("swipeFile", contextMenu.flowPos) },
+          ],
         },
         {
-          label: "Nano Banana 2",
-          icon: (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--accent)" strokeWidth="0">
-              <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
-            </svg>
-          ),
-          onClick: () =>
-            addNode("generator", contextMenu.flowPos, {
-              model: "nano-banana",
-            }),
-        },
-        {
-          label: "Ideogram v3",
-          icon: (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
-            </svg>
-          ),
-          onClick: () =>
-            addNode("generator", contextMenu.flowPos, {
-              model: "ideogram",
-            }),
+          title: "",
+          items: [
+            { label: "Générateur", icon: STAR_ICON("var(--accent-yellow)", true), onClick: () => addNode("generator", contextMenu.flowPos, { model: favoriteModel }) },
+          ],
         },
       ]
     : [];
@@ -244,6 +261,7 @@ function CanvasInner() {
         snapGrid={[20, 20]}
         minZoom={0.02}
         maxZoom={2}
+        deleteKeyCode={["Backspace", "Delete"]}
         proOptions={{ hideAttribution: true }}
         style={{ background: "var(--canvas-bg)" }}
       >
@@ -254,19 +272,12 @@ function CanvasInner() {
           color="#65616b"
         />
 
-        {/* Project title + save indicator */}
+        {/* Project selector + save indicator */}
         <Panel position="top-left" className="!ml-16">
-          <div
-            className="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium"
-            style={{
-              background: "var(--node-bg)",
-              color: "var(--text-secondary)",
-              border: "1px solid var(--surface)",
-            }}
-          >
-            ThumbGen
+          <div className="flex items-center gap-3">
+            <ProjectBar />
             {saving && (
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              <span className="text-xs px-2 py-1 rounded-lg" style={{ color: "var(--text-muted)", background: "var(--node-bg)" }}>
                 Saving...
               </span>
             )}
@@ -282,7 +293,7 @@ function CanvasInner() {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={contextMenuItems}
+          sections={contextMenuSections}
           onClose={() => setContextMenu(null)}
         />
       )}
@@ -292,38 +303,34 @@ function CanvasInner() {
         <ContextMenu
           x={edgeDropMenu.x}
           y={edgeDropMenu.y}
-          items={[
+          sections={[
             {
-              label: "Text Prompt",
-              icon: (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 6h16M4 12h16M4 18h10" />
-                </svg>
-              ),
-              onClick: () => addConnectedNode("prompt"),
+              title: "Inputs",
+              items: [
+                { label: "Prompt", icon: promptIcon, onClick: () => addConnectedNode("prompt") },
+                { label: "Sketch", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addConnectedNode("sketch") },
+                { label: "Face Reference", icon: faceIcon, onClick: () => addConnectedNode("faceReference") },
+                { label: "Image / Logo", icon: imageIcon, onClick: () => addConnectedNode("swipeFile") },
+              ],
             },
             {
-              label: "Nano Banana 2",
-              icon: (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--accent)" strokeWidth="0">
-                  <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
-                </svg>
-              ),
-              onClick: () => addConnectedNode("generator", { model: "nano-banana" }),
+              title: "",
+              items: [
+                { label: "Générateur", icon: STAR_ICON("var(--accent-yellow)", true), onClick: () => addConnectedNode("generator", { model: favoriteModel }) },
+              ],
             },
             {
-              label: "Ideogram v3",
-              icon: (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
-                </svg>
-              ),
-              onClick: () => addConnectedNode("generator", { model: "ideogram" }),
+              title: "",
+              items: [
+                { label: "Preview", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>, onClick: () => addConnectedNode("preview") },
+              ],
             },
           ]}
           onClose={() => setEdgeDropMenu(null)}
         />
       )}
+
+      <SketchEditor />
     </div>
   );
 }

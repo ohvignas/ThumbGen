@@ -2,8 +2,52 @@
 
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import NodeShell from "./NodeShell";
+
+const AXIS_COLORS = ["#6EDDB3", "#60a5fa", "#f59e0b", "#ef4444", "#a78bfa", "#ec4899", "#14b8a6", "#f97316"];
+
+// Rough cost estimation per model ($ per image)
+const MODEL_COSTS: Record<string, number> = {
+  "gemini-2.5-flash-image": 0.02,
+  "gemini-3.1-flash-image-preview": 0.02,
+  "gemini-3-pro-image-preview": 0.04,
+  "ideogram": 0.08,
+  "gpt-image-2": 0.04,
+  "gpt-image-1.5": 0.02,
+  "gpt-image-1": 0.02,
+  "grok-imagine-image": 0.03,
+};
+
+const GEMINI_MODELS = [
+  { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro", provider: "gemini" },
+  { id: "gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash", provider: "gemini" },
+  { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", provider: "gemini" },
+];
+
+const IDEOGRAM_MODELS = [
+  { id: "ideogram", label: "Ideogram v3", provider: "ideogram" },
+];
+
+const OPENAI_MODELS = [
+  { id: "gpt-image-2", label: "GPT Image 2 (4K)", provider: "openai" },
+  { id: "gpt-image-1.5", label: "GPT Image 1.5", provider: "openai" },
+  { id: "gpt-image-1", label: "GPT Image 1", provider: "openai" },
+];
+
+const GROK_MODELS = [
+  { id: "grok-imagine-image", label: "Grok Imagine", provider: "grok" },
+];
+
+const ALL_MODELS = [...GEMINI_MODELS, ...IDEOGRAM_MODELS, ...OPENAI_MODELS, ...GROK_MODELS];
+
+function getModelLabel(modelId: string): string {
+  return ALL_MODELS.find((m) => m.id === modelId)?.label || modelId;
+}
+
+function getProvider(modelId: string): string {
+  return ALL_MODELS.find((m) => m.id === modelId)?.provider || "gemini";
+}
 
 export default function GeneratorNode({
   id,
@@ -14,35 +58,45 @@ export default function GeneratorNode({
   const { updateNodeData, removeNode, getConnectedInputs, addNode, addNodeAndConnect } =
     useCanvasStore();
   const [error, setError] = useState<string | null>(null);
+  const [compareModels, setCompareModels] = useState<Set<string>>(new Set());
+  const [comparing, setComparing] = useState(false);
+  const [availableProviders, setAvailableProviders] = useState<Record<string, boolean>>({ gemini: true });
 
-  const model = data.model || "nano-banana";
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => {
+        setAvailableProviders({
+          gemini: !!s.hasGemini,
+          ideogram: !!s.hasIdeogram,
+          openai: !!s.hasOpenai,
+          grok: !!s.hasGrok,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  const model = data.model || "gemini-3-pro-image-preview";
   const aspectRatio = data.aspectRatio || "16x9";
   const renderingSpeed = data.renderingSpeed || "DEFAULT";
+  const numImages = data.numImages || 1;
   const ideogramMode = data.ideogramMode || "generate";
+  const provider = getProvider(model);
 
-  const modelLabel =
-    model === "nano-banana"
-      ? "Gemini 3.1 Flash (Nano Banana 2)"
-      : "Ideogram v3";
+  const modelIcon = provider === "ideogram" ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="1.5">
+      <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--accent)" strokeWidth="0">
+      <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
+    </svg>
+  );
 
-  const modelIcon =
-    model === "nano-banana" ? (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--accent)" strokeWidth="0">
-        <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
-      </svg>
-    ) : (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="1.5">
-        <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-
-  const handleGenerate = useCallback(async () => {
-    setError(null);
-    updateNodeData(id, { isGenerating: true });
-
+  // Collect inputs from connected nodes
+  const collectInputs = useCallback(async () => {
     const inputs = getConnectedInputs(id);
 
-    // Helper: get a usable image from a node — prefer base64, convert URL on the fly if needed
     const getImage = async (n: { data: { imageBase64?: string; imageUrl?: string } }): Promise<string | null> => {
       if (n.data.imageBase64) return n.data.imageBase64;
       if (n.data.imageUrl) {
@@ -62,16 +116,17 @@ export default function GeneratorNode({
 
     const faceImages = (await Promise.all(inputs.faceRefs.map(getImage))).filter(Boolean) as string[];
     const swipeImages = (await Promise.all(inputs.swipeRefs.map(getImage))).filter(Boolean) as string[];
-    const promptText = inputs.prompts
-      .map((n) => n.data.prompt)
-      .filter(Boolean)
-      .join("\n");
-    const negativePrompt = inputs.prompts
-      .map((n) => n.data.negativePrompt)
-      .filter(Boolean)
-      .join("\n");
-
-    const previewImages = inputs.images
+    const logoResults = await Promise.all(
+      inputs.logos.map(async (n) => {
+        const img = await getImage(n);
+        return img ? { image: img, label: n.data.label || n.data.prompt || "Logo" } : null;
+      })
+    );
+    const logoEntries = logoResults.filter(Boolean) as { image: string; label: string }[];
+    const promptText = inputs.prompts.map((n) => n.data.prompt).filter(Boolean).join("\n");
+    const negativePrompt = inputs.prompts.map((n) => n.data.negativePrompt).filter(Boolean).join("\n");
+    // Convert preview images (URLs) to base64
+    const previewImageUrls = inputs.images
       .filter((n) => n.type === "preview")
       .map((n) => {
         const imgs = n.data.generatedImages;
@@ -80,112 +135,279 @@ export default function GeneratorNode({
       })
       .filter(Boolean) as string[];
 
+    const previewImages = (await Promise.all(
+      previewImageUrls.map(async (url) => {
+        if (url.startsWith("data:")) return url;
+        try {
+          const res = await fetch(url);
+          const blob = await res.blob();
+          return new Promise<string | null>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        } catch { return null; }
+      })
+    )).filter(Boolean) as string[];
     const allRefImages = [...swipeImages, ...previewImages];
+    const sketchImages = (await Promise.all(inputs.sketches.map(getImage))).filter(Boolean) as string[];
 
-    try {
-      let endpoint: string;
-      let body: Record<string, unknown>;
+    // Collect selected axes from connected prompt nodes
+    const selectedAxes: Array<{ title: string; prompt: string }> = [];
+    for (const pNode of inputs.prompts) {
+      if (pNode.data.selectedAxes && pNode.data.selectedAxes.length > 1) {
+        selectedAxes.push(...pNode.data.selectedAxes);
+      }
+    }
 
-      if (model === "nano-banana") {
-        endpoint = "/api/generate/nano-banana";
+    return { faceImages, allRefImages, logoEntries, sketchImages, promptText, negativePrompt, selectedAxes };
+  }, [id, getConnectedInputs]);
+
+  // Generate with a specific model
+  const generateWithModel = useCallback(async (targetModel: string, inputs: Awaited<ReturnType<typeof collectInputs>>) => {
+    const targetProvider = getProvider(targetModel);
+    let endpoint: string;
+    let body: Record<string, unknown>;
+
+    if (targetProvider === "gemini") {
+      endpoint = "/api/generate/nano-banana";
+      body = {
+        prompt: inputs.promptText,
+        negativePrompt: inputs.negativePrompt,
+        faceImages: inputs.faceImages,
+        referenceImages: inputs.allRefImages,
+        logos: inputs.logoEntries,
+        sketchImages: inputs.sketchImages,
+        aspectRatio,
+        model: targetModel,
+      };
+    } else if (targetProvider === "ideogram") {
+      if (ideogramMode === "remix" && inputs.allRefImages.length > 0) {
+        endpoint = "/api/remix/ideogram";
         body = {
-          prompt: promptText,
-          negativePrompt,
-          faceImages,
-          referenceImages: allRefImages,
+          prompt: inputs.promptText,
+          negativePrompt: inputs.negativePrompt,
+          image: inputs.allRefImages[0],
+          imageWeight: data.imageWeight ?? 50,
+          characterReferenceImage: inputs.faceImages[0] || null,
+          styleReferenceImages: inputs.allRefImages.slice(1),
           aspectRatio,
+          renderingSpeed,
+          styleType: data.styleType || "GENERAL",
+        };
+      } else if (ideogramMode === "edit" && inputs.allRefImages.length > 0) {
+        endpoint = "/api/edit/ideogram";
+        body = {
+          prompt: inputs.promptText,
+          image: inputs.allRefImages[0],
+          mask: data.maskDataUrl || null,
+          characterReferenceImage: inputs.faceImages[0] || null,
+          renderingSpeed,
+          styleType: data.styleType || "GENERAL",
         };
       } else {
-        if (ideogramMode === "remix" && allRefImages.length > 0) {
-          endpoint = "/api/remix/ideogram";
-          body = {
-            prompt: promptText,
-            negativePrompt,
-            image: allRefImages[0],
-            imageWeight: data.imageWeight ?? 50,
-            characterReferenceImage: faceImages[0] || null,
-            styleReferenceImages: allRefImages.slice(1),
-            aspectRatio,
-            renderingSpeed,
-            styleType: data.styleType || "GENERAL",
-          };
-        } else if (ideogramMode === "edit" && allRefImages.length > 0) {
-          endpoint = "/api/edit/ideogram";
-          body = {
-            prompt: promptText,
-            image: allRefImages[0],
-            mask: data.maskDataUrl || null,
-            characterReferenceImage: faceImages[0] || null,
-            renderingSpeed,
-            styleType: data.styleType || "GENERAL",
-          };
-        } else {
-          endpoint = "/api/generate/ideogram";
-          body = {
-            prompt: promptText,
-            negativePrompt,
-            characterReferenceImage: faceImages[0] || null,
-            styleReferenceImages: allRefImages,
-            aspectRatio,
-            renderingSpeed,
-            styleType: data.styleType || "GENERAL",
-          };
+        endpoint = "/api/generate/ideogram";
+        body = {
+          prompt: inputs.promptText,
+          negativePrompt: inputs.negativePrompt,
+          characterReferenceImage: inputs.faceImages[0] || null,
+          styleReferenceImages: inputs.allRefImages,
+          aspectRatio,
+          renderingSpeed,
+          styleType: data.styleType || "GENERAL",
+        };
+      }
+    } else {
+      endpoint = `/api/generate/${targetProvider}`;
+      body = {
+        prompt: inputs.promptText,
+        negativePrompt: inputs.negativePrompt,
+        faceImages: inputs.faceImages,
+        referenceImages: inputs.allRefImages,
+        logos: inputs.logoEntries,
+        sketchImages: inputs.sketchImages,
+        aspectRatio,
+        model: targetModel,
+      };
+    }
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Generation failed (${res.status})`);
+    }
+
+    const result = await res.json();
+    return {
+      images: result.images || [],
+      stats: result.stats || null,
+    };
+  }, [aspectRatio, renderingSpeed, ideogramMode, data.imageWeight, data.maskDataUrl, data.styleType]);
+
+  // Single model generation (handles multiple axes) — progressive
+  const handleGenerate = useCallback(async () => {
+    setError(null);
+    updateNodeData(id, { isGenerating: true });
+
+    try {
+      const inputs = await collectInputs();
+      const axes = inputs.selectedAxes.length > 0
+        ? inputs.selectedAxes
+        : [{ title: "", prompt: inputs.promptText }];
+
+      const modelLabel = getModelLabel(model);
+
+      // Step 1: Create all preview nodes in "loading" state (axes × numImages)
+      const allJobs: { previewId: string; prompt: string }[] = [];
+      let yOffset = 0;
+      for (let ai = 0; ai < axes.length; ai++) {
+        const axis = axes[ai];
+        const color = axes.length > 1 ? AXIS_COLORS[ai % AXIS_COLORS.length] : undefined;
+        let xOffset = 0;
+        for (let ni = 0; ni < numImages; ni++) {
+          const suffix = numImages > 1 ? ` #${ni + 1}` : "";
+          const label = axis.title
+            ? `${axis.title} — ${modelLabel}${suffix}`
+            : `${modelLabel}${suffix}`;
+          const previewId = addNodeAndConnect(
+            "preview",
+            { x: positionAbsoluteX + 360 + xOffset, y: positionAbsoluteY + yOffset },
+            id, "result", "preview-in",
+            { label, genStatus: "loading", genModel: modelLabel, genPromptUsed: axis.prompt, axisColor: color },
+            true,
+          );
+          allJobs.push({ previewId, prompt: axis.prompt });
+          xOffset += 350;
         }
+        yOffset += 300;
       }
 
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Generation failed (${res.status})`);
-      }
-
-      const result = await res.json();
-      const images: string[] = result.images || [];
-
-      updateNodeData(id, {
-        isGenerating: false,
-        generatedImages: images,
-        selectedImageIndex: 0,
-      });
-
-      if (images.length > 0) {
-        addNode(
-          "preview",
-          { x: positionAbsoluteX + 520, y: positionAbsoluteY },
-          {
-            generatedImages: images,
+      // Step 2: Generate all in parallel
+      const promises = allJobs.map(async (job) => {
+        const start = Date.now();
+        try {
+          const axisInputs = { ...inputs, promptText: job.prompt };
+          const result = await generateWithModel(model, axisInputs);
+          const elapsed = Date.now() - start;
+          const cost = MODEL_COSTS[model] || 0;
+          updateNodeData(job.previewId, {
+            generatedImages: result.images,
             selectedImageIndex: 0,
-            label: `Output - ${modelLabel}`,
-          }
-        );
-      }
+            genStatus: "done",
+            genTimeMs: elapsed,
+            genTokens: result.stats?.totalTokens || 0,
+            genCost: cost > 0 ? `~$${(cost).toFixed(3)}` : "",
+          });
+        } catch (err) {
+          updateNodeData(job.previewId, {
+            genStatus: "error",
+            genError: err instanceof Error ? err.message : "Generation failed",
+            genTimeMs: Date.now() - start,
+          });
+        }
+      });
+
+      await Promise.allSettled(promises);
+      updateNodeData(id, { isGenerating: false });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Generation failed";
       setError(message);
       updateNodeData(id, { isGenerating: false });
     }
-  }, [
-    id,
-    model,
-    modelLabel,
-    aspectRatio,
-    renderingSpeed,
-    ideogramMode,
-    data.imageWeight,
-    data.maskDataUrl,
-    data.styleType,
-    updateNodeData,
-    getConnectedInputs,
-    addNode,
-    addNodeAndConnect,
-    positionAbsoluteX,
-    positionAbsoluteY,
-  ]);
+  }, [id, model, collectInputs, generateWithModel, updateNodeData, addNodeAndConnect, positionAbsoluteX, positionAbsoluteY]);
+
+  // Compare: axes × models — progressive
+  const handleCompare = useCallback(async () => {
+    if (compareModels.size < 1) return;
+    setError(null);
+    setComparing(true);
+    updateNodeData(id, { isGenerating: true });
+
+    try {
+      const inputs = await collectInputs();
+      const allModels = Array.from(new Set([model, ...compareModels]));
+      const axes = inputs.selectedAxes.length > 0
+        ? inputs.selectedAxes
+        : [{ title: "", prompt: inputs.promptText }];
+
+      // Step 1: Create ALL preview nodes (axes × models × numImages)
+      const allJobs: { previewId: string; prompt: string; targetModel: string }[] = [];
+      let yOffset = 0;
+      for (let ai = 0; ai < axes.length; ai++) {
+        const axis = axes[ai];
+        const color = axes.length > 1 ? AXIS_COLORS[ai % AXIS_COLORS.length] : undefined;
+        let xOffset = 0;
+        for (const m of allModels) {
+          const mLabel = getModelLabel(m);
+          for (let ni = 0; ni < numImages; ni++) {
+            const suffix = numImages > 1 ? ` #${ni + 1}` : "";
+            const label = axis.title ? `${axis.title} — ${mLabel}${suffix}` : `${mLabel}${suffix}`;
+            const previewId = addNodeAndConnect(
+              "preview",
+              { x: positionAbsoluteX + 360 + xOffset, y: positionAbsoluteY + yOffset },
+              id, "result", "preview-in",
+              { label, genStatus: "loading", genModel: mLabel, genPromptUsed: axis.prompt, axisColor: color },
+              true,
+            );
+            allJobs.push({ previewId, prompt: axis.prompt, targetModel: m });
+            xOffset += 350;
+          }
+        }
+        yOffset += 300;
+      }
+
+      // Step 2: Generate all in parallel
+      const allPromises: Promise<void>[] = [];
+      for (const job of allJobs) {
+        allPromises.push((async () => {
+          const start = Date.now();
+          try {
+            const axisInputs = { ...inputs, promptText: job.prompt };
+            const result = await generateWithModel(job.targetModel, axisInputs);
+            const cost = MODEL_COSTS[job.targetModel] || 0;
+            updateNodeData(job.previewId, {
+              generatedImages: result.images,
+              selectedImageIndex: 0,
+              genStatus: "done",
+              genTimeMs: Date.now() - start,
+              genTokens: result.stats?.totalTokens || 0,
+              genCost: cost > 0 ? `~$${cost.toFixed(3)}` : "",
+            });
+          } catch (err) {
+            updateNodeData(job.previewId, {
+              genStatus: "error",
+              genError: err instanceof Error ? err.message : "Failed",
+              genTimeMs: Date.now() - start,
+            });
+          }
+        })());
+      }
+
+      await Promise.allSettled(allPromises);
+      updateNodeData(id, { isGenerating: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Compare failed";
+      setError(message);
+      updateNodeData(id, { isGenerating: false });
+    } finally {
+      setComparing(false);
+    }
+  }, [id, model, compareModels, collectInputs, generateWithModel, updateNodeData, addNodeAndConnect, positionAbsoluteX, positionAbsoluteY]);
+
+  const toggleCompareModel = (modelId: string) => {
+    setCompareModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+  };
 
   const selectStyle = {
     background: "var(--surface)",
@@ -195,96 +417,69 @@ export default function GeneratorNode({
 
   return (
     <NodeShell
-      title={modelLabel}
+      title="Générateur"
       icon={modelIcon}
       onDelete={() => removeNode(id)}
-      width={460}
+      width={320}
     >
       {/* Prompt handle */}
-      <Handle type="target" position={Position.Left} id="prompt-in" style={{ top: "10%" }} />
+      <Handle type="target" position={Position.Left} id="prompt-in" style={{ top: "8%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{
-          left: -8,
-          top: "10%",
-          transform: "translateX(-100%) translateY(-50%)",
-          color: "#BB68FF",
-          background: "none",
-          border: "none",
-          padding: "2px 4px",
-        }}
+        style={{ left: -8, top: "8%", transform: "translateX(-100%) translateY(-50%)", color: "#BB68FF", background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-        onClick={() => {
-          addNodeAndConnect(
-            "prompt",
-            { x: positionAbsoluteX - 520, y: positionAbsoluteY - 100 },
-            id,
-            "prompt-in",
-            "prompt"
-          );
-        }}
-        title="Click to add a prompt node"
+        onClick={() => addNodeAndConnect("prompt", { x: positionAbsoluteX - 340, y: positionAbsoluteY - 100 }, id, "prompt-in", "prompt")}
       >
         Prompt
       </button>
 
       {/* Face handle */}
-      <Handle type="target" position={Position.Left} id="face-in" style={{ top: "18%" }} />
+      <Handle type="target" position={Position.Left} id="face-in" style={{ top: "14%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{
-          left: -8,
-          top: "18%",
-          transform: "translateX(-100%) translateY(-50%)",
-          color: "#EF9092",
-          background: "none",
-          border: "none",
-          padding: "2px 4px",
-        }}
+        style={{ left: -8, top: "14%", transform: "translateX(-100%) translateY(-50%)", color: "#EF9092", background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-        onClick={() => {
-          addNodeAndConnect(
-            "faceReference",
-            { x: positionAbsoluteX - 520, y: positionAbsoluteY + 50 },
-            id,
-            "face-in",
-            "face"
-          );
-        }}
-        title="Click to add a face reference"
+        onClick={() => addNodeAndConnect("faceReference", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 50 }, id, "face-in", "face")}
       >
         Face
       </button>
 
-      {/* Reference thumbnail handle */}
-      <Handle type="target" position={Position.Left} id="image-in" style={{ top: "26%" }} />
+      {/* Reference handle */}
+      <Handle type="target" position={Position.Left} id="image-in" style={{ top: "20%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{
-          left: -8,
-          top: "26%",
-          transform: "translateX(-100%) translateY(-50%)",
-          color: "var(--accent)",
-          background: "none",
-          border: "none",
-          padding: "2px 4px",
-        }}
+        style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--accent)", background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-        onClick={() => {
-          addNodeAndConnect(
-            "swipeFile",
-            { x: positionAbsoluteX - 520, y: positionAbsoluteY + 200 },
-            id,
-            "image-in",
-            "image"
-          );
-        }}
-        title="Click to add a reference thumbnail"
+        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 200 }, id, "image-in", "image")}
       >
         Reference
+      </button>
+
+      {/* Logo handle */}
+      <Handle type="target" position={Position.Left} id="logo-in" style={{ top: "26%" }} />
+      <button
+        className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
+        style={{ left: -8, top: "26%", transform: "translateX(-100%) translateY(-50%)", color: "#60a5fa", background: "none", border: "none", padding: "2px 4px" }}
+        onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
+        onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 350 }, id, "logo-in", "image")}
+      >
+        Logo
+      </button>
+
+      {/* Sketch handle */}
+      <Handle type="target" position={Position.Left} id="sketch-in" style={{ top: "32%" }} />
+      <button
+        className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
+        style={{ left: -8, top: "32%", transform: "translateX(-100%) translateY(-50%)", color: "#a78bfa", background: "none", border: "none", padding: "2px 4px" }}
+        onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
+        onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+        onClick={() => addNodeAndConnect("sketch", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 500 }, id, "sketch-in", "image")}
+      >
+        Sketch
       </button>
 
       {/* Generated image preview */}
@@ -304,33 +499,76 @@ export default function GeneratorNode({
           <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>
             Model
           </label>
+          <div className="flex gap-1">
           <select
             value={model}
-            onChange={(e) =>
-              updateNodeData(id, {
-                model: e.target.value as "nano-banana" | "ideogram",
-              })
-            }
-            className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag"
+            onChange={(e) => {
+              const selected = e.target.value;
+              const prov = getProvider(selected);
+              if (availableProviders[prov]) {
+                updateNodeData(id, { model: selected });
+              }
+            }}
+            className="flex-1 rounded-xl px-3 py-2 text-xs focus:outline-none nopan nodrag"
             style={selectStyle}
           >
-            <option value="nano-banana">Nano Banana Pro 2</option>
-            <option value="ideogram">Ideogram v3</option>
+            <optgroup label="Gemini">
+              {GEMINI_MODELS.map((m) => (
+                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
+                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Ideogram">
+              {IDEOGRAM_MODELS.map((m) => (
+                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
+                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="OpenAI">
+              {OPENAI_MODELS.map((m) => (
+                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
+                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Grok (xAI)">
+              {GROK_MODELS.map((m) => (
+                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
+                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                </option>
+              ))}
+            </optgroup>
           </select>
+          <button
+            onClick={() => {
+              fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ favoriteModel: model }),
+              });
+            }}
+            className="px-2 rounded-xl nopan nodrag transition-all flex-shrink-0"
+            style={{
+              background: "var(--surface)",
+              color: "var(--accent-yellow)",
+            }}
+            title="Définir comme modèle par défaut"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" strokeWidth="0">
+              <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
+            </svg>
+          </button>
+          </div>
         </div>
 
-        {model === "ideogram" && (
+        {provider === "ideogram" && (
           <div>
-            <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>
-              Mode
-            </label>
+            <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Mode</label>
             <select
               value={ideogramMode}
-              onChange={(e) =>
-                updateNodeData(id, {
-                  ideogramMode: e.target.value as "generate" | "remix" | "edit",
-                })
-              }
+              onChange={(e) => updateNodeData(id, { ideogramMode: e.target.value as "generate" | "remix" | "edit" })}
               className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag"
               style={selectStyle}
             >
@@ -342,9 +580,7 @@ export default function GeneratorNode({
         )}
 
         <div>
-          <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>
-            Aspect Ratio
-          </label>
+          <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Aspect Ratio</label>
           <select
             value={aspectRatio}
             onChange={(e) => updateNodeData(id, { aspectRatio: e.target.value })}
@@ -359,38 +595,38 @@ export default function GeneratorNode({
           </select>
         </div>
 
-        {model === "ideogram" && (
+        <div>
+          <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Images par modèle</label>
+          <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                onClick={() => updateNodeData(id, { numImages: n })}
+                className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
+                style={{
+                  background: (data.numImages || 1) === n ? "var(--accent)" : "var(--surface)",
+                  color: (data.numImages || 1) === n ? "#000" : "var(--text-muted)",
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {provider === "ideogram" && (
           <>
             <div>
-              <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>
-                Speed
-              </label>
-              <select
-                value={renderingSpeed}
-                onChange={(e) =>
-                  updateNodeData(id, { renderingSpeed: e.target.value })
-                }
-                className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag"
-                style={selectStyle}
-              >
+              <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Speed</label>
+              <select value={renderingSpeed} onChange={(e) => updateNodeData(id, { renderingSpeed: e.target.value })} className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag" style={selectStyle}>
                 <option value="TURBO">Turbo</option>
                 <option value="DEFAULT">Default</option>
                 <option value="QUALITY">Quality</option>
               </select>
             </div>
-
             <div>
-              <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>
-                Style
-              </label>
-              <select
-                value={data.styleType || "GENERAL"}
-                onChange={(e) =>
-                  updateNodeData(id, { styleType: e.target.value })
-                }
-                className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag"
-                style={selectStyle}
-              >
+              <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Style</label>
+              <select value={data.styleType || "GENERAL"} onChange={(e) => updateNodeData(id, { styleType: e.target.value })} className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag" style={selectStyle}>
                 <option value="AUTO">Auto</option>
                 <option value="GENERAL">General</option>
                 <option value="REALISTIC">Realistic</option>
@@ -398,107 +634,79 @@ export default function GeneratorNode({
                 <option value="FICTION">Fiction</option>
               </select>
             </div>
-
             {ideogramMode === "remix" && (
               <div>
-                <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>
-                  Image Weight: {data.imageWeight ?? 50}%
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={data.imageWeight ?? 50}
-                  onChange={(e) =>
-                    updateNodeData(id, { imageWeight: Number(e.target.value) })
-                  }
-                  className="w-full nopan nodrag"
-                  style={{ accentColor: "var(--accent)" }}
-                />
+                <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Image Weight: {data.imageWeight ?? 50}%</label>
+                <input type="range" min={0} max={100} value={data.imageWeight ?? 50} onChange={(e) => updateNodeData(id, { imageWeight: Number(e.target.value) })} className="w-full nopan nodrag" style={{ accentColor: "var(--accent)" }} />
               </div>
             )}
           </>
         )}
 
-        {/* Add another image input link */}
-        <button
-          className="text-xs transition-colors nopan nodrag"
-          style={{ color: "var(--text-muted)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.color = "var(--text-secondary)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.color = "var(--text-muted)")
-          }
-          onClick={() => {
-            addNodeAndConnect(
-              "swipeFile",
-              { x: positionAbsoluteX - 520, y: positionAbsoluteY + 350 },
-              id,
-              "image-in",
-              "image"
-            );
-          }}
-        >
-          + Add another image input
-        </button>
-
-        {/* Generate button - Weavy style */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleGenerate}
-            disabled={data.isGenerating}
-            className="px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            style={{
-              background: "var(--accent-yellow)",
-              color: "var(--canvas-bg)",
-            }}
-          >
-            {data.isGenerating ? (
-              <>
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                    fill="none"
+        {/* Compare — optional other models */}
+        <div className="pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <label className="text-xs block mb-2" style={{ color: "var(--text-muted)" }}>
+            Comparer avec d'autres modèles (optionnel)
+          </label>
+          <div className="space-y-1 mb-3">
+            {ALL_MODELS.filter((m) => m.id !== model).map((m) => {
+              const isAvailable = !!availableProviders[m.provider];
+              return (
+                <label
+                  key={m.id}
+                  className="flex items-center gap-2 px-2 py-1 rounded-lg text-xs transition-all nopan nodrag"
+                  style={{
+                    color: !isAvailable ? "var(--text-muted)" : compareModels.has(m.id) ? "var(--text-primary)" : "var(--text-muted)",
+                    background: compareModels.has(m.id) && isAvailable ? "var(--surface)" : "transparent",
+                    opacity: isAvailable ? 1 : 0.4,
+                    cursor: isAvailable ? "pointer" : "not-allowed",
+                  }}
+                  title={!isAvailable ? "Clé API non configurée — va dans Settings" : ""}
+                >
+                  <input
+                    type="checkbox"
+                    checked={compareModels.has(m.id)}
+                    onChange={() => isAvailable && toggleCompareModel(m.id)}
+                    disabled={!isAvailable}
+                    className="nopan nodrag"
+                    style={{ accentColor: "var(--accent)" }}
                   />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                Generating...
-              </>
-            ) : (
-              <>
-                <span>&rarr;</span> Run Model
-              </>
-            )}
-          </button>
+                  {m.label}
+                  {!isAvailable && <span style={{ color: "#666", fontSize: 10 }}>(inactif)</span>}
+                </label>
+              );
+            })}
+          </div>
         </div>
 
+        {/* Single generate button — runs with compare if any checked */}
+        <button
+          onClick={compareModels.size > 0 ? handleCompare : handleGenerate}
+          disabled={data.isGenerating}
+          className="w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          style={{ background: "var(--accent-yellow)", color: "var(--canvas-bg)" }}
+        >
+          {data.isGenerating ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              Génération en cours...
+            </>
+          ) : (() => {
+            const totalModels = compareModels.size > 0 ? compareModels.size + 1 : 1;
+            const totalImages = totalModels * numImages;
+            if (totalImages === 1) return <>&rarr; Générer</>;
+            if (compareModels.size > 0) return <>&rarr; Générer {totalImages} images ({totalModels} modèles × {numImages})</>;
+            return <>&rarr; Générer {numImages} images</>;
+          })()}
+        </button>
+
         {error && (
-          <p className="text-xs" style={{ color: "#EF9092" }}>
-            {error}
-          </p>
+          <p className="text-xs" style={{ color: "#EF9092" }}>{error}</p>
         )}
       </div>
 
       <Handle type="source" position={Position.Right} id="result" />
-      <span
-        className="absolute text-xs pointer-events-none"
-        style={{
-          right: -8,
-          top: "15%",
-          transform: "translateX(100%) translateY(-50%)",
-          color: "var(--accent)",
-        }}
-      >
+      <span className="absolute text-xs pointer-events-none" style={{ right: -8, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--accent)" }}>
         Result
       </span>
     </NodeShell>

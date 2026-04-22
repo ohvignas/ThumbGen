@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSetting } from "@/lib/settings";
+import { saveGeneratedImage } from "@/lib/generated-images";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-const MODEL = "gemini-3.1-flash-image-preview";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const DEFAULT_MODEL = "gemini-3-pro-image-preview";
+const ALLOWED_MODELS = [
+  "gemini-2.5-flash-image",
+  "gemini-3.1-flash-image-preview",
+  "gemini-3-pro-image-preview",
+];
 
 function stripDataUrl(dataUrl: string): { mimeType: string; data: string } {
   const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
@@ -24,8 +29,9 @@ function mapAspectRatio(ratio: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const GEMINI_API_KEY = getSetting("geminiApiKey");
     if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
+      return NextResponse.json({ error: "GEMINI_API_KEY not configured. Add it in Settings." }, { status: 500 });
     }
 
     const body = await request.json();
@@ -34,10 +40,16 @@ export async function POST(request: NextRequest) {
       negativePrompt,
       faceImages = [],
       referenceImages = [],
+      logos = [],
+      sketchImages = [],
       aspectRatio = "16x9",
+      model: requestedModel,
     } = body;
 
-    if (!prompt && faceImages.length === 0 && referenceImages.length === 0) {
+    const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
+    const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+    if (!prompt && faceImages.length === 0 && referenceImages.length === 0 && sketchImages.length === 0) {
       return NextResponse.json({ error: "Connect a prompt, face reference, or reference thumbnail" }, { status: 400 });
     }
 
@@ -47,6 +59,8 @@ export async function POST(request: NextRequest) {
 
     const hasFace = faceImages.length > 0;
     const hasRef = referenceImages.length > 0;
+    const hasLogo = logos.length > 0;
+    const hasSketch = sketchImages.length > 0;
 
     let fullPrompt = "";
 
@@ -66,11 +80,23 @@ export async function POST(request: NextRequest) {
       fullPrompt = `Generate a YouTube thumbnail image.${userPrompt}`;
     }
 
+    if (hasLogo) {
+      const logoNames = (logos as { image: string; label: string }[]).map((l) => l.label).join(", ");
+      fullPrompt += `\n\nIMPORTANT: Include the following logo(s) in the thumbnail: ${logoNames}. Place each logo visibly — in a corner, beside the person, or integrated into the composition. Each logo must be clearly recognizable, well-positioned, and not distorted or blended into the background.`;
+    }
+
+    if (hasSketch) {
+      fullPrompt += `\n\nIMPORTANT: A COMPOSITION SKETCH is provided below. This is a rough hand-drawn layout showing WHERE elements should be placed in the thumbnail. Use it as a LAYOUT AND COMPOSITION GUIDE — match the positioning and arrangement of elements. Do NOT reproduce the sketchy/hand-drawn style — create a polished, professional result. The sketch only shows placement, not the final visual quality.`;
+    }
+
     if (negativePrompt) {
       fullPrompt += `\n\nAvoid: ${negativePrompt}`;
     }
 
     parts.push({ text: fullPrompt });
+
+    console.log(`[generate] model=${model} | faces=${faceImages.length} refs=${referenceImages.length} logos=${logos.length} sketches=${sketchImages.length}`);
+    console.log(`[generate] prompt: ${fullPrompt.substring(0, 300)}...`);
 
     // Add face reference images (labeled so Gemini knows which is which)
     if (hasFace) {
@@ -85,6 +111,24 @@ export async function POST(request: NextRequest) {
     if (hasRef) {
       parts.push({ text: "REFERENCE THUMBNAIL:" });
       for (const img of referenceImages) {
+        const { mimeType, data } = stripDataUrl(img);
+        parts.push({ inline_data: { mime_type: mimeType, data } });
+      }
+    }
+
+    // Add logo images with their labels
+    if (hasLogo) {
+      for (const logo of logos as { image: string; label: string }[]) {
+        parts.push({ text: `LOGO TO INCLUDE — "${logo.label}":` });
+        const { mimeType, data } = stripDataUrl(logo.image);
+        parts.push({ inline_data: { mime_type: mimeType, data } });
+      }
+    }
+
+    // Add sketch images (composition guide)
+    if (hasSketch) {
+      parts.push({ text: "COMPOSITION SKETCH (use as layout guide, NOT style reference):" });
+      for (const img of sketchImages) {
         const { mimeType, data } = stripDataUrl(img);
         parts.push({ inline_data: { mime_type: mimeType, data } });
       }
@@ -119,7 +163,7 @@ export async function POST(request: NextRequest) {
     const result = await res.json();
     const images: string[] = [];
 
-    // Extract images from response (Gemini uses camelCase: inlineData, mimeType)
+    // Extract images from response and save to disk
     const candidates = result.candidates || [];
     for (const candidate of candidates) {
       const contentParts = candidate.content?.parts || [];
@@ -128,12 +172,23 @@ export async function POST(request: NextRequest) {
         if (imgData) {
           const b64 = imgData.data;
           const mime = imgData.mimeType || imgData.mime_type || "image/png";
-          images.push(`data:${mime};base64,${b64}`);
+          const dataUrl = `data:${mime};base64,${b64}`;
+          const { url } = saveGeneratedImage(dataUrl);
+          images.push(url);
         }
       }
     }
 
-    return NextResponse.json({ images });
+    // Extract usage/token info from Gemini response
+    const usage = result.usageMetadata || {};
+    const stats = {
+      inputTokens: usage.promptTokenCount || 0,
+      outputTokens: usage.candidatesTokenCount || 0,
+      totalTokens: usage.totalTokenCount || 0,
+      model,
+    };
+
+    return NextResponse.json({ images, stats });
   } catch (err) {
     console.error("Nano Banana generation error:", err);
     return NextResponse.json({ error: "Generation failed" }, { status: 500 });

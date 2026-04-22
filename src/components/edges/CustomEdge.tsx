@@ -1,6 +1,6 @@
 "use client";
 
-import { EdgeProps, getBezierPath } from "@xyflow/react";
+import { EdgeProps, getBezierPath, EdgeLabelRenderer, useReactFlow } from "@xyflow/react";
 
 export default function CustomEdge({
   id,
@@ -11,8 +11,9 @@ export default function CustomEdge({
   sourcePosition,
   targetPosition,
   style,
+  selected,
 }: EdgeProps) {
-  const [edgePath] = getBezierPath({
+  const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     targetX,
@@ -21,40 +22,60 @@ export default function CustomEdge({
     targetPosition,
   });
 
-  const gradientId = `edge-gradient-${id}`;
+  const { setEdges } = useReactFlow();
+  const color = selected ? "#ff6b6b" : "#6EDDB3";
+
+  const handleDelete = () => {
+    setEdges((edges) => edges.filter((e) => e.id !== id));
+  };
 
   return (
     <>
-      <defs>
-        <linearGradient
-          id={gradientId}
-          x1={sourceX}
-          y1={sourceY}
-          x2={targetX}
-          y2={targetY}
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0%" stopColor="#6EDDB3" />
-          <stop offset="100%" stopColor="#6EDDB3" />
-        </linearGradient>
-      </defs>
-      {/* Fat invisible hitbox path */}
+      {/* Fat invisible hitbox path for clicking */}
       <path
         d={edgePath}
         fill="none"
         stroke="transparent"
         strokeWidth={40}
         className="react-flow__edge-interaction"
+        style={{ cursor: "pointer" }}
       />
-      {/* Visible thin path */}
+      {/* Visible path */}
       <path
         d={edgePath}
         fill="none"
-        stroke={`url(#${gradientId})`}
-        strokeWidth={2}
+        stroke={color}
+        strokeWidth={selected ? 2.5 : 1.5}
         style={style}
         className="react-flow__edge-path"
       />
+      {/* Delete button when selected */}
+      {selected && (
+        <EdgeLabelRenderer>
+          <button
+            onClick={handleDelete}
+            className="nodrag nopan"
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: "all",
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              background: "#ff4444",
+              border: "2px solid #1e1e2e",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }

@@ -18,7 +18,7 @@ export type NodeData = {
   imageR2Key?: string;
   prompt?: string;
   negativePrompt?: string;
-  model?: "nano-banana" | "ideogram";
+  model?: string;
   ideogramMode?: "generate" | "remix" | "edit";
   aspectRatio?: string;
   imageWeight?: number;
@@ -29,6 +29,20 @@ export type NodeData = {
   generatedImageKeys?: string[];
   selectedImageIndex?: number;
   maskDataUrl?: string;
+  numImages?: number; // Number of images to generate per model
+  favoriteModel?: string; // User's favorite model for quick access
+  sketchElements?: string; // JSON string of Excalidraw elements
+  sketchFiles?: string; // JSON string of Excalidraw files
+  selectedAxes?: Array<{ title: string; prompt: string }>; // Multiple selected prompt suggestions
+  // Preview stats
+  genStatus?: "loading" | "done" | "error";
+  genError?: string;
+  genTimeMs?: number;
+  genPromptUsed?: string;
+  genModel?: string;
+  genTokens?: number;
+  genCost?: string;
+  axisColor?: string;
 };
 
 export type AppNode = Node<NodeData>;
@@ -40,6 +54,7 @@ interface CanvasState {
   edges: Edge[];
   loaded: boolean;
   saving: boolean;
+  currentProjectId: string;
   history: Snapshot[];
   historyIndex: number;
   onNodesChange: (changes: NodeChange<AppNode>[]) => void;
@@ -61,6 +76,8 @@ interface CanvasState {
     faceRefs: AppNode[];
     swipeRefs: AppNode[];
     prompts: AppNode[];
+    logos: AppNode[];
+    sketches: AppNode[];
     images: AppNode[];
   };
   undo: () => void;
@@ -104,6 +121,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   edges: [],
   loaded: false,
   saving: false,
+  currentProjectId: "default",
   history: [],
   historyIndex: -1,
 
@@ -201,13 +219,24 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   getConnectedInputs: (nodeId) => {
     const { nodes, edges } = get();
     const incomingEdges = edges.filter((e) => e.target === nodeId);
+
+    // Track handles
+    const logoSourceIds = new Set(
+      incomingEdges.filter((e) => e.targetHandle === "logo-in").map((e) => e.source)
+    );
+    const sketchSourceIds = new Set(
+      incomingEdges.filter((e) => e.targetHandle === "sketch-in").map((e) => e.source)
+    );
+
     const sourceIds = incomingEdges.map((e) => e.source);
     const sourceNodes = nodes.filter((n) => sourceIds.includes(n.id));
 
     return {
       faceRefs: sourceNodes.filter((n) => n.type === "faceReference"),
-      swipeRefs: sourceNodes.filter((n) => n.type === "swipeFile"),
+      swipeRefs: sourceNodes.filter((n) => (n.type === "swipeFile") && !logoSourceIds.has(n.id) && !sketchSourceIds.has(n.id)),
       prompts: sourceNodes.filter((n) => n.type === "prompt"),
+      logos: sourceNodes.filter((n) => logoSourceIds.has(n.id)),
+      sketches: sourceNodes.filter((n) => sketchSourceIds.has(n.id) || n.type === "sketch"),
       images: sourceNodes.filter(
         (n) => n.type === "preview" || n.type === "swipeFile" || n.type === "faceReference"
       ),
@@ -246,7 +275,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   loadProject: async (projectId = "default") => {
     try {
       const res = await fetch(`/api/project?id=${projectId}`);
-      if (!res.ok) throw new Error("Failed to load");
+      if (!res.ok) {
+        console.warn("Project load returned non-OK status, using fallback");
+        set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+        return;
+      }
       const data = await res.json();
       const initialNodes = data.nodes || [];
       const initialEdges = data.edges || [];
@@ -258,38 +291,51 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         nodes: initialNodes,
         edges: initialEdges,
         loaded: true,
+        currentProjectId: projectId,
         history: [initialSnapshot],
         historyIndex: 0,
       });
     } catch (err) {
       console.error("Failed to load project:", err);
-      set({ loaded: true, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+      set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
     }
   },
 
-  saveProject: async (projectId = "default") => {
-    const { nodes, edges, saving } = get();
+  saveProject: async (projectId?: string) => {
+    const { nodes, edges, saving, currentProjectId } = get();
+    const pid = projectId || currentProjectId;
     if (saving) return;
 
     set({ saving: true });
     try {
-      // Strip large base64 data before saving to D1 — images should be in R2
-      const cleanNodes = nodes.map((n) => ({
-        id: n.id,
-        type: n.type,
-        position: n.position,
-        data: {
-          ...n.data,
-          // Keep base64 for now if no R2 key exists (we'll migrate later)
-          // Remove transient state
-          isGenerating: undefined,
-        },
-      }));
+      // Strip large base64 data — generated images are saved on disk as files
+      const cleanNodes = nodes.map((n) => {
+        const cleanData = { ...n.data, isGenerating: undefined };
+
+        // For preview nodes, keep only URL-based images (strip base64)
+        if (n.type === "preview" && cleanData.generatedImages) {
+          cleanData.generatedImages = cleanData.generatedImages.map((img: string) =>
+            img.startsWith("data:") ? undefined : img
+          ).filter(Boolean) as string[];
+        }
+
+        // Strip imageBase64 from face/swipe nodes if they have an imageUrl
+        if (cleanData.imageUrl && cleanData.imageBase64) {
+          cleanData.imageBase64 = undefined;
+        }
+
+        return {
+          id: n.id,
+          type: n.type,
+          position: n.position,
+          data: cleanData,
+        };
+      });
 
       await fetch("/api/project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, nodes: cleanNodes, edges }),
+        body: JSON.stringify({ projectId: pid, nodes: cleanNodes, edges }),
       });
     } catch (err) {
       console.error("Failed to save project:", err);

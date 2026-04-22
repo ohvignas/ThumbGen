@@ -8,6 +8,10 @@ export default function NodeShell({
   icon,
   onDelete,
   onDuplicate,
+  onRename,
+  onRemoveBg,
+  removingBg,
+  accentColor,
   width = 460,
 }: {
   children: ReactNode;
@@ -15,10 +19,17 @@ export default function NodeShell({
   icon?: ReactNode;
   onDelete?: () => void;
   onDuplicate?: () => void;
+  onRename?: (newName: string) => void;
+  onRemoveBg?: () => void;
+  removingBg?: boolean;
+  accentColor?: string;
   width?: number;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(title);
   const menuRef = useRef<HTMLDivElement>(null);
+  const renameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -31,25 +42,65 @@ export default function NodeShell({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (renaming && renameRef.current) {
+      renameRef.current.focus();
+      renameRef.current.select();
+    }
+  }, [renaming]);
+
+  const commitRename = () => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== title && onRename) {
+      onRename(trimmed);
+    }
+    setRenaming(false);
+  };
+
   return (
     <div
-      className="node-card rounded-2xl border-2 border-transparent transition-all"
+      className="node-card rounded-2xl border-2 transition-all"
       style={{
         width,
         background: "var(--node-bg)",
         fontFamily: "'DM Sans', system-ui, sans-serif",
+        borderColor: accentColor ? accentColor + "40" : "transparent",
       }}
     >
+      {/* Color stripe */}
+      {accentColor && (
+        <div style={{ height: 3, background: accentColor, borderRadius: "14px 14px 0 0" }} />
+      )}
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+      <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <div className="flex items-center gap-2 min-w-0">
           {icon && <span className="flex-shrink-0">{icon}</span>}
-          <span
-            className="text-sm font-medium truncate"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            {title}
-          </span>
+          {renaming ? (
+            <input
+              ref={renameRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitRename();
+                if (e.key === "Escape") setRenaming(false);
+              }}
+              className="text-sm font-medium bg-transparent focus:outline-none nopan nodrag px-1 rounded"
+              style={{
+                color: "var(--text-primary)",
+                border: "1px solid var(--accent)",
+                minWidth: 60,
+              }}
+            />
+          ) : (
+            <span
+              className="text-xs font-medium truncate"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              {title}
+            </span>
+          )}
         </div>
         <div className="relative flex-shrink-0" ref={menuRef}>
           <button
@@ -77,6 +128,25 @@ export default function NodeShell({
                 border: "1px solid var(--surface)",
               }}
             >
+              {onRename && (
+                <NodeMenuItem
+                  label="Rename"
+                  onClick={() => {
+                    setRenameValue(title);
+                    setRenaming(true);
+                    setMenuOpen(false);
+                  }}
+                />
+              )}
+              {onRemoveBg && (
+                <NodeMenuItem
+                  label={removingBg ? "Removing..." : "Remove BG"}
+                  onClick={() => {
+                    if (!removingBg) onRemoveBg();
+                    setMenuOpen(false);
+                  }}
+                />
+              )}
               {onDuplicate && (
                 <NodeMenuItem
                   label="Duplicate"
@@ -102,7 +172,7 @@ export default function NodeShell({
       </div>
 
       {/* Content */}
-      <div className="px-4 pb-4">{children}</div>
+      <div className="px-3 pb-3">{children}</div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const IDEOGRAM_API_KEY = process.env.IDEOGRAM_API_KEY || "";
+import { getSetting } from "@/lib/settings";
+import { saveGeneratedImage } from "@/lib/generated-images";
 const ENDPOINT = "https://api.ideogram.ai/v1/ideogram-v3/remix";
 
 function dataUrlToBlob(dataUrl: string): { blob: Blob; ext: string } {
@@ -20,8 +20,9 @@ function normalizeAspectRatio(ratio: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const IDEOGRAM_API_KEY = getSetting("ideogramApiKey");
     if (!IDEOGRAM_API_KEY) {
-      return NextResponse.json({ error: "IDEOGRAM_API_KEY not configured" }, { status: 500 });
+      return NextResponse.json({ error: "IDEOGRAM_API_KEY not configured. Add it in Settings." }, { status: 500 });
     }
 
     const body = await request.json();
@@ -91,7 +92,8 @@ export async function POST(request: NextRequest) {
           const imgRes = await fetch(item.url);
           const imgBuf = await imgRes.arrayBuffer();
           const b64 = Buffer.from(imgBuf).toString("base64");
-          images.push(`data:image/png;base64,${b64}`);
+          const { url } = saveGeneratedImage(`data:image/png;base64,${b64}`);
+          images.push(url);
         } catch {
           console.error("Failed to download remixed image");
         }

@@ -118,5 +118,5 @@ function loginPage() {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|swipe-file).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|swipe-file|api/face-reactions|api/swipe-files).*)"],
 };

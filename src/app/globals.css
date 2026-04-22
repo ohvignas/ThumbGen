@@ -11,9 +11,9 @@
   --text-secondary: rgba(255, 255, 255, 0.8);
   --text-tertiary: rgba(255, 255, 255, 0.64);
   --text-muted: rgba(255, 255, 255, 0.4);
-  --handle-size: 20px;
-  --node-radius: 16px;
-  --node-width: 460px;
+  --handle-size: 18px;
+  --node-radius: 12px;
+  --node-width: 320px;
 }
 
 body {
@@ -44,7 +44,7 @@ body {
   height: var(--handle-size) !important;
   border-radius: 100% !important;
   background: var(--accent) !important;
-  border: 5px solid var(--node-bg) !important;
+  border: 3px solid var(--node-bg) !important;
   opacity: 1 !important;
   transition: all 0.2s ease-in-out !important;
   cursor: crosshair !important;
