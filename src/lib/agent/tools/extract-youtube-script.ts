@@ -8,7 +8,7 @@ const InputSchema = z.object({ url: z.string().url() });
 export const extractYoutubeScriptTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "extract_youtube_script",
   description:
-    "Extracts the spoken transcript of a YouTube video given its URL. Use this when the user wants to design a thumbnail for a specific existing video — the transcript helps you understand the actual content beyond the title.",
+    "Extracts the spoken transcript of a YouTube video given its URL. Use this when the user wants to design a thumbnail for a specific existing video — the transcript helps you understand the actual content beyond the title. NOTE: transcripts longer than 8000 characters are truncated (a `…[truncated]` marker is appended).",
   inputSchema: InputSchema,
   handler: async ({ url }) => {
     try {
