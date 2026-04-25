@@ -15,9 +15,11 @@ const InputSchema = z.object({
 
 // Maps the blueprint's coarse model name (ideogram/grok/nano-banana/openai)
 // onto the actual canvas model ID expected by GeneratorNode.
+// nano-banana → Gemini 3.1 Flash (fast, cheap, great with faces — the default
+// recommendation for thumbnail generation per the user).
 const MODEL_ID_MAP: Record<string, string> = {
   ideogram: "ideogram",
-  "nano-banana": "gemini-3-pro-image-preview",
+  "nano-banana": "gemini-3.1-flash-image-preview",
   grok: "grok-imagine-image",
   openai: "gpt-image-2",
 };

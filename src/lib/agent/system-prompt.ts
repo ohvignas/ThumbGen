@@ -65,7 +65,7 @@ WHEN THE USER PICKS AN ANGLE (replies "B", "le second", "celui du milieu", "ÇA 
       - swipeFile (kind="reference") with image_source = stored:sf_<id> if a reference inspiration applies
       - sketch with image_source = the chosen generated:sk_<id> from your prior generate_sketch
       - prompt with the actual prompt text describing the thumbnail (in the language of the user's video — usually French)
-      - generator with model (ideogram for sharp text, nano-banana for natural faces, openai for clean tech, grok for raw style) + aspectRatio "16x9" + count 1-3
+      - generator with model — DEFAULT to "nano-banana" (Gemini 3.1 Flash : rapide, économique, excellent avec les visages et la composition naturelle). Use "ideogram" only when the design depends heavily on sharp readable text overlays. Use "openai" for clean tech-product compositions. Use "grok" rarely, only for raw stylized art. Plus aspectRatio "16x9" + count 1-3 (default 1)
     edges connecting each input node to the generator via the right targetHandle:
       - face → generator on "face-in"
       - logo swipeFile → generator on "logo-in"

@@ -14,6 +14,12 @@ if (typeof window === "undefined") {
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_ITER = 25;
+// Extended thinking budget — gives Claude space to plan tool calls, weigh
+// angle options, match faces to emotions, write better prompts. Per docs:
+// budget_tokens >= 1024, max_tokens must be larger than budget. Sonnet 4.6
+// supports thinking with most tools (web_search included).
+const THINKING_BUDGET = 6000;
+const MAX_TOKENS = 16000;
 
 // Approximate Sonnet 4.6 pricing per million tokens — refresh from current docs.
 // Used only for cost display; actual billing is on Anthropic's side.
@@ -172,11 +178,12 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     try {
       const stream = anthropic.messages.stream({
         model: MODEL,
-        max_tokens: 4096,
+        max_tokens: MAX_TOKENS,
         system: systemBlocks as never,
         tools: tools as never,
         messages: history as never,
-      });
+        thinking: { type: "enabled", budget_tokens: THINKING_BUDGET },
+      } as never);
 
       stream.on("text", (textDelta: string) => {
         // Forward each token to the browser as it arrives.
