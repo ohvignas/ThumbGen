@@ -8,16 +8,56 @@ const InputSchema = z.object({
   sort: z.enum(["relevance", "viewCount", "date"]).optional(),
   limit: z.number().int().min(1).max(12).optional(),
   include_thumbnails: z.boolean().optional(),
+  region: z.enum(["FR", "US", "any"]).optional(),
+  duration: z.enum(["any", "medium", "long"]).optional(),
 });
 
 const MAX_THUMBS_FOR_VISION = 6;
+const FALLBACK_THRESHOLD = 4; // if FR returns fewer than this, retry without region
+
+type YtVideoItem = {
+  id: { videoId: string };
+  snippet: {
+    title: string;
+    channelTitle: string;
+    publishedAt: string;
+    thumbnails: { high?: { url: string }; medium?: { url: string } };
+  };
+};
+
+async function fetchSearch(opts: {
+  apiKey: string;
+  query: string;
+  sort: string;
+  limit: number;
+  duration: string;
+  region: string | null;
+}): Promise<YtVideoItem[]> {
+  const params = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    q: opts.query,
+    order: opts.sort,
+    maxResults: String(opts.limit),
+    videoDuration: opts.duration,        // "any" | "medium" | "long" (excludes <4min shorts when not "any")
+    key: opts.apiKey,
+  });
+  if (opts.region) {
+    params.set("regionCode", opts.region);
+    params.set("relevanceLanguage", opts.region.toLowerCase());
+  }
+  const res = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
+  if (!res.ok) throw new Error(`YouTube search failed: ${res.status}`);
+  const data = await res.json();
+  return (data.items || []) as YtVideoItem[];
+}
 
 export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "search_youtube",
   description:
-    "Searches YouTube globally for videos on a topic. By default fetches the top thumbnails as images so you can VISUALLY analyze them (composition, color contrast, focal point, text legibility, face placement) instead of guessing patterns from titles. Return list includes id, title, channel, date, and HD thumbnail URL. Use sort='viewCount' to surface what's most clicked, 'relevance' (default) for topical match, 'date' for fresh angles. Be precise with the query — include exact product names and brands. QUOTA: 100 units per call + small additional thumbnail bandwidth.",
+    "Searches YouTube for videos on a topic. Defaults: region=FR + relevanceLanguage=fr (the user is French) + duration=medium (excludes <4min shorts — we want long-form videos for thumbnail analysis). If the French query returns fewer than 4 results, the tool auto-retries with region=any so you still get inspiration. By default fetches the top thumbnails as images so you can VISUALLY analyze them (composition, color contrast, focal point, text legibility, face placement). Use sort='viewCount' to surface what's most clicked, 'relevance' (default) for topical match. Pass region='US' or 'any' to broaden search; pass duration='long' for >20min content only. Be precise with the query — include exact product names and brands. QUOTA: 100 units per call.",
   inputSchema: InputSchema,
-  handler: async ({ query, sort, limit, include_thumbnails }) => {
+  handler: async ({ query, sort, limit, include_thumbnails, region, duration }) => {
     const apiKey = getSetting("youtubeApiKey");
     if (!apiKey) {
       return {
@@ -26,32 +66,46 @@ export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       };
     }
 
-    const params = new URLSearchParams({
-      part: "snippet",
-      type: "video",
-      q: query,
-      order: sort ?? "relevance",
-      maxResults: String(limit ?? 8),
-      key: apiKey,
-    });
+    const wantedSort = sort ?? "relevance";
+    const wantedLimit = limit ?? 8;
+    const wantedDuration = duration ?? "medium";
+    const wantedRegion = region ?? "FR";
 
-    const res = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-    if (!res.ok) {
-      return { isError: true, content: [{ type: "text", text: `YouTube search failed: ${res.status}` }] };
+    let items: YtVideoItem[] = [];
+    let regionUsed: string = wantedRegion;
+    let fallbackUsed = false;
+
+    try {
+      items = await fetchSearch({
+        apiKey,
+        query,
+        sort: wantedSort,
+        limit: wantedLimit,
+        duration: wantedDuration,
+        region: wantedRegion === "any" ? null : wantedRegion,
+      });
+      // Auto-fallback to global search if FR returned too few results.
+      if (wantedRegion === "FR" && items.length < FALLBACK_THRESHOLD) {
+        const fallback = await fetchSearch({
+          apiKey,
+          query,
+          sort: wantedSort,
+          limit: wantedLimit,
+          duration: wantedDuration,
+          region: null,
+        });
+        if (fallback.length > items.length) {
+          items = fallback;
+          regionUsed = "any";
+          fallbackUsed = true;
+        }
+      }
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: (e as Error).message }] };
     }
-    const data = await res.json();
-    const items = (data.items || []) as Array<{
-      id: { videoId: string };
-      snippet: {
-        title: string;
-        channelTitle: string;
-        publishedAt: string;
-        thumbnails: { high?: { url: string }; medium?: { url: string } };
-      };
-    }>;
 
     if (items.length === 0) {
-      return { content: [{ type: "text", text: `Aucun résultat pour "${query}".` }] };
+      return { content: [{ type: "text", text: `Aucun résultat pour "${query}" (région ${wantedRegion}, durée ${wantedDuration}).` }] };
     }
 
     const fetchThumbs = include_thumbnails !== false; // default true
@@ -62,10 +116,16 @@ export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       return `[${i + 1}] [${it.id.videoId}] "${it.snippet.title}" — ${it.snippet.channelTitle} (${it.snippet.publishedAt.slice(0, 10)})\n  thumbnail: ${tn}`;
     });
 
+    const headerBits = [
+      `${items.length} vidéo(s) sur "${query}"`,
+      `sorted by ${wantedSort}`,
+      `région ${regionUsed === "any" ? "globale" : regionUsed}${fallbackUsed ? " (fallback global après FR < 4 résultats)" : ""}`,
+      `durée ${wantedDuration === "any" ? "tous formats" : wantedDuration === "long" ? ">20min" : "4-20min (shorts exclus)"}`,
+    ];
     const content: ToolContent[] = [
       {
         type: "text",
-        text: `${items.length} vidéo(s) sur "${query}" (sorted by ${sort ?? "relevance"}):\n${lines.join("\n")}`,
+        text: `${headerBits.join(" · ")}:\n${lines.join("\n")}`,
       },
     ];
 

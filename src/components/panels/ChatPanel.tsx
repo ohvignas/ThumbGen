@@ -239,7 +239,17 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 type AnthropicBlock =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      // Custom fields we attach in loop.ts so the chat UI can re-render the
+      // tool result (gallery, summary) after the live message is replaced by
+      // the DB refetch. Anthropic ignores unknown fields when reading back.
+      _images?: string[];
+      _summary?: string;
+    }
   | { type: "tool_result"; tool_use_id: string; content: unknown };
 
 function rowToDisplay(row: {
@@ -268,6 +278,8 @@ function rowToDisplay(row: {
         name: b.name,
         input: b.input,
         status: "done",
+        summary: b._summary,
+        images: b._images,
       });
     }
     // tool_result blocks are responses to assistant tool_use; we don't display them separately

@@ -244,6 +244,18 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
             const summary = summarizeToolResult(r as { content: unknown });
             const images = extractImageUrls(r as { content: unknown });
             send("tool_result", { id: tu.id, name: tu.name, summary, images });
+            // Persist images + summary directly on the tool_use block in our
+            // accumulated assistantBlocks so the chat UI can re-display them
+            // after the live message is replaced by the DB refetch. These
+            // custom underscore-prefixed fields are stripped before being
+            // sent to Anthropic (see history-build step).
+            const matchingTU = assistantBlocks.find(
+              (b) => (b as { type?: string; id?: string }).type === "tool_use" && (b as { id?: string }).id === tu.id,
+            ) as Record<string, unknown> | undefined;
+            if (matchingTU) {
+              matchingTU._images = images;
+              matchingTU._summary = summary;
+            }
             toolResults.push({
               type: "tool_result",
               tool_use_id: tu.id,
