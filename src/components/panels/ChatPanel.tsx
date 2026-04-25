@@ -7,6 +7,7 @@ import ConversationList from "./chat/ConversationList";
 import MessageList from "./chat/MessageList";
 import Composer from "./chat/Composer";
 import PendingUiAction, { UiToolRequest } from "./chat/PendingUiAction";
+import AgentActivity from "./chat/AgentActivity";
 import type { DisplayMessage, MessageBlock } from "./chat/Message";
 import type { ChatEvent } from "@/hooks/useChat";
 import UsageBadge from "./chat/UsageBadge";
@@ -212,6 +213,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
           onResolve={(id, result) => respondToUiTool(id, result)}
         />
       )}
+
+      <AgentActivity events={events} streaming={streaming} />
 
       <Composer onSend={onSend} streaming={streaming} onStop={stop} />
     </aside>
