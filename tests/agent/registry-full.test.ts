@@ -24,6 +24,7 @@ describe("full registry", () => {
       "apply_workflow",
       "generate_sketch",
       "extract_youtube_script",
+      "search_youtube",
       "search_youtube_channel",
       "get_channel_videos",
     ];

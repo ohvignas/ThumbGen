@@ -10,5 +10,6 @@ import "./get-canvas-state";
 import "./apply-workflow";
 import "./generate-sketch";
 import "./extract-youtube-script";
+import "./search-youtube";
 import "./search-youtube-channel";
 import "./get-channel-videos";

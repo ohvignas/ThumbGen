@@ -1,4 +1,6 @@
 "use client";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import ToolCallCard from "./ToolCallCard";
 
 export type MessageBlock =
@@ -54,13 +56,51 @@ export default function Message({ msg }: { msg: DisplayMessage }) {
         {msg.blocks.map((b, i) => {
           if (b.type === "text") {
             return (
-              <p
+              <div
                 key={i}
-                className="text-sm whitespace-pre-wrap break-words"
+                className="text-sm break-words chat-md"
                 style={{ color: "var(--text-primary)", lineHeight: 1.55 }}
               >
-                {b.text}
-              </p>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a: ({ href, children }) => (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "var(--brand)", textDecoration: "underline", textUnderlineOffset: 2 }}
+                      >
+                        {children}
+                      </a>
+                    ),
+                    code: ({ children, ...props }) => {
+                      const isInline = !(props as { node?: { position?: { start: { line: number }; end: { line: number } } } }).node?.position
+                        || (props as { node: { position: { start: { line: number }; end: { line: number } } } }).node.position.start.line
+                        === (props as { node: { position: { start: { line: number }; end: { line: number } } } }).node.position.end.line;
+                      return (
+                        <code
+                          style={{
+                            background: "var(--ink-3)",
+                            padding: isInline ? "1px 5px" : "10px 12px",
+                            borderRadius: isInline ? 4 : 8,
+                            fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
+                            fontSize: isInline ? 12 : 11,
+                            display: isInline ? "inline" : "block",
+                            border: "1px solid var(--line-faint)",
+                            color: "var(--text-secondary)",
+                            overflowX: isInline ? "visible" : "auto",
+                          }}
+                        >
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
+                >
+                  {b.text}
+                </ReactMarkdown>
+              </div>
             );
           }
           if (b.type === "image") {
