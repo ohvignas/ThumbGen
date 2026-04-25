@@ -1,20 +1,23 @@
 import { z } from "zod";
 import { getSetting } from "@/lib/settings";
-import { ToolDefinition } from "./types";
+import { ToolDefinition, ToolContent } from "./types";
 import { registerTool } from "./index";
 
 const InputSchema = z.object({
   query: z.string().min(1),
   sort: z.enum(["relevance", "viewCount", "date"]).optional(),
-  limit: z.number().int().min(1).max(25).optional(),
+  limit: z.number().int().min(1).max(12).optional(),
+  include_thumbnails: z.boolean().optional(),
 });
+
+const MAX_THUMBS_FOR_VISION = 6;
 
 export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "search_youtube",
   description:
-    "Searches YouTube globally for videos on a topic (NOT scoped to a single channel). Use this when designing a thumbnail to discover the top-performing thumbnails on the topic and use them as visual inspiration. Returns video id, title, channel name, view count, published date, and HD thumbnail URL. Sort by 'viewCount' to see what performs best, 'relevance' (default) for topical match, 'date' for fresh angles. QUOTA: 100 units per call.",
+    "Searches YouTube globally for videos on a topic. By default fetches the top thumbnails as images so you can VISUALLY analyze them (composition, color contrast, focal point, text legibility, face placement) instead of guessing patterns from titles. Return list includes id, title, channel, date, and HD thumbnail URL. Use sort='viewCount' to surface what's most clicked, 'relevance' (default) for topical match, 'date' for fresh angles. Be precise with the query — include exact product names and brands. QUOTA: 100 units per call + small additional thumbnail bandwidth.",
   inputSchema: InputSchema,
-  handler: async ({ query, sort, limit }) => {
+  handler: async ({ query, sort, limit, include_thumbnails }) => {
     const apiKey = getSetting("youtubeApiKey");
     if (!apiKey) {
       return {
@@ -28,7 +31,7 @@ export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       type: "video",
       q: query,
       order: sort ?? "relevance",
-      maxResults: String(limit ?? 12),
+      maxResults: String(limit ?? 8),
       key: apiKey,
     });
 
@@ -51,20 +54,49 @@ export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       return { content: [{ type: "text", text: `Aucun résultat pour "${query}".` }] };
     }
 
-    // Optional: enrich with viewCount via videos.list (1 unit per call) — only if sort=viewCount.
-    // For the thumbnail-inspiration use case, the snippet alone is enough.
-    const lines = items.map((it) => {
+    const fetchThumbs = include_thumbnails !== false; // default true
+
+    // Text summary listing all hits
+    const lines = items.map((it, i) => {
       const tn = it.snippet.thumbnails.high?.url || it.snippet.thumbnails.medium?.url || "";
-      return `- [${it.id.videoId}] "${it.snippet.title}" — ${it.snippet.channelTitle} (${it.snippet.publishedAt.slice(0, 10)})\n  thumbnail: ${tn}`;
+      return `[${i + 1}] [${it.id.videoId}] "${it.snippet.title}" — ${it.snippet.channelTitle} (${it.snippet.publishedAt.slice(0, 10)})\n  thumbnail: ${tn}`;
     });
-    return {
-      content: [
-        {
-          type: "text",
-          text: `${items.length} vidéo(s) sur "${query}" (sorted by ${sort ?? "relevance"}):\n${lines.join("\n")}`,
-        },
-      ],
-    };
+
+    const content: ToolContent[] = [
+      {
+        type: "text",
+        text: `${items.length} vidéo(s) sur "${query}" (sorted by ${sort ?? "relevance"}):\n${lines.join("\n")}`,
+      },
+    ];
+
+    if (!fetchThumbs) return { content };
+
+    // Fetch the top N thumbnails so the agent can visually analyze design patterns.
+    // Cap at MAX_THUMBS_FOR_VISION to keep input tokens reasonable.
+    const thumbsToFetch = items.slice(0, MAX_THUMBS_FOR_VISION);
+    content.push({
+      type: "text",
+      text: `\n\nThumbnails (top ${thumbsToFetch.length}) loaded for visual analysis. For each: read composition, color palette, focal point, face placement and expression, text size/weight/color, contrast ratio. Articulate WHY each likely earns clicks — don't generalize.`,
+    });
+
+    for (let i = 0; i < thumbsToFetch.length; i++) {
+      const it = thumbsToFetch[i];
+      const url = it.snippet.thumbnails.high?.url || it.snippet.thumbnails.medium?.url;
+      if (!url) continue;
+      try {
+        const imgRes = await fetch(url);
+        if (!imgRes.ok) continue;
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        const ct = imgRes.headers.get("content-type") || "image/jpeg";
+        const mimeType = ct.split(";")[0].trim();
+        content.push({ type: "text", text: `[${i + 1}] "${it.snippet.title}" — ${it.snippet.channelTitle}` });
+        content.push({ type: "image", mimeType, data: buf.toString("base64") });
+      } catch {
+        // skip on fetch failure — partial result is better than failure
+      }
+    }
+
+    return { content };
   },
 };
 

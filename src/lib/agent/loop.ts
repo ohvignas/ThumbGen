@@ -74,12 +74,20 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     cost_estimate: 0,
   });
 
-  // 3. Build the message history (full conversation thread)
+  // 3. Build the message history (full conversation thread).
+  // We strip tool_use / tool_result blocks from persisted messages — Anthropic
+  // requires every tool_use to be immediately followed by a matching tool_result,
+  // and our DB stores them as one accumulated assistant message per turn so the
+  // pairing breaks across turns. Each turn restarts fresh tool-wise; Claude
+  // still has its own text recap (e.g. "j'ai généré 3 croquis") to remember.
   type AnthropicMsg = { role: "user" | "assistant"; content: unknown };
-  const history: AnthropicMsg[] = listMessages(conversation_id).map((m) => ({
-    role: m.role,
-    content: JSON.parse(m.content_json),
-  }));
+  const history: AnthropicMsg[] = listMessages(conversation_id).map((m) => {
+    const raw = JSON.parse(m.content_json);
+    const filtered = Array.isArray(raw)
+      ? raw.filter((b: { type?: string }) => b.type !== "tool_use" && b.type !== "tool_result")
+      : raw;
+    return { role: m.role, content: filtered };
+  }).filter((m) => Array.isArray(m.content) ? m.content.length > 0 : true);
 
   // 4. Connect MCP and assemble tools list
   const mcp = await getInMemoryMcpClient();
