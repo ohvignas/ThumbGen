@@ -20,7 +20,9 @@ type ChatState = {
 };
 
 export const useChatStore = create<ChatState>((set) => ({
-  isOpen: false,
+  // The chat panel is always visible (right side). isOpen is kept for back-compat
+  // but defaults to true and toggle/close are effectively no-ops.
+  isOpen: true,
   activeConversationId: null,
   draft: "",
   attachments: [],
@@ -43,5 +45,5 @@ export const useChatStore = create<ChatState>((set) => ({
   clearAttachments: () => set({ attachments: [] }),
 
   reset: () =>
-    set({ isOpen: false, activeConversationId: null, draft: "", attachments: [] }),
+    set({ isOpen: true, activeConversationId: null, draft: "", attachments: [] }),
 }));

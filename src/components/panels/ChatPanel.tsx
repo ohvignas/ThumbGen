@@ -21,8 +21,6 @@ import UsageBadge from "./chat/UsageBadge";
  *   - On done: refetch messages from DB to canonicalize
  */
 export default function ChatPanel({ projectId }: { projectId: string }) {
-  const isOpen = useChatStore((s) => s.isOpen);
-  const close = useChatStore((s) => s.close);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
@@ -165,15 +163,12 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     reset();
   }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, send, nodes, edges, reset]);
 
-  if (!isOpen) return null;
-
   return (
     <aside
       className="fixed right-0 top-0 bottom-0 w-[420px] flex flex-col z-40"
       style={{
         background: "var(--node-bg)",
         borderLeft: "1px solid var(--line)",
-        animation: "chat-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
       <header
@@ -204,21 +199,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
             Brainstorm
           </h2>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <UsageBadge />
-          <button
-            onClick={close}
-            className="p-1 rounded transition-colors"
-            style={{ color: "var(--text-tertiary)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-tertiary)")}
-            aria-label="Fermer"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <UsageBadge />
       </header>
 
       <ConversationList projectId={projectId} />
@@ -233,13 +214,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       )}
 
       <Composer onSend={onSend} streaming={streaming} onStop={stop} />
-
-      <style jsx global>{`
-        @keyframes chat-slide-in {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-      `}</style>
     </aside>
   );
 }
