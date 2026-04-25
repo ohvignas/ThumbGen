@@ -35,6 +35,13 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   const [history, setHistory] = useState<DisplayMessage[]>([]);
 
+  // When project changes, clear active conv so ConversationList picks the new
+  // project's first conv (or stays empty if none). Without this, the previous
+  // project's conversation + history would bleed over into the new project.
+  useEffect(() => {
+    useChatStore.getState().setActive(null);
+  }, [projectId]);
+
   // Load persisted history when active conversation changes
   useEffect(() => {
     let cancelled = false;
