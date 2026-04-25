@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import McpSettingsSection from "./settings/McpSettingsSection";
 
 type SettingsData = {
   geminiApiKey: string;
@@ -321,6 +322,12 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
           Le texte sur les miniatures sera généré dans cette langue
         </p>
+      </div>
+
+      {/* MCP */}
+      <div className="mb-5">
+        <hr className="mb-4" style={{ borderColor: "var(--bone-faint)" }} />
+        <McpSettingsSection />
       </div>
 
       {/* Save */}
