@@ -66,6 +66,53 @@ describe("apply_workflow", () => {
     expect(r.isError).toBeFalsy();
   });
 
+  it("resolves image_source to a data URL on the persisted swipeFile node so canvas can render it", async () => {
+    const bp = {
+      nodes: [
+        { id: "f-1", type: "swipeFile", data: { kind: "logo", image_source: `stored:lg_${logoId}`, label: "Brand" } },
+      ],
+      edges: [],
+    };
+    await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    const nodes = JSON.parse(row.nodes) as Array<{ data: Record<string, unknown> }>;
+    const swipe = nodes[0];
+    expect(swipe.data.imageBase64).toMatch(/^data:image\/png;base64,/);
+    expect(swipe.data.label).toBe("Brand");
+    expect(swipe.data.image_source).toBe(`stored:lg_${logoId}`); // kept for re-resolve
+  });
+
+  it("maps generator blueprint shape to canvas shape (model id + numImages)", async () => {
+    const bp = {
+      nodes: [
+        { id: "g-1", type: "generator", data: { model: "nano-banana", aspectRatio: "16x9", count: 3 } },
+      ],
+      edges: [],
+    };
+    await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    const nodes = JSON.parse(row.nodes) as Array<{ data: Record<string, unknown> }>;
+    expect(nodes[0].data.model).toBe("gemini-3-pro-image-preview");
+    expect(nodes[0].data.numImages).toBe(3);
+  });
+
+  it("adds id and sourceHandle:null to edges so React Flow renders them", async () => {
+    const bp = {
+      nodes: [
+        { id: "p-1", type: "prompt", data: { prompt: "hi" } },
+        { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+      ],
+      edges: [{ source: "p-1", target: "g-1", targetHandle: "prompt-in" }],
+    };
+    await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
+    const row = getDb().prepare("SELECT edges FROM projects WHERE id = ?").get(projectId) as { edges: string };
+    const edges = JSON.parse(row.edges) as Array<{ id?: string; sourceHandle?: string | null; targetHandle?: string }>;
+    expect(edges).toHaveLength(1);
+    expect(edges[0].id).toMatch(/^e-/);
+    expect(edges[0].sourceHandle).toBeNull();
+    expect(edges[0].targetHandle).toBe("prompt-in");
+  });
+
   it("computes a diff against existing canvas (deletes b, creates c)", async () => {
     // Seed existing
     getDb().prepare("UPDATE projects SET nodes = ?, edges = ? WHERE id = ?")

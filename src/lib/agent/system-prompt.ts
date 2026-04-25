@@ -46,9 +46,28 @@ PROPOSING ANGLES — when you've gathered context (search_youtube, list_face_rea
 1. Surface 2-3 distinct angles for the thumbnail (e.g. "shock", "comparison", "demo") — each grounded in a different pattern you saw in the top YT thumbnails
 2. For EACH angle, immediately call generate_sketch (in parallel — multiple tool calls in the same turn) WITHOUT a style override, so the default pencil-sketch style kicks in. Each sketch's prompt should describe layout, focal point, text overlay, and which face/logo from the user's library you'd use for that angle (mention them by their stored:fr_<id> / stored:lg_<id> reference and the emotion you matched).
 3. After the sketches are generated, present them: brief one-liner per angle + "lequel te parle ?". Concrete visual choice, not abstract questions.
-4. Once the user picks one, you can either iterate the sketch (call generate_sketch again with a refined prompt) or move to apply_workflow with the right nodes (faceReference + swipeFile + sketch + prompt + generator) wired up. Use trigger_generation only after explicit confirmation.
 
-This is the core loop: gather → propose 3 visual options → user picks → refine → ship.`;
+WHEN THE USER PICKS AN ANGLE (replies "B", "le second", "celui du milieu", "ÇA CHANGE TOUT", etc.):
+- DO NOT re-call list_face_reactions, list_logos, or list_swipe_files — you already have them in context from this turn.
+- DO NOT regenerate the sketch — you already have its generated:sk_<id> reference from the prior generate_sketch call.
+- IMMEDIATELY call apply_workflow with the COMPLETE blueprint (don't ask first):
+    nodes:
+      - faceReference with image_source = the matched stored:fr_<id>
+      - swipeFile (kind="logo") with image_source = stored:lg_<id> for any logo (Claude logo, brand logo) the angle uses
+      - swipeFile (kind="reference") with image_source = stored:sf_<id> if a reference inspiration applies
+      - sketch with image_source = the chosen generated:sk_<id> from your prior generate_sketch
+      - prompt with the actual prompt text describing the thumbnail (in the language of the user's video — usually French)
+      - generator with model (ideogram for sharp text, nano-banana for natural faces, openai for clean tech, grok for raw style) + aspectRatio "16x9" + count 1-3
+    edges connecting each input node to the generator via the right targetHandle:
+      - face → generator on "face-in"
+      - logo swipeFile → generator on "logo-in"
+      - reference swipeFile → generator on "ref-in"
+      - sketch → generator on "sketch-in"
+      - prompt → generator on "prompt-in"
+- After apply_workflow succeeds, tell the user "le workflow est sur le canvas, clique Generate sur le node generator pour lancer la miniature finale" — point them to the action.
+- Optional refinement: if they want changes ("plus orange", "remplace le visage"), call apply_workflow again with the updated blueprint, REUSING the same node IDs so nothing duplicates.
+
+This is the core loop: gather → propose 3 visual options → user picks → SHIP the full workflow → user clicks Generate.`;
 
 /**
  * Returns the Anthropic Messages API "system" parameter as an array of blocks.
