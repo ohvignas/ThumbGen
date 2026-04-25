@@ -239,9 +239,11 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
             toolResults.push({
               type: "tool_result",
               tool_use_id: tu.id,
-              // Anthropic accepts content as ContentBlock[] directly — preserves
-              // text + image blocks correctly.
-              content: r.content as never,
+              // Convert our internal image block shape ({type, mimeType, data})
+              // to Anthropic's expected format ({type, source: {type:"base64",
+              // media_type, data}}). Otherwise the API rejects with 400 on the
+              // next turn (image-returning tools like generate_sketch).
+              content: toAnthropicContent(r.content) as never,
             });
           } catch (e) {
             const errText = (e as Error).message;
@@ -294,6 +296,33 @@ function summarizeToolResult(r: { content: unknown }): string {
     (c: { type?: string; text?: string }) => c.type === "text" && c.text,
   ) as { text?: string } | undefined;
   return (first?.text ?? "").slice(0, 200);
+}
+
+/**
+ * Translates our MCP tool's content blocks into Anthropic's expected format.
+ *
+ * Our internal `image` block: `{ type: "image", mimeType: string, data: string }`
+ * Anthropic's tool_result `image`: `{ type: "image", source: { type: "base64", media_type: string, data: string } }`
+ *
+ * Text blocks pass through unchanged. Already-Anthropic-shaped image blocks
+ * (with `source`) also pass through unchanged.
+ */
+function toAnthropicContent(content: unknown): unknown[] {
+  if (!Array.isArray(content)) return [];
+  return content.map((c) => {
+    const block = c as { type?: string; mimeType?: string; media_type?: string; data?: string; source?: unknown };
+    if (block.type === "image" && !block.source && block.data) {
+      return {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: block.mimeType || block.media_type || "image/png",
+          data: block.data,
+        },
+      };
+    }
+    return c;
+  });
 }
 
 /**
