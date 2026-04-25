@@ -160,6 +160,19 @@ body {
   border-top: 1px solid var(--line-faint);
   margin: 1.4em 0;
 }
+.chat-md img {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  margin: 0.5em 0;
+  background: var(--ink-3);
+  transition: border-color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chat-md img:hover {
+  border-color: var(--bone-muted);
+  transform: translateY(-1px);
+}
 .chat-md blockquote {
   border-left: 2px solid var(--brand);
   padding-left: 12px;
