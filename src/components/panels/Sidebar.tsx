@@ -7,6 +7,7 @@ import { useReactFlow } from "@xyflow/react";
 import SettingsPanel from "./SettingsPanel";
 import SidebarRail, { RailIcon, RailIcons } from "./SidebarRail";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
+import { useChatStore } from "@/store/chat-store";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -39,6 +40,8 @@ type FaceReaction = {
 
 export default function Sidebar() {
   const [activeTab, setActiveTab] = useState<SidebarTab>(null);
+  const chatOpen = useChatStore((s) => s.isOpen);
+  const toggleChat = useChatStore((s) => s.toggle);
   const [swipeEntries, setSwipeEntries] = useState<SwipeEntry[]>([]);
   const [youtubeItems, setYoutubeItems] = useState<YouTubeItem[]>([]);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
@@ -303,6 +306,12 @@ export default function Sidebar() {
           </>
         }
       >
+        <RailIcon active={chatOpen} onClick={toggleChat} title="Chat IA">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            <path d="M9 11h.01M12 11h.01M15 11h.01" />
+          </svg>
+        </RailIcon>
         <RailIcon active={activeTab === "faces"} onClick={() => toggleTab("faces")} title="Visages">{RailIcons.faces}</RailIcon>
         <RailIcon active={activeTab === "models"} onClick={() => toggleTab("models")} title="Modèles d'image">{RailIcons.models}</RailIcon>
         <RailIcon active={activeTab === "swipe"} onClick={() => toggleTab("swipe")} title="Inspirations">{RailIcons.swipe}</RailIcon>

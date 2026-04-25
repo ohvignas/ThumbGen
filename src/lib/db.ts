@@ -1,9 +1,10 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { AGENT_TABLES_DDL } from "./agent/migrations";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_FILE = path.join(DATA_DIR, "thumbgen.db");
+const DB_FILE = process.env.THUMBGEN_DB_PATH || path.join(process.cwd(), "data", "thumbgen.db");
+const DATA_DIR = path.dirname(DB_FILE);
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -92,6 +93,7 @@ function init(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_generations_log_model      ON generations_log(model);
     CREATE INDEX IF NOT EXISTS idx_generations_log_provider   ON generations_log(provider);
   `);
+  database.exec(AGENT_TABLES_DDL);
 }
 
 function open(): Database.Database {

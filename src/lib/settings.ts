@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { getDb } from "./db";
 
 export type AppSettings = {
@@ -11,6 +12,8 @@ export type AppSettings = {
   language?: string;
   favoriteModel?: string;
   currentProjectId?: string;
+  mcpApiKey?: string;
+  anthropicApiKey?: string;
 };
 
 const KEYS: (keyof AppSettings)[] = [
@@ -24,6 +27,8 @@ const KEYS: (keyof AppSettings)[] = [
   "language",
   "favoriteModel",
   "currentProjectId",
+  "mcpApiKey",
+  "anthropicApiKey",
 ];
 
 const ENV_MAP: Record<keyof AppSettings, string> = {
@@ -37,6 +42,8 @@ const ENV_MAP: Record<keyof AppSettings, string> = {
   language: "LANGUAGE",
   favoriteModel: "FAVORITE_MODEL",
   currentProjectId: "CURRENT_PROJECT_ID",
+  mcpApiKey: "MCP_API_KEY",
+  anthropicApiKey: "ANTHROPIC_API_KEY",
 };
 
 export function getSettings(): AppSettings {
@@ -72,4 +79,23 @@ export function getSetting(key: keyof AppSettings): string {
 export function setSetting(key: keyof AppSettings, value: string) {
   const db = getDb();
   db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+}
+
+export function getMcpApiKey(): string | null {
+  const value = getSetting("mcpApiKey");
+  return value || null;
+}
+
+export function ensureMcpApiKey(): string {
+  const existing = getMcpApiKey();
+  if (existing) return existing;
+  const key = `tg_${crypto.randomBytes(32).toString("hex")}`;
+  setSetting("mcpApiKey", key);
+  return key;
+}
+
+export function regenerateMcpApiKey(): string {
+  const key = `tg_${crypto.randomBytes(32).toString("hex")}`;
+  setSetting("mcpApiKey", key);
+  return key;
 }
