@@ -26,6 +26,7 @@ import SketchEditor from "./panels/SketchEditor";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { DragEvent } from "react";
 import { useReactFlow, OnConnectStart } from "@xyflow/react";
+import { useCanvasSync } from "@/hooks/useCanvasSync";
 
 const nodeTypes = {
   faceReference: FaceReferenceNode,
@@ -72,6 +73,9 @@ function CanvasInner() {
       .then((s) => loadProject(s.currentProjectId || "default"))
       .catch(() => loadProject());
   }, [loadProject]);
+
+  // Poll for external mutations (agent / MCP client) and refresh the canvas
+  useCanvasSync(currentProjectId);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
