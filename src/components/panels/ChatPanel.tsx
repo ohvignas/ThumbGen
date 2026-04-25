@@ -42,14 +42,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     useChatStore.getState().setActive(null);
   }, [projectId]);
 
-  // Backfill emotion tags on existing face_reactions once per session.
-  // Newly uploaded faces are tagged on POST; this catches anything pre-existing.
-  useEffect(() => {
-    const KEY = "thumbgen.face_tags_backfilled";
-    if (sessionStorage.getItem(KEY) === "1") return;
-    sessionStorage.setItem(KEY, "1");
-    fetch("/api/face-reactions/analyze-untagged", { method: "POST" }).catch(() => {});
-  }, []);
+  // NOTE: auto-backfill of existing untagged faces was removed at the user's
+  // request (their 7 historical photos stay untagged). Only NEW uploads via
+  // POST /api/face-reactions are auto-tagged. The backfill endpoint
+  // /api/face-reactions/analyze-untagged is still available if anyone wants
+  // to retro-tag manually (e.g. via curl or a future UI button).
 
   // Load persisted history when active conversation changes
   useEffect(() => {
