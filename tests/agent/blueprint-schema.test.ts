@@ -3,7 +3,6 @@ import { BlueprintSchema, ImageSourceSchema } from "@/lib/agent/blueprint/schema
 
 describe("ImageSource", () => {
   it.each([
-    "stored:fc_abc123",
     "stored:lg_xyz",
     "stored:sf_aaa",
     "stored:fr_bbb",
@@ -16,9 +15,11 @@ describe("ImageSource", () => {
   });
 
   it.each([
+    "stored:fc_abc",            // fc_ prefix removed; face_reactions uses fr_
     "stored:invalid_prefix",
     "https://example.com/x.png",
-    "fc_abc",
+    "fr_abc",                    // missing stored: prefix
+    "data:image/png;base64,A",   // base64 too short
     "",
   ])("rejects %s", (s) => {
     expect(ImageSourceSchema.safeParse(s).success).toBe(false);
@@ -51,5 +52,20 @@ describe("Blueprint", () => {
       edges: [],
     };
     expect(BlueprintSchema.safeParse(bp).success).toBe(false);
+  });
+
+  it("rejects duplicate node ids", () => {
+    const bp = {
+      nodes: [
+        { id: "p-1", type: "prompt", data: { prompt: "a" } },
+        { id: "p-1", type: "prompt", data: { prompt: "b" } },
+      ],
+      edges: [],
+    };
+    const result = BlueprintSchema.safeParse(bp);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.message.includes("Duplicate node id"))).toBe(true);
+    }
   });
 });

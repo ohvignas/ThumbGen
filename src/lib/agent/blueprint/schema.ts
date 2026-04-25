@@ -1,11 +1,14 @@
 import { z } from "zod";
 
+// Stored prefixes map 1:1 to DB tables :
+//   lg_ → logos, sf_ → swipe_files, fr_ → face_reactions, gi_ → generated_images
+// (no fc_/face_references — face_reactions is the single source of truth for face images)
 export const ImageSourceSchema = z.string().refine(
   (s) =>
-    /^stored:(fc|lg|sf|fr|gi)_[\w-]+$/.test(s) ||
+    /^stored:(lg|sf|fr|gi)_[\w-]+$/.test(s) ||
     /^generated:[\w-]+$/.test(s) ||
     /^uploaded:[\w-]+$/.test(s) ||
-    /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(s),
+    /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]{4,}$/.test(s),
   { message: "Invalid ImageSource" }
 );
 
@@ -66,16 +69,26 @@ export const BlueprintSchema = z
     edges: z.array(EdgeSchema),
   })
   .superRefine((bp, ctx) => {
-    const ids = new Set(bp.nodes.map((n) => n.id));
+    const seen = new Set<string>();
+    bp.nodes.forEach((n, i) => {
+      if (seen.has(n.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["nodes", i, "id"],
+          message: `Duplicate node id: ${n.id}`,
+        });
+      }
+      seen.add(n.id);
+    });
     bp.edges.forEach((e, i) => {
-      if (!ids.has(e.source)) {
+      if (!seen.has(e.source)) {
         ctx.addIssue({
           code: "custom",
           path: ["edges", i, "source"],
           message: `Unknown node id: ${e.source}`,
         });
       }
-      if (!ids.has(e.target)) {
+      if (!seen.has(e.target)) {
         ctx.addIssue({
           code: "custom",
           path: ["edges", i, "target"],
