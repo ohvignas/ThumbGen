@@ -63,10 +63,21 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       }
     }
 
-    // When a face image is provided, instruct the model to preserve facial likeness
-    const facePreface = face_source
-      ? "Use the attached photo as a strict reference for the person's face — preserve their identity, facial features, and likeness. "
-      : "";
+    // Instruct the model on what the attached images are for. Without this
+    // preface Gemini may treat them as decorative input or ignore them.
+    const prefaceParts: string[] = [];
+    if (face_source) {
+      prefaceParts.push(
+        "Use the first attached image as a STRICT reference for the person's face — preserve their identity, facial features, hair, and skin tone exactly.",
+      );
+    }
+    if (reference_sources?.length) {
+      const refStart = face_source ? "next" : "attached";
+      prefaceParts.push(
+        `The ${refStart} image(s) are visual references (logos, brand assets, or composition inspiration) — incorporate them faithfully into the scene at the size and position described in the prompt.`,
+      );
+    }
+    const preface = prefaceParts.length ? prefaceParts.join(" ") + " " : "";
     const stylized = useStyle === "pencil_sketch" ? `${prompt}${PENCIL_SUFFIX}` : prompt;
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${SKETCH_MODEL}:generateContent?key=${apiKey}`;
     const body = {
@@ -74,7 +85,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         {
           parts: [
             ...imageParts,
-            { text: `Generate a YouTube thumbnail draft. ${facePreface}${stylized}` },
+            { text: `Generate a YouTube thumbnail draft. ${preface}${stylized}` },
           ],
         },
       ],
