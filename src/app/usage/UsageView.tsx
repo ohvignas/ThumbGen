@@ -43,12 +43,25 @@ type LogRow = {
 
 type DailyPoint = { day: string; cost: number; count: number };
 
+type AgentTotals = {
+  totalCost: number;
+  totalMessages: number;
+  totalConversations: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+};
+
+type AgentDailyPoint = { day: string; cost: number; messages: number };
+
 type ApiResponse = {
   period: Period;
   totals: Totals;
   byModel: ModelBreakdown[];
   log: LogRow[];
   daily: DailyPoint[];
+  agentTotals?: AgentTotals;
+  agentDaily?: AgentDailyPoint[];
 };
 
 const PERIODS: { id: Period; label: string }[] = [
@@ -127,10 +140,15 @@ function UsageInner() {
   const byModel = data?.byModel ?? [];
   const log = data?.log ?? [];
   const daily = data?.daily ?? [];
+  const agentTotals = data?.agentTotals;
+
+  const imagesCost = totals?.totalCost ?? 0;
+  const agentCost = agentTotals?.totalCost ?? 0;
+  const grandTotal = imagesCost + agentCost;
 
   const maxBar = useMemo(() => Math.max(0.0001, ...byModel.map((b) => b.cost)), [byModel]);
   const maxDaily = useMemo(() => Math.max(0.0001, ...daily.map((d) => d.cost)), [daily]);
-  const [intPart, decPart] = splitCost(totals?.totalCost ?? 0);
+  const [intPart, decPart] = splitCost(grandTotal);
   const costPerImage = totals && totals.totalImages > 0 ? totals.totalCost / totals.totalImages : 0;
 
   return (
@@ -161,7 +179,7 @@ function UsageInner() {
           </div>
         </header>
 
-        {/* — Hero number — */}
+        {/* — Hero number (grand total) — */}
         <section className="hero">
           <div className="hero-label">Cumulative cost · estimate</div>
           <div className="big-number" aria-label={`${intPart}.${decPart} dollars`}>
@@ -178,10 +196,38 @@ function UsageInner() {
             )}
           </div>
 
+          {/* Category split — images vs agent */}
+          <div className="cat-split">
+            <div className="cat-card">
+              <div className="cat-eyebrow">
+                <span className="cat-rule" /> Génération · images
+              </div>
+              <div className="cat-cost">${imagesCost.toFixed(2)}</div>
+              <div className="cat-meta">
+                <span>{fmtNum(totals?.totalImages ?? 0)} images</span>
+                <span>·</span>
+                <span>{fmtNum(totals?.totalGenerations ?? 0)} calls</span>
+              </div>
+            </div>
+            <div className="cat-card">
+              <div className="cat-eyebrow">
+                <span className="cat-rule" /> Agent IA · chat
+              </div>
+              <div className="cat-cost">${agentCost.toFixed(2)}</div>
+              <div className="cat-meta">
+                <span>{fmtNum(agentTotals?.totalConversations ?? 0)} conv.</span>
+                <span>·</span>
+                <span>{fmtNum(agentTotals?.totalMessages ?? 0)} msgs</span>
+                <span>·</span>
+                <span>{fmtNum(agentTotals?.totalTokens ?? 0)} tokens</span>
+              </div>
+            </div>
+          </div>
+
           <ul className="meta">
-            <li><span className="m-num">{loading ? "—" : fmtNum(totals?.totalGenerations ?? 0)}</span><span className="m-lbl">calls</span></li>
+            <li><span className="m-num">{loading ? "—" : fmtNum((totals?.totalGenerations ?? 0) + (agentTotals?.totalMessages ?? 0))}</span><span className="m-lbl">total calls</span></li>
             <li><span className="m-num">{loading ? "—" : fmtNum(totals?.totalImages ?? 0)}</span><span className="m-lbl">images</span></li>
-            <li><span className="m-num">{loading ? "—" : fmtNum(totals?.totalTokens ?? 0)}</span><span className="m-lbl">tokens</span></li>
+            <li><span className="m-num">{loading ? "—" : fmtNum((totals?.totalTokens ?? 0) + (agentTotals?.totalTokens ?? 0))}</span><span className="m-lbl">tokens</span></li>
             <li><span className="m-num">{loading ? "—" : fmtMs(totals?.avgTimeMs ?? 0)}</span><span className="m-lbl">avg latency</span></li>
             <li><span className="m-num">{loading || costPerImage === 0 ? "—" : `$${costPerImage.toFixed(3)}`}</span><span className="m-lbl">cost / image</span></li>
             {totals && totals.errorCount > 0 && (
@@ -444,6 +490,60 @@ function UsageInner() {
           align-self: center;
         }
         @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+        /* Category split — Images vs Agent IA */
+        .cat-split {
+          margin-top: 32px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+        .cat-card {
+          padding: 16px 18px;
+          background: var(--ink-2);
+          border: 1px solid var(--line-faint);
+          border-radius: 10px;
+        }
+        .cat-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-family: var(--font-mono), monospace;
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.2em;
+          color: var(--bone-muted);
+          margin-bottom: 10px;
+        }
+        .cat-rule {
+          width: 18px;
+          height: 1px;
+          background: var(--brand);
+          display: inline-block;
+        }
+        .cat-cost {
+          font-family: var(--font-display), 'Fraunces', serif;
+          font-style: italic;
+          font-weight: 300;
+          font-size: 28px;
+          letter-spacing: -0.025em;
+          color: var(--bone);
+          font-variant-numeric: tabular-nums;
+          line-height: 1;
+        }
+        .cat-meta {
+          margin-top: 8px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          font-family: var(--font-mono), monospace;
+          font-size: 11px;
+          color: var(--bone-muted);
+          letter-spacing: 0.04em;
+        }
+        @media (max-width: 768px) {
+          .cat-split { grid-template-columns: 1fr; }
+        }
 
         /* Meta line */
         .meta {
