@@ -397,13 +397,13 @@ export default function GeneratorNode({
       </button>
 
       {/* Reference handle */}
-      <Handle type="target" position={Position.Left} id="image-in" style={{ top: "20%" }} />
+      <Handle type="target" position={Position.Left} id="ref-in" style={{ top: "20%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
         style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--accent)", background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 200 }, id, "image-in", "image")}
+        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 200 }, id, "ref-in", "image")}
       >
         Référence
       </button>

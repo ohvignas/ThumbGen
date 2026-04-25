@@ -6,11 +6,18 @@ import { logGeneration } from "@/lib/generations-log";
 import { getCostPerImage } from "@/lib/model-costs";
 import { ToolDefinition } from "./types";
 import { registerTool } from "./index";
+import { resolveImageSource } from "./_helpers/image-source";
 
 const InputSchema = z.object({
   prompt: z.string().min(1),
   aspect_ratio: z.enum(["16x9", "9x16", "1x1"]).optional(),
   style: z.enum(["pencil_sketch", "polished"]).optional(),
+  // OPTIONAL: face image to bake the user's actual face into the sketch (so the
+  // sketched person resembles them, not a generic person). Pass `stored:fr_<id>`.
+  face_source: z.string().optional(),
+  // OPTIONAL: extra reference images (logo, swipe-file, prior thumbnail) to
+  // condition composition / brand. Pass an array of stored:/generated:/uploaded: refs.
+  reference_sources: z.array(z.string()).optional(),
 });
 
 const ASPECT_MAP: Record<string, string> = { "16x9": "16:9", "9x16": "9:16", "1x1": "1:1" };
@@ -22,9 +29,9 @@ const PENCIL_SUFFIX =
 export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "generate_sketch",
   description:
-    "Generates a fast, cheap draft thumbnail using Gemini Flash Image. Defaults to a HAND-DRAWN PENCIL SKETCH style (rough strokes, monochrome graphite on paper) — perfect for proposing layout/angle ideas without committing to a polished design. Pass style='polished' for a finished thumbnail render. Returns a `generated:<id>` reference usable as a sketch node's image_source in apply_workflow. Aspect ratio defaults to 16x9.",
+    "Generates a fast, cheap draft thumbnail using Gemini Flash Image. Defaults to a HAND-DRAWN PENCIL SKETCH style (rough strokes, monochrome graphite on paper) — perfect for proposing layout/angle ideas without committing to a polished design. Pass style='polished' for a finished thumbnail render. ALWAYS pass `face_source: stored:fr_<id>` when a face is involved, so the sketched person actually resembles the user (otherwise you get a generic stranger). Optionally pass `reference_sources: [stored:lg_<id>, stored:sf_<id>]` to condition logo placement / composition. Returns a `generated:<id>` reference usable as a sketch node's image_source in apply_workflow. Aspect ratio defaults to 16x9.",
   inputSchema: InputSchema,
-  handler: async ({ prompt, aspect_ratio, style }) => {
+  handler: async ({ prompt, aspect_ratio, style, face_source, reference_sources }) => {
     const start = Date.now();
     const ratio = aspect_ratio ?? "16x9";
     const useStyle = style ?? "pencil_sketch";
@@ -37,10 +44,40 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       };
     }
 
+    // Resolve image inputs (face + extra refs) → Gemini inlineData parts
+    const imageParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    const sourcesToLoad: string[] = [];
+    if (face_source) sourcesToLoad.push(face_source);
+    if (reference_sources?.length) sourcesToLoad.push(...reference_sources);
+    for (const src of sourcesToLoad) {
+      try {
+        const resolved = await resolveImageSource(src);
+        imageParts.push({
+          inlineData: { mimeType: resolved.mimeType, data: resolved.bytes.toString("base64") },
+        });
+      } catch (e) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Cannot resolve image_source ${src}: ${(e as Error).message}` }],
+        };
+      }
+    }
+
+    // When a face image is provided, instruct the model to preserve facial likeness
+    const facePreface = face_source
+      ? "Use the attached photo as a strict reference for the person's face — preserve their identity, facial features, and likeness. "
+      : "";
     const stylized = useStyle === "pencil_sketch" ? `${prompt}${PENCIL_SUFFIX}` : prompt;
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${SKETCH_MODEL}:generateContent?key=${apiKey}`;
     const body = {
-      contents: [{ parts: [{ text: `Generate a YouTube thumbnail draft. ${stylized}` }] }],
+      contents: [
+        {
+          parts: [
+            ...imageParts,
+            { text: `Generate a YouTube thumbnail draft. ${facePreface}${stylized}` },
+          ],
+        },
+      ],
       generationConfig: {
         responseModalities: ["TEXT", "IMAGE"],
         imageConfig: { aspectRatio: ASPECT_MAP[ratio], imageSize: "1K" },

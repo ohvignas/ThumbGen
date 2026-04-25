@@ -13,3 +13,4 @@ import "./extract-youtube-script";
 import "./search-youtube";
 import "./search-youtube-channel";
 import "./get-channel-videos";
+import "./import-youtube-thumbnail";

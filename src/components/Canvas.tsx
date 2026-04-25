@@ -139,10 +139,10 @@ function CanvasInner() {
       if (draggedFromSource) {
         // Dragged from a source handle → new node is the target
         if (type === "generator") {
-          // If source is an image handle, connect to image-in; otherwise prompt-in
+          // If source is an image handle, connect to ref-in; otherwise prompt-in
           const isFaceHandle = sourceHandleId === "face";
           const isImageHandle = ["image", "face", "preview-out", "result"].includes(sourceHandleId);
-          newNodeHandle = isFaceHandle ? "face-in" : isImageHandle ? "image-in" : "prompt-in";
+          newNodeHandle = isFaceHandle ? "face-in" : isImageHandle ? "ref-in" : "prompt-in";
         } else if (type === "preview") {
           newNodeHandle = "preview-in";
         }

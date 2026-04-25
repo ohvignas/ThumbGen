@@ -25,13 +25,16 @@ export function langName(lang: string): string {
 // 1. PROMPT ANATOMY — the 6-section structure every prompt must follow
 // ─────────────────────────────────────────────────────────────────────────
 
-export const PROMPT_ANATOMY = `STRUCTURE — 6 sections, ONE sentence each, IN THIS ORDER (omit a line if irrelevant). Output the sentences in order, NO labels in the final prompt.
+export const PROMPT_ANATOMY = `STRUCTURE — 7 sentences MAX, IN THIS ORDER (omit a line if irrelevant). Output the sentences in order, NO labels in the final prompt.
 
-  SUBJECT      — Who. Specific pose physically realistic. Facial expression decomposed (e.g. "mouth wide open, eyes round, eyebrows raised" not "shocked"). Outfit/context if it matters.
-  COMPOSITION  — Pick ONE valid framing: extreme close-up | close-up | medium close-up | medium shot | medium full shot | full shot | wide shot. Then position of the subject in the frame (left third / centered / right third) using the rule of thirds.
-  OBJECTS      — Each object with relative size as a % of frame + exact position. Ex: "Claude logo (orange 8-pointed star, 14% frame) center-left, glowing with soft halo".
+A great thumbnail tells a STORY in one frame, with depth — the eye should travel from FOREGROUND (the action / subject) to MIDGROUND (the context that explains the action) to BACKGROUND (the world / mood). A flat photo of "person + logo on grey" is dead. A scene where the subject reacts to something HAPPENING in the midground, against a meaningful backdrop, is alive. Compose in 3 layers, then describe each layer's contents.
+
+  SUBJECT      — Who, in the FOREGROUND. Specific pose physically realistic. Facial expression decomposed (e.g. "mouth wide open, eyes round, eyebrows raised" not "shocked"). Outfit/context if it matters. The subject is what the viewer sees first.
+  SCENE        — What is HAPPENING around the subject. Describe the MIDGROUND (secondary action / context elements 2-4 meters behind the subject — a screen lighting up, a product mid-fall, a comparison element, a reaction to something) AND the BACKGROUND (the location / atmosphere — studio with neon signs, messy desk with monitors, dark void with particle haze, cinematic cityscape blur). Skipping this line gives a flat portrait; including it gives a story.
+  COMPOSITION  — Pick ONE valid framing: extreme close-up | close-up | medium close-up | medium shot | medium full shot | full shot | wide shot. Then position of the subject in the frame (left third / centered / right third) using the rule of thirds. State explicitly that the midground is "behind subject, slightly out of focus" and background is "deep, blurred to bokeh" if you want depth-of-field separation between the 3 planes.
+  OBJECTS      — Each object with relative size as a % of frame + exact position + which plane (foreground / midground / background). Ex: "Claude logo (orange 8-pointed star, 14% frame) center-left, foreground, glowing with soft halo. Shattered Figma logo, 8% frame, midground floor, partially blurred."
   TEXT         — 2-3 words MAX in the requested language, ALL CAPS, bold sans-serif, color + position + "thick black outline" + size as % frame height. Omit ENTIRELY if no text overlay.
-  LIGHTING     — Layered (preferred): "warm orange key light from left, cool blue fill from right, soft rim light from behind". Or single anchor: "dramatic side lighting with deep shadows on right, soft volumetric haze". Pick ONE approach; never list 3 random lighting words.
+  LIGHTING     — Layered, with explicit direction PER PLANE if depth matters: "warm orange key light on subject from left, cool blue rim light from behind, midground lit by ambient screen glow, background deep navy with single backlight". Pick ONE coherent lighting story; never list 3 random lighting words.
   STYLE        — 2 descriptors MAX. Ex: "photorealistic, cinematic" / "Pixar 3D render" / "fashion magazine cover" / "anime key visual". MORE descriptors = noise.`;
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -102,14 +105,15 @@ Otherwise → nano-banana. Don't agonize.`;
 
 export const WORKED_EXAMPLE = `WORKED EXAMPLE — angle "CHOC" for a "Claude Design vs Figma" video, with the user's face reference connected:
 
-Young man, mouth wide open in extreme shock, eyes round, eyebrows fully raised, hands halfway up beside head, head slightly tilted right.
-Medium close-up. Subject occupies right 55% of frame.
-Claude logo (orange 8-pointed star, 14% frame) center-left glowing with soft halo. Figma logo (10% frame) bottom-left, shattered into 4 broken pieces.
+Young man in foreground, mouth wide open in extreme shock, eyes round, eyebrows fully raised, both hands halfway up beside head, head slightly tilted right.
+Behind him in the midground, a giant Figma logo is shattering into glowing orange shards mid-air; further back, a moody design studio with neon-purple wall accents fades into bokeh.
+Medium close-up, subject occupies right 55% of frame; midground 2 meters behind subject, slightly out of focus; background deeply blurred to soft bokeh for depth separation.
+Claude logo (orange 8-pointed star, 14% frame) center-left foreground, glowing with soft halo. Shattered Figma logo (16% frame total spread) midground behind subject's right shoulder, motion-blurred shards trailing right. Tablet screen on midground desk lower-left (8% frame) showing a glowing Claude UI.
 "FIGMA EST MORT ?" in white bold sans-serif, top-left corner, thick black outline, 6% frame height.
-Warm orange key light from the left, cool blue rim light from behind, deep navy shadows on the right.
+Warm orange key light on subject from the left, cool blue rim light from behind, midground lit by ambient orange glow from the shards, background deep navy with a single magenta backlight.
 photorealistic, cinematic.
 
-Notice: 6 sentences, no labels, every section is one tight sentence, every object has size + position, lighting is layered, style is 2 words. THIS is the bar.`;
+Notice: 7 sentences, no labels, every section one tight sentence, three distinct depth planes (foreground subject + midground action + background atmosphere), every object tagged with plane + size + position, lighting layered per plane, style is 2 words. THIS is the bar.`;
 
 // ─────────────────────────────────────────────────────────────────────────
 // 6. NEGATIVE PROMPT SUGGESTIONS — what to ban globally
@@ -167,6 +171,6 @@ ${YOUTUBE_THUMBNAIL_PATTERNS}
 - Si pas demandé : OMETS la ligne TEXT entièrement.
 
 ## FORMAT DE SORTIE
-Réponds avec exactement les 6 phrases (ou moins si certaines sections sont omises), une par ligne, dans l'ordre SUBJECT → COMPOSITION → OBJECTS → TEXT → LIGHTING → STYLE. Pas de labels, pas de markdown, pas de préambule. Juste les phrases brutes.`;
+Réponds avec au maximum 7 phrases (omets celles qui ne s'appliquent pas), une par ligne, dans l'ordre SUBJECT → SCENE (foreground/midground/background) → COMPOSITION → OBJECTS → TEXT → LIGHTING → STYLE. La phrase SCENE est essentielle pour donner une histoire à la miniature — ne l'omets que si l'utilisateur a explicitement demandé un portrait flat. Pas de labels, pas de markdown, pas de préambule. Juste les phrases brutes.`;
 }
 
