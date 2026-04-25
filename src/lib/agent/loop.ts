@@ -112,7 +112,18 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
   // 5. Resolve API key
   const apiKey = getSetting("anthropicApiKey") || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    send("error", { message: "ANTHROPIC_API_KEY not configured" });
+    const msg = "Clé Anthropic non configurée. Ajoute ANTHROPIC_API_KEY dans Settings.";
+    send("error", { message: msg });
+    // Persist a minimal assistant message so the user sees the error after refetch.
+    appendMessage({
+      conversation_id,
+      role: "assistant",
+      content_json: JSON.stringify([{ type: "text", text: `⚠ ${msg}` }]),
+      interrupted: 0,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      cost_estimate: 0,
+    });
     return;
   }
 
@@ -139,7 +150,18 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
         messages: history as never,
       });
     } catch (e) {
-      send("error", { message: `Claude API error: ${(e as Error).message}` });
+      const msg = `Claude API error: ${(e as Error).message}`;
+      send("error", { message: msg });
+      // Persist the error so it survives refetch and the user actually sees it.
+      appendMessage({
+        conversation_id,
+        role: "assistant",
+        content_json: JSON.stringify([{ type: "text", text: `⚠ ${msg}` }]),
+        interrupted: 0,
+        total_input_tokens: totalInput,
+        total_output_tokens: totalOutput,
+        cost_estimate: (totalInput * PRICE_INPUT_PER_M) / 1_000_000 + (totalOutput * PRICE_OUTPUT_PER_M) / 1_000_000,
+      });
       return;
     }
 
