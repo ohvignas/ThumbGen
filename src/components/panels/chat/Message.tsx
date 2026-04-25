@@ -22,8 +22,9 @@ export type DisplayMessage = {
 /**
  * Atelier Nocturne message.
  * No bubbles. Mono eyebrow (TOI · CLAUDE), DM Sans body. User messages get a
- * thin magenta hairline on the right edge — only place the brand color appears
- * in the message stream, used as a quiet "yours" marker.
+ * soft magenta-tinted background + magenta eyebrow + brand left edge — makes
+ * "yours" scannable at a glance without violating the brand-rare rule (the
+ * tint is ~14% opacity magenta, no full magenta surface).
  */
 export default function Message({ msg }: { msg: DisplayMessage }) {
   const isUser = msg.role === "user";
@@ -32,14 +33,17 @@ export default function Message({ msg }: { msg: DisplayMessage }) {
       className="px-4 py-3"
       style={
         isUser
-          ? { borderRight: "1px solid var(--brand-tint)" }
+          ? {
+              background: "var(--brand-tint)",
+              borderLeft: "2px solid var(--brand)",
+            }
           : undefined
       }
     >
       <div
         className="text-[9px] uppercase mb-1.5 select-none"
         style={{
-          color: "var(--text-muted)",
+          color: isUser ? "var(--brand)" : "var(--text-muted)",
           fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
           letterSpacing: "0.22em",
         }}
