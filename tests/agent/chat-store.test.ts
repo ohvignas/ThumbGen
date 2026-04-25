@@ -4,19 +4,21 @@ import { useChatStore } from "@/store/chat-store";
 beforeEach(() => useChatStore.getState().reset());
 
 describe("chat store", () => {
-  it("starts closed with no conversation, no draft, no attachments", () => {
+  it("starts open (always-visible right panel) with no conversation, no draft, no attachments", () => {
     const s = useChatStore.getState();
-    expect(s.isOpen).toBe(false);
+    expect(s.isOpen).toBe(true);
     expect(s.activeConversationId).toBeNull();
     expect(s.draft).toBe("");
     expect(s.attachments).toEqual([]);
   });
 
-  it("toggles open/close", () => {
-    useChatStore.getState().toggle();
-    expect(useChatStore.getState().isOpen).toBe(true);
+  it("toggle/close are vestigial — kept for back-compat but always-visible", () => {
+    // toggle still flips the flag (no-op on UI since ChatPanel doesn't read it
+    // anymore), but verify the flag mechanics still work.
     useChatStore.getState().toggle();
     expect(useChatStore.getState().isOpen).toBe(false);
+    useChatStore.getState().toggle();
+    expect(useChatStore.getState().isOpen).toBe(true);
   });
 
   it("setActive clears draft and attachments", () => {
