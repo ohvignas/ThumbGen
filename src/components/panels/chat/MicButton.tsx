@@ -3,14 +3,8 @@ import { useState } from "react";
 import { useMediaRecorder } from "@/hooks/useMediaRecorder";
 
 /**
- * Push-toggle mic button. Click once → start recording, click again → stop,
- * upload to /api/agent/transcribe, return the text via onTranscribed.
- *
- * Visual states:
- *   idle      → 🎤
- *   recording → ⏺ (pulsing red dot)
- *   uploading → spinner
- *   error     → ⚠ + tooltip
+ * Atelier Nocturne mic button.
+ * idle → hairline mic icon · recording → pulsing ember dot · busy → spinner
  */
 export default function MicButton({ onTranscribed }: { onTranscribed: (text: string) => void }) {
   const { state, start, stop, isRecording } = useMediaRecorder();
@@ -27,11 +21,8 @@ export default function MicButton({ onTranscribed }: { onTranscribed: (text: str
         fd.append("audio", new File([blob], "audio.webm", { type: blob.type || "audio/webm" }));
         const res = await fetch("/api/agent/transcribe", { method: "POST", body: fd });
         const data = (await res.json()) as { text?: string; error?: string };
-        if (!res.ok || data.error) {
-          setError(data.error || `HTTP ${res.status}`);
-        } else if (data.text) {
-          onTranscribed(data.text);
-        }
+        if (!res.ok || data.error) setError(data.error || `HTTP ${res.status}`);
+        else if (data.text) onTranscribed(data.text);
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -46,21 +37,41 @@ export default function MicButton({ onTranscribed }: { onTranscribed: (text: str
     }
   };
 
-  const label = busy ? "Transcription…" : isRecording ? "Arrêter" : "Enregistrer";
-  const icon = busy ? "…" : isRecording ? "⏺" : error ? "⚠" : "🎤";
+  const tone = error
+    ? "var(--ember)"
+    : isRecording
+    ? "var(--ember)"
+    : "var(--text-tertiary)";
 
   return (
     <button
       type="button"
       onClick={onClick}
-      title={error ? `Erreur : ${error}` : label}
-      aria-label={label}
+      title={error ? `Erreur : ${error}` : isRecording ? "Arrêter" : "Enregistrer"}
+      aria-label={isRecording ? "Arrêter l'enregistrement" : "Enregistrer"}
       disabled={busy || state === "stopping"}
-      className={`p-2 rounded-lg border transition ${
-        isRecording ? "bg-red-100 border-red-300 animate-pulse" : "bg-gray-50 hover:bg-gray-100"
-      } ${error ? "text-red-600" : ""}`}
+      className="p-1.5 rounded-lg transition-colors disabled:opacity-30 nopan nodrag"
+      style={{ color: tone }}
+      onMouseEnter={(e) => {
+        if (!isRecording && !error) e.currentTarget.style.color = "var(--text-secondary)";
+      }}
+      onMouseLeave={(e) => {
+        if (!isRecording && !error) e.currentTarget.style.color = "var(--text-tertiary)";
+      }}
     >
-      <span className="text-base">{icon}</span>
+      {busy ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+          <circle cx="12" cy="12" r="9" strokeDasharray="56" strokeDashoffset="20" />
+        </svg>
+      ) : isRecording ? (
+        <span className="block w-3 h-3 rounded-full animate-pulse" style={{ background: "var(--ember)" }} />
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="3" width="6" height="11" rx="3" />
+          <path d="M5 11a7 7 0 0 0 14 0" />
+          <path d="M12 18v3" />
+        </svg>
+      )}
     </button>
   );
 }

@@ -169,13 +169,56 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   return (
     <aside
-      className="fixed right-0 top-0 bottom-0 w-[420px] bg-white border-l shadow-xl flex flex-col z-40"
-      style={{ animation: "chat-slide-in 0.18s ease-out" }}
+      className="fixed right-0 top-0 bottom-0 w-[420px] flex flex-col z-40"
+      style={{
+        background: "var(--node-bg)",
+        borderLeft: "1px solid var(--line)",
+        animation: "chat-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
+      }}
     >
-      <header className="border-b px-3 py-2 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold shrink-0">✨ Chat IA</h2>
-        <UsageBadge />
-        <button onClick={close} className="text-xl text-gray-500 hover:text-gray-800 px-2 leading-none ml-auto" aria-label="Fermer">×</button>
+      <header
+        className="px-4 py-3 flex items-center justify-between gap-3"
+        style={{ borderBottom: "1px solid var(--line-faint)" }}
+      >
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span
+            className="text-[9px] uppercase shrink-0"
+            style={{
+              color: "var(--text-muted)",
+              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
+              letterSpacing: "0.22em",
+            }}
+          >
+            <span style={{ color: "var(--brand)" }}>·</span> Agent
+          </span>
+          <h2
+            className="italic truncate"
+            style={{
+              color: "var(--text-primary)",
+              fontFamily: "var(--font-display), 'Fraunces', serif",
+              fontSize: 18,
+              fontWeight: 400,
+              letterSpacing: "-0.015em",
+            }}
+          >
+            Brainstorm
+          </h2>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <UsageBadge />
+          <button
+            onClick={close}
+            className="p-1 rounded transition-colors"
+            style={{ color: "var(--text-tertiary)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-tertiary)")}
+            aria-label="Fermer"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <ConversationList projectId={projectId} />

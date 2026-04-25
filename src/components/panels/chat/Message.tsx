@@ -19,29 +19,55 @@ export type DisplayMessage = {
   blocks: MessageBlock[];
 };
 
+/**
+ * Atelier Nocturne message.
+ * No bubbles. Mono eyebrow (TOI · CLAUDE), DM Sans body. User messages get a
+ * thin magenta hairline on the right edge — only place the brand color appears
+ * in the message stream, used as a quiet "yours" marker.
+ */
 export default function Message({ msg }: { msg: DisplayMessage }) {
   const isUser = msg.role === "user";
   return (
-    <div className={`px-3 py-2 ${isUser ? "bg-blue-50/50" : ""}`}>
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 font-medium">
+    <div
+      className="px-4 py-3"
+      style={
+        isUser
+          ? { borderRight: "1px solid var(--brand-tint)" }
+          : undefined
+      }
+    >
+      <div
+        className="text-[9px] uppercase mb-1.5 select-none"
+        style={{
+          color: "var(--text-muted)",
+          fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
+          letterSpacing: "0.22em",
+        }}
+      >
         {isUser ? "Toi" : "Claude"}
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {msg.blocks.map((b, i) => {
           if (b.type === "text") {
             return (
-              <p key={i} className="text-sm whitespace-pre-wrap break-words text-gray-800">
+              <p
+                key={i}
+                className="text-sm whitespace-pre-wrap break-words"
+                style={{ color: "var(--text-primary)", lineHeight: 1.55 }}
+              >
                 {b.text}
               </p>
             );
           }
           if (b.type === "image") {
             return (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
                 src={b.preview_url}
                 alt={b.alt ?? "image"}
-                className="max-w-xs rounded border my-1"
+                className="max-w-[240px] rounded my-1"
+                style={{ border: "1px solid var(--line)" }}
               />
             );
           }
