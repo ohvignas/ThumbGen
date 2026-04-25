@@ -44,7 +44,6 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
     <NodeShell
       title={data.label || "Aperçu"}
       onDelete={() => removeNode(id)}
-      accentColor={data.axisColor}
       width={320}
       icon={
         isLoading ? (

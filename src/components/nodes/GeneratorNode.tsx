@@ -4,7 +4,7 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { useCallback, useState, useEffect } from "react";
 import NodeShell from "./NodeShell";
-import { MODEL_COSTS, AXIS_COLORS, INPUT_TYPE_COLORS } from "@/lib/model-costs";
+import { MODEL_COSTS, INPUT_TYPE_COLORS } from "@/lib/model-costs";
 
 const GEMINI_MODELS = [
   { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro", provider: "gemini" },
@@ -137,15 +137,7 @@ export default function GeneratorNode({
     const allRefImages = [...swipeImages, ...previewImages];
     const sketchImages = (await Promise.all(inputs.sketches.map(getImage))).filter(Boolean) as string[];
 
-    // Collect selected axes from connected prompt nodes
-    const selectedAxes: Array<{ title: string; prompt: string }> = [];
-    for (const pNode of inputs.prompts) {
-      if (pNode.data.selectedAxes && pNode.data.selectedAxes.length > 1) {
-        selectedAxes.push(...pNode.data.selectedAxes);
-      }
-    }
-
-    return { faceImages, allRefImages, logoEntries, sketchImages, promptText, negativePrompt, selectedAxes };
+    return { faceImages, allRefImages, logoEntries, sketchImages, promptText, negativePrompt };
   }, [id, getConnectedInputs]);
 
   // Generate with a specific model
@@ -234,50 +226,37 @@ export default function GeneratorNode({
     };
   }, [aspectRatio, renderingSpeed, ideogramMode, data.imageWeight, data.maskDataUrl, data.styleType]);
 
-  // Single model generation (handles multiple axes) — progressive
+  // Single model generation — progressive
   const handleGenerate = useCallback(async () => {
     setError(null);
     updateNodeData(id, { isGenerating: true });
 
     try {
       const inputs = await collectInputs();
-      const axes = inputs.selectedAxes.length > 0
-        ? inputs.selectedAxes
-        : [{ title: "", prompt: inputs.promptText }];
-
       const modelLabel = getModelLabel(model);
 
-      // Step 1: Create all preview nodes in "loading" state (axes × numImages)
-      const allJobs: { previewId: string; prompt: string }[] = [];
-      let yOffset = 0;
-      for (let ai = 0; ai < axes.length; ai++) {
-        const axis = axes[ai];
-        const color = axes.length > 1 ? AXIS_COLORS[ai % AXIS_COLORS.length] : undefined;
-        let xOffset = 0;
-        for (let ni = 0; ni < numImages; ni++) {
-          const suffix = numImages > 1 ? ` #${ni + 1}` : "";
-          const label = axis.title
-            ? `${axis.title} — ${modelLabel}${suffix}`
-            : `${modelLabel}${suffix}`;
-          const previewId = addNodeAndConnect(
-            "preview",
-            { x: positionAbsoluteX + 360 + xOffset, y: positionAbsoluteY + yOffset },
-            id, "result", "preview-in",
-            { label, genStatus: "loading", genModel: modelLabel, genPromptUsed: axis.prompt, axisColor: color },
-            true,
-          );
-          allJobs.push({ previewId, prompt: axis.prompt });
-          xOffset += 350;
-        }
-        yOffset += 300;
+      // Step 1: Create all preview nodes in "loading" state
+      const allJobs: { previewId: string }[] = [];
+      let xOffset = 0;
+      for (let ni = 0; ni < numImages; ni++) {
+        const suffix = numImages > 1 ? ` #${ni + 1}` : "";
+        const label = `${modelLabel}${suffix}`;
+        const previewId = addNodeAndConnect(
+          "preview",
+          { x: positionAbsoluteX + 360 + xOffset, y: positionAbsoluteY },
+          id, "result", "preview-in",
+          { label, genStatus: "loading", genModel: modelLabel, genPromptUsed: inputs.promptText },
+          true,
+        );
+        allJobs.push({ previewId });
+        xOffset += 350;
       }
 
       // Step 2: Generate all in parallel
       const promises = allJobs.map(async (job) => {
         const start = Date.now();
         try {
-          const axisInputs = { ...inputs, promptText: job.prompt };
-          const result = await generateWithModel(model, axisInputs);
+          const result = await generateWithModel(model, inputs);
           const elapsed = Date.now() - start;
           const cost = MODEL_COSTS[model] || 0;
           updateNodeData(job.previewId, {
@@ -304,7 +283,7 @@ export default function GeneratorNode({
       setError(message);
       updateNodeData(id, { isGenerating: false });
     }
-  }, [id, model, collectInputs, generateWithModel, updateNodeData, addNodeAndConnect, positionAbsoluteX, positionAbsoluteY]);
+  }, [id, model, numImages, collectInputs, generateWithModel, updateNodeData, addNodeAndConnect, positionAbsoluteX, positionAbsoluteY]);
 
   // Compare: axes × models — progressive
   const handleCompare = useCallback(async () => {
@@ -316,62 +295,49 @@ export default function GeneratorNode({
     try {
       const inputs = await collectInputs();
       const allModels = Array.from(new Set([model, ...compareModels]));
-      const axes = inputs.selectedAxes.length > 0
-        ? inputs.selectedAxes
-        : [{ title: "", prompt: inputs.promptText }];
 
-      // Step 1: Create ALL preview nodes (axes × models × numImages)
-      const allJobs: { previewId: string; prompt: string; targetModel: string }[] = [];
-      let yOffset = 0;
-      for (let ai = 0; ai < axes.length; ai++) {
-        const axis = axes[ai];
-        const color = axes.length > 1 ? AXIS_COLORS[ai % AXIS_COLORS.length] : undefined;
-        let xOffset = 0;
-        for (const m of allModels) {
-          const mLabel = getModelLabel(m);
-          for (let ni = 0; ni < numImages; ni++) {
-            const suffix = numImages > 1 ? ` #${ni + 1}` : "";
-            const label = axis.title ? `${axis.title} — ${mLabel}${suffix}` : `${mLabel}${suffix}`;
-            const previewId = addNodeAndConnect(
-              "preview",
-              { x: positionAbsoluteX + 360 + xOffset, y: positionAbsoluteY + yOffset },
-              id, "result", "preview-in",
-              { label, genStatus: "loading", genModel: mLabel, genPromptUsed: axis.prompt, axisColor: color },
-              true,
-            );
-            allJobs.push({ previewId, prompt: axis.prompt, targetModel: m });
-            xOffset += 350;
-          }
+      // Step 1: Create ALL preview nodes (models × numImages)
+      const allJobs: { previewId: string; targetModel: string }[] = [];
+      let xOffset = 0;
+      for (const m of allModels) {
+        const mLabel = getModelLabel(m);
+        for (let ni = 0; ni < numImages; ni++) {
+          const suffix = numImages > 1 ? ` #${ni + 1}` : "";
+          const label = `${mLabel}${suffix}`;
+          const previewId = addNodeAndConnect(
+            "preview",
+            { x: positionAbsoluteX + 360 + xOffset, y: positionAbsoluteY },
+            id, "result", "preview-in",
+            { label, genStatus: "loading", genModel: mLabel, genPromptUsed: inputs.promptText },
+            true,
+          );
+          allJobs.push({ previewId, targetModel: m });
+          xOffset += 350;
         }
-        yOffset += 300;
       }
 
       // Step 2: Generate all in parallel
-      const allPromises: Promise<void>[] = [];
-      for (const job of allJobs) {
-        allPromises.push((async () => {
-          const start = Date.now();
-          try {
-            const axisInputs = { ...inputs, promptText: job.prompt };
-            const result = await generateWithModel(job.targetModel, axisInputs);
-            const cost = MODEL_COSTS[job.targetModel] || 0;
-            updateNodeData(job.previewId, {
-              generatedImages: result.images,
-              selectedImageIndex: 0,
-              genStatus: "done",
-              genTimeMs: Date.now() - start,
-              genTokens: result.stats?.totalTokens || 0,
-              genCost: cost > 0 ? `~$${cost.toFixed(3)}` : "",
-            });
-          } catch (err) {
-            updateNodeData(job.previewId, {
-              genStatus: "error",
-              genError: err instanceof Error ? err.message : "Échec",
-              genTimeMs: Date.now() - start,
-            });
-          }
-        })());
-      }
+      const allPromises = allJobs.map((job) => (async () => {
+        const start = Date.now();
+        try {
+          const result = await generateWithModel(job.targetModel, inputs);
+          const cost = MODEL_COSTS[job.targetModel] || 0;
+          updateNodeData(job.previewId, {
+            generatedImages: result.images,
+            selectedImageIndex: 0,
+            genStatus: "done",
+            genTimeMs: Date.now() - start,
+            genTokens: result.stats?.totalTokens || 0,
+            genCost: cost > 0 ? `~$${cost.toFixed(3)}` : "",
+          });
+        } catch (err) {
+          updateNodeData(job.previewId, {
+            genStatus: "error",
+            genError: err instanceof Error ? err.message : "Échec",
+            genTimeMs: Date.now() - start,
+          });
+        }
+      })());
 
       await Promise.allSettled(allPromises);
       updateNodeData(id, { isGenerating: false });
@@ -382,7 +348,7 @@ export default function GeneratorNode({
     } finally {
       setComparing(false);
     }
-  }, [id, model, compareModels, collectInputs, generateWithModel, updateNodeData, addNodeAndConnect, positionAbsoluteX, positionAbsoluteY]);
+  }, [id, model, numImages, compareModels, collectInputs, generateWithModel, updateNodeData, addNodeAndConnect, positionAbsoluteX, positionAbsoluteY]);
 
   const toggleCompareModel = (modelId: string) => {
     setCompareModels((prev) => {

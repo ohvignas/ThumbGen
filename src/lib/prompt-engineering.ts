@@ -3,10 +3,9 @@
  *
  * Single source of truth used by:
  *   - /api/enhance-prompt        (canvas PromptNode "Améliorer" button)
- *   - /api/suggest-prompts       (canvas PromptNode "Idées IA" tab)
  *   - lib/agent/system-prompt.ts (chat agent generating prompts inline)
  *
- * Updating the rubric here updates all three paths — no drift.
+ * Updating the rubric here updates both paths — no drift.
  */
 
 export const LANG_NAMES: Record<string, string> = {
@@ -98,37 +97,7 @@ If your TEXT line is doing heavy lifting (banner takes 20%+ of frame, several wo
 Otherwise → nano-banana. Don't agonize.`;
 
 // ─────────────────────────────────────────────────────────────────────────
-// 5. CTR PATTERN CATALOG — high-performing thumbnail archetypes
-// ─────────────────────────────────────────────────────────────────────────
-
-export const CTR_PATTERN_CATALOG = `HIGH-CTR PATTERNS (pick the archetype that fits the video subject):
-
-REACTION / EMOTION
-  Person with extreme expression (shock, excitement, anger). Close-up or medium close-up of the face (face takes ≥1/3 of image). Background blurred or dark and simple. 2-3 word punch text.
-  Skeleton: SUBJECT(extreme emotion, hands gesture if any) · COMPOSITION(close-up, subject ⅔ frame) · OBJECTS(maybe one focal context object) · TEXT(short reaction line) · LIGHTING(rim light, dramatic) · STYLE(photorealistic, cinematic)
-
-BEFORE / AFTER
-  Split image (vertical line / arrow / contrast). Same subject or product on both sides. Color shift between sides reinforces the change.
-  Skeleton: SUBJECT(centered or duplicated) · COMPOSITION(wide or full shot, vertical split) · OBJECTS(left & right elements with explicit relative position) · TEXT(AVANT / APRÈS or the metric) · LIGHTING(cool left / warm right) · STYLE
-
-TUTORIAL / HOW-TO
-  Subject or product centered. Person points or gestures toward it. Step number or key benefit in text.
-  Skeleton: SUBJECT(person mid-gesture) · COMPOSITION(medium shot, subject right third) · OBJECTS(focal product/screen left third, large) · TEXT(benefit) · LIGHTING(soft, even) · STYLE
-
-LISTICLE / NUMBER
-  Giant number as visual focal point, surrounded by topical imagery. Person in corner with reaction. High color energy.
-  Skeleton: OBJECTS(huge 3D number, ~40% frame, center) · SUBJECT(person in corner, reaction) · TEXT(small descriptor under number) · LIGHTING(volumetric / vibrant) · STYLE
-
-DRAMA / VS / CONTROVERSE
-  Two opposite elements facing off. Tension via color (warm vs cool) or position (left vs right). Optional VS / ÷ / vs symbol between them.
-  Skeleton: OBJECTS(left element + right element with explicit positions) · SUBJECT(optional, between or below) · TEXT(provocative question) · LIGHTING(dramatic rim) · STYLE(cinematic, high contrast)
-
-TRANSFORMATION / RESULT
-  Final result displayed prominently. Person showing pride or excitement. Proof / metric in text.
-  Skeleton: OBJECTS(achievement / metric prominently displayed) · SUBJECT(person showing pride, top-right or top-left) · TEXT(metric) · LIGHTING(motivational, golden) · STYLE`;
-
-// ─────────────────────────────────────────────────────────────────────────
-// 6. WORKED EXAMPLE — show the format in action
+// 5. WORKED EXAMPLE — show the format in action
 // ─────────────────────────────────────────────────────────────────────────
 
 export const WORKED_EXAMPLE = `WORKED EXAMPLE — angle "CHOC" for a "Claude Design vs Figma" video, with the user's face reference connected:
@@ -143,13 +112,13 @@ photorealistic, cinematic.
 Notice: 6 sentences, no labels, every section is one tight sentence, every object has size + position, lighting is layered, style is 2 words. THIS is the bar.`;
 
 // ─────────────────────────────────────────────────────────────────────────
-// 7. NEGATIVE PROMPT SUGGESTIONS — what to ban globally
+// 6. NEGATIVE PROMPT SUGGESTIONS — what to ban globally
 // ─────────────────────────────────────────────────────────────────────────
 
 export const STANDARD_NEGATIVE_PROMPT = "blurry, low resolution, watermark, signature, distorted hands, extra fingers, deformed face, garbled text, misspelled letters, low contrast, washed out, generic stock photo, multiple subjects when one is asked, awkward pose, unnatural skin tone, jpeg artifacts";
 
 // ─────────────────────────────────────────────────────────────────────────
-// 8. ASSEMBLED RUBRICS — ready-to-inject blocks for each call site
+// 7. ASSEMBLED RUBRICS — ready-to-inject blocks for each call site
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
@@ -201,39 +170,3 @@ ${YOUTUBE_THUMBNAIL_PATTERNS}
 Réponds avec exactement les 6 phrases (ou moins si certaines sections sont omises), une par ligne, dans l'ordre SUBJECT → COMPOSITION → OBJECTS → TEXT → LIGHTING → STYLE. Pas de labels, pas de markdown, pas de préambule. Juste les phrases brutes.`;
 }
 
-/**
- * Rubric for /api/suggest-prompts — proposes 4 distinct angles for a video.
- * Output is JSON array of {title, description, prompt}.
- */
-export function buildSuggestRubric(language: string): string {
-  const lang = langName(language);
-  return `Tu es un designer de miniatures YouTube professionnel avec 10+ ans d'expérience. Tu as créé des milliers de thumbnails pour des créateurs à succès. Tu maîtrises le prompt engineering pour les IA de génération d'images.
-
-## TA MISSION
-On te donne des informations sur une vidéo et le contexte du workflow. Tu proposes exactement 4 idées de miniatures DISTINCTES (angles narratifs différents : choc / comparaison / démo / mystère / drama / transformation), avec un prompt structuré professionnel pour chacune.
-
-${CTR_PATTERN_CATALOG}
-
-${PROMPT_ANATOMY}
-
-${ANTI_CONTRADICTION_RULES}
-
-${YOUTUBE_THUMBNAIL_PATTERNS}
-
-## TEXTE OVERLAY
-2-3 mots en ${lang}, MAJUSCULES, couleur + position + "thick black outline" + taille en % de l'image.
-
-## FORMAT DE SORTIE
-Pour chaque idée :
-- "title"       : concept en 3-5 mots en ${lang}
-- "description" : 2 phrases en ${lang} — ce que ça montre + pourquoi ça maximise le CTR sur ce sujet
-- "prompt"      : prompt structuré en ANGLAIS suivant les 6 sections (sans labels, juste les phrases dans l'ordre)
-
-IMPORTANT : Réponds UNIQUEMENT avec un JSON valide, sans markdown, sans backticks :
-[
-  {"title": "...", "description": "...", "prompt": "..."},
-  {"title": "...", "description": "...", "prompt": "..."},
-  {"title": "...", "description": "...", "prompt": "..."},
-  {"title": "...", "description": "...", "prompt": "..."}
-]`;
-}

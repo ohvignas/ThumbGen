@@ -31,7 +31,6 @@ export type NodeData = {
   favoriteModel?: string; // User's favorite model for quick access
   sketchElements?: string; // JSON string of Excalidraw elements
   sketchFiles?: string; // JSON string of Excalidraw files
-  selectedAxes?: Array<{ title: string; prompt: string }>; // Multiple selected prompt suggestions
   // Preview stats
   genStatus?: "loading" | "done" | "error";
   genError?: string;
@@ -40,7 +39,6 @@ export type NodeData = {
   genModel?: string;
   genTokens?: number;
   genCost?: string;
-  axisColor?: string;
 };
 
 export type AppNode = Node<NodeData>;

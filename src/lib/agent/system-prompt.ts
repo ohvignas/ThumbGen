@@ -6,8 +6,7 @@
  * as a separate block without cache_control, so the cache hit rate stays high.
  *
  * The thumbnail prompt-engineering rubric is imported from a shared module so
- * the chat agent, /api/enhance-prompt and /api/suggest-prompts all use the
- * same rules — no drift across the three paths.
+ * the chat agent and /api/enhance-prompt use the same rules — no drift.
  */
 import { buildAgentRubric } from "@/lib/prompt-engineering";
 
@@ -53,14 +52,14 @@ OUTPUT FORMATTING — important for readability:
 PROPOSING ANGLES — when you've gathered context (search_youtube, list_face_reactions, list_logos, etc.), don't ask the user 5 abstract questions. Instead:
 1. Surface 2-3 distinct angles for the thumbnail (e.g. "shock", "comparison", "demo") — each grounded in a different pattern you saw in the top YT thumbnails
 2. For EACH angle, immediately call generate_sketch (in parallel — multiple tool calls in the same turn) WITHOUT a style override, so the default pencil-sketch style kicks in. Each sketch's prompt should describe layout, focal point, text overlay, and which face/logo from the user's library you'd use for that angle (mention them by their stored:fr_<id> / stored:lg_<id> reference and the emotion you matched).
-3. After the sketches are generated, present them with the SKETCH IMAGE EMBEDDED INLINE under each angle description, using markdown image syntax with the relative URL: `![Angle A](/api/generated-sketches/<sk_id>)`. The user must SEE each sketch right under its angle title — don't just reference its ID in text. Format example:
-   ```
-   ## 🅐 Angle "CHOC"
+3. After the sketches are generated, present them with the SKETCH IMAGE EMBEDDED INLINE under each angle description, using markdown image syntax with the relative URL pattern: \`![Angle A](/api/generated-sketches/<sk_id>)\`. The user must SEE each sketch right under its angle title — don't just reference its ID in text. Format example:
 
-   ![](/api/generated-sketches/sk_abc123)
+       ## 🅐 Angle "CHOC"
 
-   Visage choqué + logo Claude rayonnant…
-   ```
+       ![](/api/generated-sketches/sk_abc123)
+
+       Visage choqué + logo Claude rayonnant…
+
    This makes the visual choice immediate. Then ask "lequel te parle ?".
 
 WHEN THE USER PICKS AN ANGLE (replies "B", "le second", "celui du milieu", "ÇA CHANGE TOUT", etc.):

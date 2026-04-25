@@ -39,21 +39,6 @@ export const INPUT_TYPE_COLORS = {
   ideogram: "#BB68FF",
 } as const;
 
-/**
- * Couleurs d'axes pour différencier des prompts comparés visuellement
- * dans le canvas (badges sur les preview nodes). Usage canvas-only.
- */
-export const AXIS_COLORS = [
-  "#6EDDB3",
-  "#60a5fa",
-  "#f59e0b",
-  "#ef4444",
-  "#a78bfa",
-  "#ec4899",
-  "#14b8a6",
-  "#f97316",
-];
-
 export function getCostPerImage(model: string): number {
   return MODEL_COSTS[model] ?? 0;
 }
