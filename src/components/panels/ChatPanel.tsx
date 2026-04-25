@@ -116,8 +116,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   }, [events]);
 
   const onSend = useCallback(async () => {
-    if (!activeConversationId) {
-      // Auto-create a conversation if none active
+    // Auto-create a conversation if none active, then proceed with the send
+    // in the same click (vs returning early which would force a second click).
+    let convId = activeConversationId;
+    if (!convId) {
       const r = await fetch("/api/agent/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -126,12 +128,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       if (!r.ok) return;
       const conv = (await r.json()) as { id: string };
       useChatStore.getState().setActive(conv.id);
-      // Recurse on next tick once active is set — simpler: bail and require user to click again.
-      // For UX smoothness, we do the full flow here instead, after manually setting active.
-      // We then continue the send synchronously.
-      // (Note: useChatStore.setState would not update local closure. For the first send,
-      // user needs to click send a second time after creating. Acceptable for v1.)
-      return;
+      convId = conv.id;
     }
 
     const text = draft;
@@ -152,14 +149,14 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
     // Send and stream
     await send({
-      conversation_id: activeConversationId,
+      conversation_id: convId,
       project_id: projectId,
       message: { text, attachments: atts },
       canvas_snapshot: snapshotCanvas(nodes, edges),
     });
 
     // Refetch persisted history (canonical assistant message replaces the live one)
-    const rows = await fetch(`/api/agent/conversations/${activeConversationId}/messages`).then((r) => r.json());
+    const rows = await fetch(`/api/agent/conversations/${convId}/messages`).then((r) => r.json());
     setHistory((rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>).map(rowToDisplay));
     reset();
   }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, send, nodes, edges, reset]);

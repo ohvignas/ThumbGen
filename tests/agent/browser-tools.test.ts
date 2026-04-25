@@ -7,8 +7,10 @@ import {
 } from "@/lib/agent/browser-tools";
 
 describe("browser-only tools", () => {
-  it("exports both tool defs with non-trivial descriptions", () => {
-    expect(BROWSER_TOOL_DEFS).toHaveLength(2);
+  it("exports request_user_image with a non-trivial description", () => {
+    // v1: only request_user_image is exposed; request_user_sketch deferred until
+    // SketchEditor supports a save callback (see browser-tools/index.ts NOTE).
+    expect(BROWSER_TOOL_DEFS).toHaveLength(1);
     for (const def of BROWSER_TOOL_DEFS) {
       expect(def.name.length).toBeGreaterThan(0);
       expect(def.description.length).toBeGreaterThan(40);
@@ -16,10 +18,10 @@ describe("browser-only tools", () => {
     }
   });
 
-  it("BROWSER_TOOL_NAMES has the right entries", () => {
+  it("BROWSER_TOOL_NAMES contains request_user_image (only)", () => {
     expect(BROWSER_TOOL_NAMES.has("request_user_image")).toBe(true);
-    expect(BROWSER_TOOL_NAMES.has("request_user_sketch")).toBe(true);
-    expect(BROWSER_TOOL_NAMES.size).toBe(2);
+    expect(BROWSER_TOOL_NAMES.has("request_user_sketch")).toBe(false);
+    expect(BROWSER_TOOL_NAMES.size).toBe(1);
   });
 
   describe("request_user_image input schema", () => {
