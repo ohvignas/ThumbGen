@@ -129,6 +129,6 @@ export const config = {
   matcher: [
     // Exclude static assets, the login page, and image-serving routes that
     // need to be reachable from <img src> tags without cookie auth.
-    "/((?!_next/static|_next/image|favicon.ico|swipe-file|api/face-reactions/image|api/swipe-files/image|api/logos/image|api/generated-images/image|api/chat-uploads/[^/]+$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|swipe-file|api/face-reactions/image|api/swipe-files/image|api/logos/image|api/generated-images/image|api/chat-uploads/[^/]+$|api/generated-sketches/[^/]+$).*)",
   ],
 };
