@@ -151,16 +151,24 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
   while (iter++ < MAX_ITER) {
     if (abort.aborted) break;
 
-    let resp: Awaited<ReturnType<typeof anthropic.messages.create>>;
+    // Stream the response so each text token reaches the browser immediately.
+    // We accumulate the final content blocks via the SDK's message-end event.
+    let finalMessage: Awaited<ReturnType<typeof anthropic.messages.create>>;
     try {
-      // Cast tools to never to avoid Anthropic SDK type strictness on union types
-      resp = await anthropic.messages.create({
+      const stream = anthropic.messages.stream({
         model: MODEL,
         max_tokens: 4096,
         system: systemBlocks as never,
         tools: tools as never,
         messages: history as never,
       });
+
+      stream.on("text", (textDelta: string) => {
+        // Forward each token to the browser as it arrives.
+        if (textDelta) send("text_delta", { content: textDelta });
+      });
+
+      finalMessage = await stream.finalMessage();
     } catch (e) {
       const msg = `Claude API error: ${(e as Error).message}`;
       send("error", { message: msg });
@@ -177,19 +185,17 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
       return;
     }
 
-    if ("usage" in resp && resp.usage) {
-      totalInput += resp.usage.input_tokens ?? 0;
-      totalOutput += resp.usage.output_tokens ?? 0;
+    if ("usage" in finalMessage && finalMessage.usage) {
+      totalInput += finalMessage.usage.input_tokens ?? 0;
+      totalOutput += finalMessage.usage.output_tokens ?? 0;
     }
 
-    // Forward text deltas + collect blocks
-    const respBlocks = (resp.content ?? []) as ContentBlock[];
-    for (const block of respBlocks) {
-      if (block.type === "text") {
-        send("text_delta", { content: (block as { text: string }).text });
-      }
-    }
+    // Tokens were already streamed as text_delta events; here we just collect
+    // the final blocks so we have tool_use, text (assembled), etc. for the
+    // tool dispatch and persistence steps.
+    const respBlocks = (finalMessage.content ?? []) as ContentBlock[];
     assistantBlocks = [...assistantBlocks, ...respBlocks];
+    const resp = finalMessage; // alias so the existing logic below still reads "resp.stop_reason"
 
     if (resp.stop_reason === "tool_use") {
       const toolResults: ContentBlock[] = [];
