@@ -49,3 +49,10 @@ next-env.d.ts
 
 # git worktrees
 .worktrees/
+
+# Local agent skill caches (per-machine, not project code)
+.agents/
+.claude/
+.codex/
+.kiro/
+skills-lock.json

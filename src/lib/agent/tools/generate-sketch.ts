@@ -10,19 +10,24 @@ import { registerTool } from "./index";
 const InputSchema = z.object({
   prompt: z.string().min(1),
   aspect_ratio: z.enum(["16x9", "9x16", "1x1"]).optional(),
+  style: z.enum(["pencil_sketch", "polished"]).optional(),
 });
 
 const ASPECT_MAP: Record<string, string> = { "16x9": "16:9", "9x16": "9:16", "1x1": "1:1" };
 const SKETCH_MODEL = "gemini-2.5-flash-image"; // fastest/cheapest variant for drafts
 
+const PENCIL_SUFFIX =
+  " Render this as a hand-drawn rough pencil sketch on white paper — visible pencil strokes, simple line work, monochrome graphite, very rough proportions, no fine detail, working draft style. The goal is a sketch a designer would scribble on a notebook to communicate composition, not a polished render.";
+
 export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "generate_sketch",
   description:
-    "Generates a fast, cheap draft thumbnail (sketch) from a text prompt using Gemini Flash Image. Use this for quick visual exploration BEFORE committing to a final generation. Returns a `generated:<id>` reference usable as a sketch node's image_source in apply_workflow. Aspect ratio defaults to 16x9.",
+    "Generates a fast, cheap draft thumbnail using Gemini Flash Image. Defaults to a HAND-DRAWN PENCIL SKETCH style (rough strokes, monochrome graphite on paper) — perfect for proposing layout/angle ideas without committing to a polished design. Pass style='polished' for a finished thumbnail render. Returns a `generated:<id>` reference usable as a sketch node's image_source in apply_workflow. Aspect ratio defaults to 16x9.",
   inputSchema: InputSchema,
-  handler: async ({ prompt, aspect_ratio }) => {
+  handler: async ({ prompt, aspect_ratio, style }) => {
     const start = Date.now();
     const ratio = aspect_ratio ?? "16x9";
+    const useStyle = style ?? "pencil_sketch";
 
     const apiKey = getSetting("geminiApiKey");
     if (!apiKey) {
@@ -32,9 +37,10 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       };
     }
 
+    const stylized = useStyle === "pencil_sketch" ? `${prompt}${PENCIL_SUFFIX}` : prompt;
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${SKETCH_MODEL}:generateContent?key=${apiKey}`;
     const body = {
-      contents: [{ parts: [{ text: `Generate a YouTube thumbnail draft sketch. ${prompt}` }] }],
+      contents: [{ parts: [{ text: `Generate a YouTube thumbnail draft. ${stylized}` }] }],
       generationConfig: {
         responseModalities: ["TEXT", "IMAGE"],
         imageConfig: { aspectRatio: ASPECT_MAP[ratio], imageSize: "1K" },

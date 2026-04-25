@@ -42,6 +42,15 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     useChatStore.getState().setActive(null);
   }, [projectId]);
 
+  // Backfill emotion tags on existing face_reactions once per session.
+  // Newly uploaded faces are tagged on POST; this catches anything pre-existing.
+  useEffect(() => {
+    const KEY = "thumbgen.face_tags_backfilled";
+    if (sessionStorage.getItem(KEY) === "1") return;
+    sessionStorage.setItem(KEY, "1");
+    fetch("/api/face-reactions/analyze-untagged", { method: "POST" }).catch(() => {});
+  }, []);
+
   // Load persisted history when active conversation changes
   useEffect(() => {
     let cancelled = false;
