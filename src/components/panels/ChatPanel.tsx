@@ -9,6 +9,7 @@ import Composer from "./chat/Composer";
 import PendingUiAction, { UiToolRequest } from "./chat/PendingUiAction";
 import type { DisplayMessage, MessageBlock } from "./chat/Message";
 import type { ChatEvent } from "@/hooks/useChat";
+import UsageBadge from "./chat/UsageBadge";
 
 /**
  * Right-side chat panel. Slide-in 420px wide. Mounted from Canvas.
@@ -168,15 +169,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       className="fixed right-0 top-0 bottom-0 w-[420px] bg-white border-l shadow-xl flex flex-col z-40"
       style={{ animation: "chat-slide-in 0.18s ease-out" }}
     >
-      <header className="border-b px-3 py-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">✨ Chat IA</h2>
-        <button
-          onClick={close}
-          className="text-xl text-gray-500 hover:text-gray-800 px-2 leading-none"
-          aria-label="Fermer"
-        >
-          ×
-        </button>
+      <header className="border-b px-3 py-2 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold shrink-0">✨ Chat IA</h2>
+        <UsageBadge />
+        <button onClick={close} className="text-xl text-gray-500 hover:text-gray-800 px-2 leading-none ml-auto" aria-label="Fermer">×</button>
       </header>
 
       <ConversationList projectId={projectId} />
