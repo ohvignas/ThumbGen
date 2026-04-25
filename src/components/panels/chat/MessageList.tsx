@@ -24,7 +24,7 @@ export default function MessageList({ messages }: { messages: DisplayMessage[] }
               lineHeight: 1.15,
             }}
           >
-            qu&apos;est-ce <br />qu&apos;on construit ?
+            on commence <br />par quoi ?
           </p>
           <p
             className="text-[11px] mt-3"
