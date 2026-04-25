@@ -156,8 +156,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       canvas_snapshot: snapshotCanvas(nodes, edges),
     });
 
-    // Refetch persisted history (canonical assistant message replaces the live one)
+    // Refetch persisted history (canonical assistant message replaces the live one).
+    // If the user switched conversations mid-stream, the active conv has changed —
+    // discard the refetch so we don't paint old messages over the new conv's UI.
     const rows = await fetch(`/api/agent/conversations/${convId}/messages`).then((r) => r.json());
+    if (useChatStore.getState().activeConversationId !== convId) return;
     setHistory((rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>).map(rowToDisplay));
     reset();
   }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, send, nodes, edges, reset]);
@@ -256,7 +259,8 @@ function summarizeNode(type: string, data: Record<string, unknown>): Record<stri
     case "prompt":
       return { prompt: data.prompt, negativePrompt: data.negativePrompt };
     case "generator":
-      return { model: data.model, aspectRatio: data.aspectRatio, count: data.numImages };
+      // Generator nodes use `count` — `numImages` was a documentation error.
+      return { model: data.model, aspectRatio: data.aspectRatio, count: data.count ?? data.numImages };
     case "faceReference":
     case "swipeFile":
     case "sketch":

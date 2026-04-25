@@ -6,8 +6,16 @@ export function middleware(request: NextRequest) {
   // Skip auth if no password is set
   if (!SITE_PASSWORD) return NextResponse.next();
 
-  // Skip auth for API routes (they have their own auth)
-  if (request.nextUrl.pathname.startsWith("/api/")) return NextResponse.next();
+  // API auth model (mono-user, single SITE_PASSWORD):
+  //   /api/mcp           → bearer token (handled in the route itself)
+  //   /api/<image>/image → public read (referenced from <img>, no cookie possible)
+  //   everything else    → cookie auth, same as page routes
+  // The /api/mcp route checks the bearer + Origin in its own handler. We let it
+  // through here because cookies can't be used for cross-origin MCP clients.
+  // Image-serving routes are exempted via the matcher below for the same reason
+  // (cookies don't follow <img> requests reliably across all browsers).
+  const path = request.nextUrl.pathname;
+  if (path === "/api/mcp" || path.startsWith("/api/mcp/")) return NextResponse.next();
 
   // Check for auth cookie
   const authCookie = request.cookies.get("thumbgen_auth");
@@ -118,5 +126,9 @@ function loginPage() {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|swipe-file|api/face-reactions|api/swipe-files).*)"],
+  matcher: [
+    // Exclude static assets, the login page, and image-serving routes that
+    // need to be reachable from <img src> tags without cookie auth.
+    "/((?!_next/static|_next/image|favicon.ico|swipe-file|api/face-reactions/image|api/swipe-files/image|api/logos/image|api/generated-images/image|api/chat-uploads/[^/]+$).*)",
+  ],
 };

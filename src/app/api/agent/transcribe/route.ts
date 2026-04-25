@@ -23,7 +23,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ text });
   } catch (e) {
     const msg = (e as Error).message || "Transcription failed";
-    const status = msg.includes("not configured") ? 500 : 500;
+    // 503 surfaces "configure your key" distinctly from a generic upstream failure.
+    const status = msg.includes("not configured") ? 503 : 500;
     return NextResponse.json({ error: msg }, { status });
   }
 }

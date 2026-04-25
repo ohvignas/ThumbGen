@@ -53,14 +53,21 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     // 5. Auto-layout the target (v1: re-layout everything; existing positions not preserved)
     const positioned = autoLayout(target.nodes, target.edges);
 
-    // 6. Persist (UPDATE for existing projects, INSERT for new)
+    // 6. Persist (UPDATE for existing projects, INSERT for new).
+    // We use strftime('%Y-%m-%d %H:%M:%f') for millisecond resolution so the
+    // useCanvasSync polling hook reliably detects rapid back-to-back agent
+    // mutations (datetime('now') has 1s resolution → polling could miss them).
     if (row) {
       getDb()
-        .prepare("UPDATE projects SET nodes = ?, edges = ?, updated_at = datetime('now') WHERE id = ?")
+        .prepare(
+          "UPDATE projects SET nodes = ?, edges = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
+        )
         .run(JSON.stringify(positioned), JSON.stringify(target.edges), project_id);
     } else {
       getDb()
-        .prepare("INSERT INTO projects (id, nodes, edges) VALUES (?, ?, ?)")
+        .prepare(
+          "INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+        )
         .run(project_id, JSON.stringify(positioned), JSON.stringify(target.edges));
     }
 
