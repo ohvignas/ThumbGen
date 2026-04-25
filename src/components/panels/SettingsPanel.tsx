@@ -8,12 +8,14 @@ type SettingsData = {
   ideogramApiKey: string;
   openaiApiKey: string;
   grokApiKey: string;
+  anthropicApiKey: string;
   youtubeApiKey: string;
   youtubePlaylistId: string;
   hasGemini: boolean;
   hasIdeogram: boolean;
   hasOpenai: boolean;
   hasGrok: boolean;
+  hasAnthropic: boolean;
   hasYoutube: boolean;
   language: string;
 };
@@ -24,6 +26,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
   const [ideogram, setIdeogram] = useState("");
   const [openai, setOpenai] = useState("");
   const [grok, setGrok] = useState("");
+  const [anthropic, setAnthropic] = useState("");
   const [ytKey, setYtKey] = useState("");
   const [ytPlaylist, setYtPlaylist] = useState("");
   const [language, setLanguage] = useState("fr");
@@ -49,6 +52,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
     if (ideogram) body.ideogramApiKey = ideogram;
     if (openai) body.openaiApiKey = openai;
     if (grok) body.grokApiKey = grok;
+    if (anthropic) body.anthropicApiKey = anthropic;
     if (ytKey) body.youtubeApiKey = ytKey;
     body.youtubePlaylistId = ytPlaylist;
     body.language = language;
@@ -68,6 +72,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
     setIdeogram("");
     setOpenai("");
     setGrok("");
+    setAnthropic("");
     setYtKey("");
     onSaved?.();
     setTimeout(() => setSaved(false), 2000);
@@ -229,6 +234,43 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         />
         <a
           href="https://console.x.ai"
+          target="_blank"
+          rel="noopener"
+          className="text-[10px] mt-1 block"
+          style={{ color: "var(--accent)" }}
+        >
+          Obtenir une clé →
+        </a>
+      </div>
+
+      {/* Anthropic — needed by the chat agent */}
+      <div className="mb-4">
+        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
+          Clé API Anthropic <span style={{ color: "var(--brand)" }}>·</span> chat IA
+        </label>
+        <div className="flex items-center gap-2 mb-1">
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{ background: settings?.hasAnthropic ? "var(--accent)" : "var(--bone-faint)" }}
+          />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            {settings?.hasAnthropic ? `Connecté (${settings?.anthropicApiKey})` : "Non configuré"}
+          </span>
+        </div>
+        <input
+          type="password"
+          placeholder="sk-ant-..."
+          value={anthropic}
+          onChange={(e) => setAnthropic(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
+          style={{
+            background: "var(--surface)",
+            color: "var(--text-secondary)",
+            border: "1px solid transparent",
+          }}
+        />
+        <a
+          href="https://console.anthropic.com/settings/keys"
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
