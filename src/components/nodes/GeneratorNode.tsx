@@ -4,20 +4,7 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { useCallback, useState, useEffect } from "react";
 import NodeShell from "./NodeShell";
-
-const AXIS_COLORS = ["#6EDDB3", "#60a5fa", "#f59e0b", "#ef4444", "#a78bfa", "#ec4899", "#14b8a6", "#f97316"];
-
-// Rough cost estimation per model ($ per image)
-const MODEL_COSTS: Record<string, number> = {
-  "gemini-2.5-flash-image": 0.02,
-  "gemini-3.1-flash-image-preview": 0.02,
-  "gemini-3-pro-image-preview": 0.04,
-  "ideogram": 0.08,
-  "gpt-image-2": 0.04,
-  "gpt-image-1.5": 0.02,
-  "gpt-image-1": 0.02,
-  "grok-imagine-image": 0.03,
-};
+import { MODEL_COSTS, AXIS_COLORS, INPUT_TYPE_COLORS } from "@/lib/model-costs";
 
 const GEMINI_MODELS = [
   { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro", provider: "gemini" },
@@ -83,12 +70,9 @@ export default function GeneratorNode({
   const ideogramMode = data.ideogramMode || "generate";
   const provider = getProvider(model);
 
-  const modelIcon = provider === "ideogram" ? (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="1.5">
-      <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--accent)" strokeWidth="0">
+  const iconColor = provider === "ideogram" ? INPUT_TYPE_COLORS.ideogram : "var(--accent)";
+  const modelIcon = (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill={iconColor} strokeWidth="0">
       <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
     </svg>
   );
@@ -240,7 +224,7 @@ export default function GeneratorNode({
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Generation failed (${res.status})`);
+      throw new Error(errData.error || `Échec de la génération (${res.status})`);
     }
 
     const result = await res.json();
@@ -307,7 +291,7 @@ export default function GeneratorNode({
         } catch (err) {
           updateNodeData(job.previewId, {
             genStatus: "error",
-            genError: err instanceof Error ? err.message : "Generation failed",
+            genError: err instanceof Error ? err.message : "Échec de la génération",
             genTimeMs: Date.now() - start,
           });
         }
@@ -316,7 +300,7 @@ export default function GeneratorNode({
       await Promise.allSettled(promises);
       updateNodeData(id, { isGenerating: false });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Generation failed";
+      const message = err instanceof Error ? err.message : "Échec de la génération";
       setError(message);
       updateNodeData(id, { isGenerating: false });
     }
@@ -382,7 +366,7 @@ export default function GeneratorNode({
           } catch (err) {
             updateNodeData(job.previewId, {
               genStatus: "error",
-              genError: err instanceof Error ? err.message : "Failed",
+              genError: err instanceof Error ? err.message : "Échec",
               genTimeMs: Date.now() - start,
             });
           }
@@ -392,7 +376,7 @@ export default function GeneratorNode({
       await Promise.allSettled(allPromises);
       updateNodeData(id, { isGenerating: false });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Compare failed";
+      const message = err instanceof Error ? err.message : "Échec de la comparaison";
       setError(message);
       updateNodeData(id, { isGenerating: false });
     } finally {
@@ -426,7 +410,7 @@ export default function GeneratorNode({
       <Handle type="target" position={Position.Left} id="prompt-in" style={{ top: "8%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{ left: -8, top: "8%", transform: "translateX(-100%) translateY(-50%)", color: "#BB68FF", background: "none", border: "none", padding: "2px 4px" }}
+        style={{ left: -8, top: "8%", transform: "translateX(-100%) translateY(-50%)", color: INPUT_TYPE_COLORS.prompt, background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
         onClick={() => addNodeAndConnect("prompt", { x: positionAbsoluteX - 340, y: positionAbsoluteY - 100 }, id, "prompt-in", "prompt")}
@@ -438,12 +422,12 @@ export default function GeneratorNode({
       <Handle type="target" position={Position.Left} id="face-in" style={{ top: "14%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{ left: -8, top: "14%", transform: "translateX(-100%) translateY(-50%)", color: "#EF9092", background: "none", border: "none", padding: "2px 4px" }}
+        style={{ left: -8, top: "14%", transform: "translateX(-100%) translateY(-50%)", color: INPUT_TYPE_COLORS.face, background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
         onClick={() => addNodeAndConnect("faceReference", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 50 }, id, "face-in", "face")}
       >
-        Face
+        Visage
       </button>
 
       {/* Reference handle */}
@@ -455,14 +439,14 @@ export default function GeneratorNode({
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
         onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 200 }, id, "image-in", "image")}
       >
-        Reference
+        Référence
       </button>
 
       {/* Logo handle */}
       <Handle type="target" position={Position.Left} id="logo-in" style={{ top: "26%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{ left: -8, top: "26%", transform: "translateX(-100%) translateY(-50%)", color: "#60a5fa", background: "none", border: "none", padding: "2px 4px" }}
+        style={{ left: -8, top: "26%", transform: "translateX(-100%) translateY(-50%)", color: INPUT_TYPE_COLORS.logo, background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
         onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 350 }, id, "logo-in", "image")}
@@ -474,12 +458,12 @@ export default function GeneratorNode({
       <Handle type="target" position={Position.Left} id="sketch-in" style={{ top: "32%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{ left: -8, top: "32%", transform: "translateX(-100%) translateY(-50%)", color: "#a78bfa", background: "none", border: "none", padding: "2px 4px" }}
+        style={{ left: -8, top: "32%", transform: "translateX(-100%) translateY(-50%)", color: INPUT_TYPE_COLORS.sketch, background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
         onClick={() => addNodeAndConnect("sketch", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 500 }, id, "sketch-in", "image")}
       >
-        Sketch
+        Croquis
       </button>
 
       {/* Generated image preview */}
@@ -487,7 +471,7 @@ export default function GeneratorNode({
         <div className="mb-4 rounded-xl overflow-hidden">
           <img
             src={data.generatedImages[data.selectedImageIndex || 0]}
-            alt="Generated"
+            alt="Miniature générée"
             className="w-full"
           />
         </div>
@@ -497,7 +481,7 @@ export default function GeneratorNode({
       <div className="space-y-3">
         <div>
           <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>
-            Model
+            Modèle
           </label>
           <div className="flex gap-1">
           <select
@@ -572,23 +556,23 @@ export default function GeneratorNode({
               className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag"
               style={selectStyle}
             >
-              <option value="generate">Generate</option>
+              <option value="generate">Générer</option>
               <option value="remix">Remix</option>
-              <option value="edit">Edit (Inpaint)</option>
+              <option value="edit">Éditer (Inpaint)</option>
             </select>
           </div>
         )}
 
         <div>
-          <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Aspect Ratio</label>
+          <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Format</label>
           <select
             value={aspectRatio}
             onChange={(e) => updateNodeData(id, { aspectRatio: e.target.value })}
             className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag"
             style={selectStyle}
           >
-            <option value="16x9">16:9 (Thumbnail)</option>
-            <option value="1x1">1:1 (Square)</option>
+            <option value="16x9">16:9 (Miniature)</option>
+            <option value="1x1">1:1 (Carré)</option>
             <option value="4x3">4:3</option>
             <option value="3x2">3:2</option>
             <option value="9x16">9:16 (Vertical)</option>
@@ -605,7 +589,7 @@ export default function GeneratorNode({
                 className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
                 style={{
                   background: (data.numImages || 1) === n ? "var(--accent)" : "var(--surface)",
-                  color: (data.numImages || 1) === n ? "#000" : "var(--text-muted)",
+                  color: (data.numImages || 1) === n ? "var(--canvas-bg)" : "var(--text-muted)",
                 }}
               >
                 {n}
@@ -617,7 +601,7 @@ export default function GeneratorNode({
         {provider === "ideogram" && (
           <>
             <div>
-              <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Speed</label>
+              <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Vitesse</label>
               <select value={renderingSpeed} onChange={(e) => updateNodeData(id, { renderingSpeed: e.target.value })} className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none nopan nodrag" style={selectStyle}>
                 <option value="TURBO">Turbo</option>
                 <option value="DEFAULT">Default</option>
@@ -636,7 +620,7 @@ export default function GeneratorNode({
             </div>
             {ideogramMode === "remix" && (
               <div>
-                <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Image Weight: {data.imageWeight ?? 50}%</label>
+                <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Poids de l&apos;image : {data.imageWeight ?? 50}%</label>
                 <input type="range" min={0} max={100} value={data.imageWeight ?? 50} onChange={(e) => updateNodeData(id, { imageWeight: Number(e.target.value) })} className="w-full nopan nodrag" style={{ accentColor: "var(--accent)" }} />
               </div>
             )}
@@ -661,7 +645,7 @@ export default function GeneratorNode({
                     opacity: isAvailable ? 1 : 0.4,
                     cursor: isAvailable ? "pointer" : "not-allowed",
                   }}
-                  title={!isAvailable ? "Clé API non configurée — va dans Settings" : ""}
+                  title={!isAvailable ? "Clé API non configurée — va dans Réglages" : ""}
                 >
                   <input
                     type="checkbox"
@@ -672,7 +656,7 @@ export default function GeneratorNode({
                     style={{ accentColor: "var(--accent)" }}
                   />
                   {m.label}
-                  {!isAvailable && <span style={{ color: "#666", fontSize: 10 }}>(inactif)</span>}
+                  {!isAvailable && <span style={{ color: "var(--bone-faint)", fontSize: 10 }}>(inactif)</span>}
                 </label>
               );
             })}
@@ -689,7 +673,7 @@ export default function GeneratorNode({
           {data.isGenerating ? (
             <>
               <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-              Génération en cours...
+              Génération en cours…
             </>
           ) : (() => {
             const totalModels = compareModels.size > 0 ? compareModels.size + 1 : 1;
@@ -701,13 +685,13 @@ export default function GeneratorNode({
         </button>
 
         {error && (
-          <p className="text-xs" style={{ color: "#EF9092" }}>{error}</p>
+          <p className="text-xs" style={{ color: "var(--ember)" }}>{error}</p>
         )}
       </div>
 
       <Handle type="source" position={Position.Right} id="result" />
       <span className="absolute text-xs pointer-events-none" style={{ right: -8, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--accent)" }}>
-        Result
+        Résultat
       </span>
     </NodeShell>
   );

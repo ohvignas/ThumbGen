@@ -76,14 +76,14 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-          Settings
+          Réglages
         </h3>
         <button
           onClick={onClose}
           className="p-1 rounded-lg transition-all"
           style={{ color: "var(--text-muted)" }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>
@@ -92,12 +92,12 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
       {/* Gemini */}
       <div className="mb-4">
         <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Google Gemini API Key
+          Clé API Google Gemini
         </label>
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasGemini ? "#4ade80" : "#666" }}
+            style={{ background: settings?.hasGemini ? "var(--accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasGemini ? `Connecté (${settings.geminiApiKey})` : "Non configuré"}
@@ -129,12 +129,12 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
       {/* Ideogram */}
       <div className="mb-4">
         <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Ideogram API Key
+          Clé API Ideogram
         </label>
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasIdeogram ? "#4ade80" : "#666" }}
+            style={{ background: settings?.hasIdeogram ? "var(--accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasIdeogram ? `Connecté (${settings.ideogramApiKey})` : "Non configuré"}
@@ -166,12 +166,12 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
       {/* OpenAI */}
       <div className="mb-4">
         <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          OpenAI API Key
+          Clé API OpenAI
         </label>
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasOpenai ? "#4ade80" : "#666" }}
+            style={{ background: settings?.hasOpenai ? "var(--accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasOpenai ? `Connecté (${settings?.openaiApiKey})` : "Non configuré"}
@@ -196,19 +196,19 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           className="text-[10px] mt-1 block"
           style={{ color: "var(--accent)" }}
         >
-          OpenAI API Keys →
+          Obtenir une clé →
         </a>
       </div>
 
       {/* Grok */}
       <div className="mb-4">
         <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Grok (xAI) API Key
+          Clé API Grok (xAI)
         </label>
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasGrok ? "#4ade80" : "#666" }}
+            style={{ background: settings?.hasGrok ? "var(--accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasGrok ? `Connecté (${settings?.grokApiKey})` : "Non configuré"}
@@ -233,19 +233,19 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           className="text-[10px] mt-1 block"
           style={{ color: "var(--accent)" }}
         >
-          xAI Console →
+          Obtenir une clé →
         </a>
       </div>
 
       {/* YouTube */}
       <div className="mb-4">
         <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          YouTube API Key
+          Clé API YouTube
         </label>
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasYoutube ? "#4ade80" : "#666" }}
+            style={{ background: settings?.hasYoutube ? "var(--accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasYoutube ? `Connecté (${settings.youtubeApiKey})` : "Non configuré"}
@@ -270,7 +270,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           className="text-[10px] mt-1 block"
           style={{ color: "var(--accent)" }}
         >
-          Google Cloud Console →
+          Obtenir une clé →
         </a>
       </div>
 
@@ -281,7 +281,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         </label>
         <input
           type="text"
-          placeholder="https://youtube.com/@tachaîne"
+          placeholder="https://youtube.com/@votrechaine"
           value={ytPlaylist}
           onChange={(e) => setYtPlaylist(e.target.value)}
           className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
@@ -292,7 +292,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           }}
         />
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          Colle l'URL de ta chaîne YouTube ou un ID de playlist
+          Colle l&apos;URL de ta chaîne YouTube ou un ID de playlist
         </p>
       </div>
 
@@ -329,12 +329,12 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         disabled={saving}
         className="w-full py-2 rounded-lg text-xs font-medium transition-all"
         style={{
-          background: saved ? "#4ade80" : "var(--accent)",
-          color: saved ? "#000" : "#000",
+          background: saved ? "var(--accent)" : "var(--bone)",
+          color: "var(--canvas-bg)",
           opacity: saving ? 0.5 : 1,
         }}
       >
-        {saving ? "Sauvegarde..." : saved ? "Sauvegardé !" : "Sauvegarder"}
+        {saving ? "Enregistrement…" : saved ? "Enregistré !" : "Enregistrer"}
       </button>
     </div>
   );

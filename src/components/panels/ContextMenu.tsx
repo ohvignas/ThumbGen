@@ -57,7 +57,7 @@ export default function ContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 rounded-xl overflow-hidden shadow-2xl min-w-[220px] py-1"
+      className="fixed z-50 rounded-xl overflow-hidden min-w-[220px] py-1"
       style={{
         left: x,
         top: y,

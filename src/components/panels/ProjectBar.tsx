@@ -29,6 +29,10 @@ export default function ProjectBar() {
 
   useEffect(() => {
     loadProjects();
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => { if (s.currentProjectId) setCurrentId(s.currentProjectId); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -53,6 +57,11 @@ export default function ProjectBar() {
     setCurrentId(projectId);
     setMenuOpen(false);
     await loadProject(projectId);
+    fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentProjectId: projectId }),
+    }).catch(() => {});
   };
 
   const createProject = async () => {
@@ -117,7 +126,7 @@ export default function ProjectBar() {
 
       {menuOpen && (
         <div
-          className="absolute left-0 top-full mt-2 rounded-xl overflow-hidden shadow-2xl z-50"
+          className="absolute left-0 top-full mt-2 rounded-xl overflow-hidden z-50"
           style={{
             background: "var(--node-bg)",
             border: "1px solid var(--surface)",
@@ -142,7 +151,7 @@ export default function ProjectBar() {
                 onClick={() => switchProject(p.id)}
               >
                 {p.id === currentId && (
-                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent)" }} />
+                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--brand)" }} />
                 )}
                 {renaming === p.id ? (
                   <input
@@ -160,7 +169,7 @@ export default function ProjectBar() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="flex-1 text-xs bg-transparent focus:outline-none px-1 rounded"
-                    style={{ color: "var(--text-primary)", border: "1px solid var(--accent)" }}
+                    style={{ color: "var(--text-primary)", border: "1px solid var(--bone-soft)" }}
                   />
                 ) : (
                   <span
@@ -198,7 +207,7 @@ export default function ProjectBar() {
                         deleteProject(p.id);
                       }}
                       className="p-1 rounded"
-                      style={{ color: "#EF9092" }}
+                      style={{ color: "var(--ember)" }}
                       title="Supprimer"
                     >
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -219,7 +228,7 @@ export default function ProjectBar() {
                 createProject();
               }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-all"
-              style={{ color: "var(--accent)" }}
+              style={{ color: "var(--bone-soft)" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >

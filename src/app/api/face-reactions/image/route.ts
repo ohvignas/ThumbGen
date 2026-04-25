@@ -1,39 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { getDb } from "@/lib/db";
 
-const FACES_DIR = path.join(process.cwd(), "data", "face-reactions");
-
-const MIME_TYPES: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-  gif: "image/gif",
-};
-
-// GET /api/face-reactions/image?f=filename.png — serve an uploaded face image
 export async function GET(request: NextRequest) {
-  const filename = request.nextUrl.searchParams.get("f");
-  if (!filename) {
-    return NextResponse.json({ error: "Missing filename" }, { status: 400 });
-  }
+  const f = request.nextUrl.searchParams.get("f");
+  if (!f) return NextResponse.json({ error: "Missing filename" }, { status: 400 });
 
-  // Prevent path traversal
-  const safeName = path.basename(filename);
-  const filePath = path.join(FACES_DIR, safeName);
+  const id = f.split(".")[0];
+  const row = getDb().prepare("SELECT mime_type, data FROM face_reactions WHERE id = ?").get(id) as
+    | { mime_type: string; data: Buffer }
+    | undefined;
+  if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (!fs.existsSync(filePath)) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  const ext = safeName.split(".").pop()?.toLowerCase() || "png";
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
-  const buffer = fs.readFileSync(filePath);
-
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(row.data), {
     headers: {
-      "Content-Type": contentType,
+      "Content-Type": row.mime_type,
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });

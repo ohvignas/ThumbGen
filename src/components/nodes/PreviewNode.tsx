@@ -42,7 +42,7 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
 
   return (
     <NodeShell
-      title={data.label || "Preview"}
+      title={data.label || "Aperçu"}
       onDelete={() => removeNode(id)}
       accentColor={data.axisColor}
       width={320}
@@ -50,15 +50,15 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
         isLoading ? (
           <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.2)" strokeWidth="3" />
-            <path d="M12 2a10 10 0 019.95 9" stroke="#BB68FF" strokeWidth="3" strokeLinecap="round" />
+            <path d="M12 2a10 10 0 019.95 9" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" />
           </svg>
         ) : isError ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EF9092" strokeWidth="2" strokeLinecap="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="12" r="10" />
             <path d="M15 9l-6 6M9 9l6 6" />
           </svg>
         ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
             <circle cx="12" cy="12" r="3" />
           </svg>
@@ -72,9 +72,9 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
         <div className="w-full h-48 rounded-xl flex flex-col items-center justify-center gap-3" style={{ background: "var(--surface)" }}>
           <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
-            <path d="M12 2a10 10 0 019.95 9" stroke="#BB68FF" strokeWidth="3" strokeLinecap="round" />
+            <path d="M12 2a10 10 0 019.95 9" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" />
           </svg>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Génération en cours...</span>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Génération en cours…</span>
           {data.genModel && (
             <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{data.genModel}</span>
           )}
@@ -84,11 +84,11 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
       {/* Error state */}
       {isError && (
         <div className="w-full px-4 py-6 rounded-xl flex flex-col items-center gap-2" style={{ background: "rgba(239, 144, 146, 0.08)", border: "1px solid rgba(239, 144, 146, 0.2)" }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF9092" strokeWidth="2" strokeLinecap="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="12" r="10" />
             <path d="M15 9l-6 6M9 9l6 6" />
           </svg>
-          <span className="text-xs font-medium" style={{ color: "#EF9092" }}>Erreur</span>
+          <span className="text-xs font-medium" style={{ color: "var(--ember)" }}>Erreur</span>
           {data.genError && (
             <p className="text-[10px] text-center" style={{ color: "var(--text-muted)" }}>{data.genError}</p>
           )}
@@ -99,7 +99,7 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
       {currentImage && !isLoading && (
         <>
           <div className="rounded-xl overflow-hidden">
-            <img src={currentImage} alt="Generated thumbnail" className="w-full" />
+            <img src={currentImage} alt="Miniature générée" className="w-full" />
           </div>
 
           {/* Stats bar */}
@@ -115,7 +115,7 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
               </span>
             ) : null}
             {data.genCost && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: "#f59e0b", background: "rgba(245, 158, 11, 0.1)" }}>
+              <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: "var(--bone-soft)", background: "rgba(255, 255, 255, 0.04)" }}>
                 {data.genCost}
               </span>
             )}
@@ -127,6 +127,7 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
                 style={{ color: "var(--accent)" }}
               >
                 {showDetails ? "Masquer" : "Prompt"}
+
               </button>
             )}
           </div>
@@ -176,7 +177,7 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
             onMouseEnter={(e) => (e.currentTarget.style.background = "var(--node-bg-hover)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface)")}
           >
-            Download
+            Télécharger
           </button>
         </>
       )}
@@ -184,7 +185,7 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
       {/* Empty state (no loading, no error, no image) */}
       {!currentImage && !isLoading && !isError && (
         <div className="w-full h-48 rounded-xl flex items-center justify-center" style={{ background: "var(--surface)" }}>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>No image yet</span>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Aucune image</span>
         </div>
       )}
 

@@ -226,10 +226,10 @@ export default function ZoomBar() {
             className="absolute bottom-full left-0 mb-2 rounded-xl overflow-hidden shadow-2xl min-w-[160px]"
             style={{ background: "var(--node-bg)", border: "1px solid var(--surface)" }}
           >
-            <ZoomMenuItem label="Zoom in" shortcut="Cmd +" onClick={() => { zoomIn(); setMenuOpen(false); }} />
-            <ZoomMenuItem label="Zoom out" shortcut="Cmd -" onClick={() => { zoomOut(); setMenuOpen(false); }} />
-            <ZoomMenuItem label="Zoom to 100%" shortcut="Cmd 0" onClick={() => { zoomTo(1); setMenuOpen(false); }} />
-            <ZoomMenuItem label="Zoom to fit" shortcut="Cmd 1" onClick={() => { fitView({ padding: 0.1 }); setMenuOpen(false); }} />
+            <ZoomMenuItem label="Zoom avant" shortcut="Cmd +" onClick={() => { zoomIn(); setMenuOpen(false); }} />
+            <ZoomMenuItem label="Zoom arrière" shortcut="Cmd -" onClick={() => { zoomOut(); setMenuOpen(false); }} />
+            <ZoomMenuItem label="Zoom 100%" shortcut="Cmd 0" onClick={() => { zoomTo(1); setMenuOpen(false); }} />
+            <ZoomMenuItem label="Adapter à l'écran" shortcut="Cmd 1" onClick={() => { fitView({ padding: 0.1 }); setMenuOpen(false); }} />
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
 import { saveGeneratedImage } from "@/lib/generated-images";
+import { logGeneration } from "@/lib/generations-log";
 
 const EDITS_ENDPOINT = "https://api.openai.com/v1/images/edits";
 const GENERATIONS_ENDPOINT = "https://api.openai.com/v1/images/generations";
@@ -38,6 +39,9 @@ function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; mimeType: string } 
 }
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+  let modelUsed = "gpt-image-2";
+  let promptForLog: string | null = null;
   try {
     const OPENAI_API_KEY = getSetting("openaiApiKey");
     if (!OPENAI_API_KEY) {
@@ -60,6 +64,8 @@ export async function POST(request: NextRequest) {
     } = body;
 
     const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : "gpt-image-2";
+    modelUsed = model;
+    promptForLog = prompt || null;
     const size = mapSize(aspectRatio, model);
     const allImages = [...faceImages, ...referenceImages];
     const hasLogo = logos.length > 0;
@@ -140,6 +146,12 @@ export async function POST(request: NextRequest) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("OpenAI API error:", errText);
+      logGeneration({
+        provider: "openai", model: modelUsed, endpoint: "generate",
+        timeMs: Date.now() - start, imageCount: 0,
+        prompt: promptForLog, status: "error",
+        errorMessage: `OpenAI API error: ${res.status}`,
+      });
       return NextResponse.json(
         { error: `OpenAI API error: ${res.status}` },
         { status: res.status }
@@ -148,19 +160,22 @@ export async function POST(request: NextRequest) {
 
     const result = await res.json();
     const images: string[] = [];
+    const imageIds: string[] = [];
 
     for (const item of result.data || []) {
       if (item.b64_json) {
         const dataUrl = `data:image/png;base64,${item.b64_json}`;
-        const { url } = saveGeneratedImage(dataUrl);
+        const { id, url } = saveGeneratedImage(dataUrl);
         images.push(url);
+        imageIds.push(id);
       } else if (item.url) {
         try {
           const imgRes = await fetch(item.url);
           const imgBuffer = await imgRes.arrayBuffer();
           const b64 = Buffer.from(imgBuffer).toString("base64");
-          const { url } = saveGeneratedImage(`data:image/png;base64,${b64}`);
+          const { id, url } = saveGeneratedImage(`data:image/png;base64,${b64}`);
           images.push(url);
+          imageIds.push(id);
         } catch {
           console.error("Failed to download OpenAI image");
         }
@@ -176,9 +191,21 @@ export async function POST(request: NextRequest) {
     };
 
     console.log(`[generate] model=${model} | images generated: ${images.length} | tokens: ${stats.totalTokens}`);
+    logGeneration({
+      provider: "openai", model, endpoint: "generate",
+      timeMs: Date.now() - start, imageCount: images.length,
+      inputTokens: stats.inputTokens, outputTokens: stats.outputTokens, totalTokens: stats.totalTokens,
+      prompt: promptForLog, generatedImageIds: imageIds,
+    });
     return NextResponse.json({ images, stats });
   } catch (err) {
     console.error("OpenAI generation error:", err);
+    logGeneration({
+      provider: "openai", model: modelUsed, endpoint: "generate",
+      timeMs: Date.now() - start, imageCount: 0,
+      prompt: promptForLog, status: "error",
+      errorMessage: err instanceof Error ? err.message : "Generation failed",
+    });
     return NextResponse.json({ error: "Generation failed" }, { status: 500 });
   }
 }

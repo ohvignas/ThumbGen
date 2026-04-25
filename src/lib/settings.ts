@@ -1,8 +1,4 @@
-import fs from "fs";
-import path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+import { getDb } from "./db";
 
 export type AppSettings = {
   geminiApiKey?: string;
@@ -14,41 +10,66 @@ export type AppSettings = {
   sitePassword?: string;
   language?: string;
   favoriteModel?: string;
+  currentProjectId?: string;
 };
 
-function ensureDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
+const KEYS: (keyof AppSettings)[] = [
+  "geminiApiKey",
+  "ideogramApiKey",
+  "openaiApiKey",
+  "grokApiKey",
+  "youtubeApiKey",
+  "youtubePlaylistId",
+  "sitePassword",
+  "language",
+  "favoriteModel",
+  "currentProjectId",
+];
+
+const ENV_MAP: Record<keyof AppSettings, string> = {
+  geminiApiKey: "GEMINI_API_KEY",
+  ideogramApiKey: "IDEOGRAM_API_KEY",
+  openaiApiKey: "OPENAI_API_KEY",
+  grokApiKey: "GROK_API_KEY",
+  youtubeApiKey: "YOUTUBE_API_KEY",
+  youtubePlaylistId: "YOUTUBE_PLAYLIST_ID",
+  sitePassword: "SITE_PASSWORD",
+  language: "LANGUAGE",
+  favoriteModel: "FAVORITE_MODEL",
+  currentProjectId: "CURRENT_PROJECT_ID",
+};
 
 export function getSettings(): AppSettings {
-  ensureDir();
-  if (!fs.existsSync(SETTINGS_FILE)) return {};
-  return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8")) as AppSettings;
+  const db = getDb();
+  const rows = db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string | null }[];
+  const out: AppSettings = {};
+  for (const row of rows) {
+    if ((KEYS as string[]).includes(row.key) && row.value != null) {
+      (out as Record<string, string>)[row.key] = row.value;
+    }
+  }
+  return out;
 }
 
 export function saveSettings(settings: AppSettings) {
-  ensureDir();
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
+  const db = getDb();
+  const upsert = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+  const transaction = db.transaction((s: AppSettings) => {
+    for (const k of KEYS) {
+      const v = s[k];
+      if (v !== undefined) upsert.run(k, v ?? null);
+    }
+  });
+  transaction(settings);
 }
 
-/**
- * Get a setting value, falling back to env var if not set in local settings.
- * Local settings take priority over env vars.
- */
 export function getSetting(key: keyof AppSettings): string {
-  const settings = getSettings();
-  const envMap: Record<keyof AppSettings, string> = {
-    geminiApiKey: "GEMINI_API_KEY",
-    ideogramApiKey: "IDEOGRAM_API_KEY",
-    openaiApiKey: "OPENAI_API_KEY",
-    grokApiKey: "GROK_API_KEY",
-    youtubeApiKey: "YOUTUBE_API_KEY",
-    youtubePlaylistId: "YOUTUBE_PLAYLIST_ID",
-    sitePassword: "SITE_PASSWORD",
-    language: "LANGUAGE",
-    favoriteModel: "FAVORITE_MODEL",
-  };
-  return settings[key] || process.env[envMap[key]] || "";
+  const db = getDb();
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string | null } | undefined;
+  return row?.value || process.env[ENV_MAP[key]] || "";
+}
+
+export function setSetting(key: keyof AppSettings, value: string) {
+  const db = getDb();
+  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
 }

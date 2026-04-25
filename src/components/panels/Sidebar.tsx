@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, DragEvent } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useReactFlow } from "@xyflow/react";
 import SettingsPanel from "./SettingsPanel";
+import SidebarRail, { RailIcon, RailIcons } from "./SidebarRail";
+import { PROVIDER_COLORS } from "@/lib/model-costs";
+
+/* eslint-disable @next/next/no-img-element */
 
 type SidebarTab = "models" | "faces" | "logos" | "swipe" | "settings" | null;
 
@@ -49,6 +54,9 @@ export default function Sidebar() {
   const swipeInputRef = useRef<HTMLInputElement>(null);
   const addNode = useCanvasStore((s) => s.addNode);
   const { screenToFlowPosition } = useReactFlow();
+  const pathname = usePathname();
+  const router = useRouter();
+  const onCanvas = pathname === "/";
 
   const loadFaces = () => {
     fetch("/api/face-reactions")
@@ -240,6 +248,11 @@ export default function Sidebar() {
   };
 
   const addAtCenter = (type: string, data?: Record<string, unknown>) => {
+    if (!onCanvas) {
+      // Off-canvas (e.g. /usage): take the user back to the workspace.
+      router.push("/");
+      return;
+    }
     const pos = screenToFlowPosition({
       x: window.innerWidth / 2,
       y: window.innerHeight / 2,
@@ -274,86 +287,27 @@ export default function Sidebar() {
   );
 
   return (
-    <div className="absolute top-0 left-0 bottom-0 z-10 flex">
-      {/* Icon bar */}
-      <div
-        className="flex flex-col items-center py-4 gap-1"
-        style={{
-          width: 56,
-          background: "var(--canvas-bg)",
-          borderRight: "1px solid rgba(255,255,255,0.06)",
-        }}
+    <div className="fixed top-0 left-0 bottom-0 z-10 flex">
+      {/* Icon rail */}
+      <SidebarRail
+        footer={
+          <>
+            <RailIcon href="/usage" title="Usage et coûts" active={!onCanvas}>{RailIcons.usage}</RailIcon>
+            <RailIcon
+              active={activeTab === "settings"}
+              onClick={() => toggleTab("settings")}
+              title="Réglages"
+            >
+              {RailIcons.settings}
+            </RailIcon>
+          </>
+        }
       >
-        {/* Logo */}
-        <div className="mb-4 p-2">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--accent)" strokeWidth="0">
-            <rect x="2" y="4" width="4" height="16" rx="1" />
-            <rect x="10" y="4" width="4" height="16" rx="1" />
-            <rect x="18" y="4" width="4" height="16" rx="1" />
-          </svg>
-        </div>
-
-        <SidebarIcon
-          active={activeTab === "faces"}
-          onClick={() => toggleTab("faces")}
-          title="Face Reactions"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8" r="5" />
-            <path d="M20 21a8 8 0 0 0-16 0" />
-          </svg>
-        </SidebarIcon>
-
-        <SidebarIcon
-          active={activeTab === "models"}
-          onClick={() => toggleTab("models")}
-          title="Image Models"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 15l5-5 4 4 4-6 5 7" />
-            <circle cx="15" cy="8" r="1.5" />
-          </svg>
-        </SidebarIcon>
-
-        <SidebarIcon
-          active={activeTab === "swipe"}
-          onClick={() => toggleTab("swipe")}
-          title="Swipe Files"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="2" width="8" height="8" rx="1" />
-            <rect x="14" y="2" width="8" height="8" rx="1" />
-            <rect x="2" y="14" width="8" height="8" rx="1" />
-            <rect x="14" y="14" width="8" height="8" rx="1" />
-          </svg>
-        </SidebarIcon>
-
-        <SidebarIcon
-          active={activeTab === "logos"}
-          onClick={() => toggleTab("logos")}
-          title="Logos"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
-            <line x1="7" y1="7" x2="7.01" y2="7" />
-            <circle cx="17" cy="17" r="3" />
-          </svg>
-        </SidebarIcon>
-
-        <div className="flex-1" />
-
-        <SidebarIcon
-          active={activeTab === "settings"}
-          onClick={() => toggleTab("settings")}
-          title="Settings"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </SidebarIcon>
-      </div>
+        <RailIcon active={activeTab === "faces"} onClick={() => toggleTab("faces")} title="Visages">{RailIcons.faces}</RailIcon>
+        <RailIcon active={activeTab === "models"} onClick={() => toggleTab("models")} title="Modèles d'image">{RailIcons.models}</RailIcon>
+        <RailIcon active={activeTab === "swipe"} onClick={() => toggleTab("swipe")} title="Inspirations">{RailIcons.swipe}</RailIcon>
+        <RailIcon active={activeTab === "logos"} onClick={() => toggleTab("logos")} title="Logos">{RailIcons.logos}</RailIcon>
+      </SidebarRail>
 
       {/* Expandable panel */}
       {activeTab && (
@@ -384,7 +338,7 @@ export default function Sidebar() {
               </svg>
               <input
                 type="text"
-                placeholder="Search"
+                placeholder="Rechercher"
                 className="w-full pl-9 pr-3 py-2 rounded-lg text-xs focus:outline-none"
                 style={{
                   background: "var(--surface)",
@@ -398,22 +352,22 @@ export default function Sidebar() {
               <>
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    Face Reactions
+                    Visages
                   </h3>
                   <button
                     onClick={() => faceInputRef.current?.click()}
                     disabled={faceUploading}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all"
                     style={{
-                      background: "var(--accent)",
-                      color: "#fff",
+                      background: "var(--bone)",
+                      color: "var(--canvas-bg)",
                       opacity: faceUploading ? 0.5 : 1,
                     }}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
-                    {faceUploading ? "Upload..." : "Ajouter"}
+                    {faceUploading ? "Import…" : "Ajouter"}
                   </button>
                   <input
                     ref={faceInputRef}
@@ -425,7 +379,7 @@ export default function Sidebar() {
                   />
                 </div>
                 <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-                  Click to add to canvas ({faceReactions.length})
+                  Clique pour ajouter au canvas ({faceReactions.length})
                 </p>
 
                 {faceReactions.length === 0 && (
@@ -439,7 +393,7 @@ export default function Sidebar() {
                       <path d="M20 21a8 8 0 0 0-16 0" />
                     </svg>
                     <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      Upload tes photos ici
+                      Importe tes photos ici
                     </p>
                   </div>
                 )}
@@ -490,7 +444,7 @@ export default function Sidebar() {
                         style={{ background: "rgba(0,0,0,0.7)" }}
                         title="Supprimer"
                       >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ff4444" strokeWidth="2.5" strokeLinecap="round">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="2.5" strokeLinecap="round">
                           <path d="M18 6L6 18M6 6l12 12" />
                         </svg>
                       </button>
@@ -509,22 +463,22 @@ export default function Sidebar() {
               <>
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    Swipe Files
+                    Inspirations
                   </h3>
                   <button
                     onClick={() => swipeInputRef.current?.click()}
                     disabled={swipeUploading}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all"
                     style={{
-                      background: "var(--accent)",
-                      color: "#fff",
+                      background: "var(--bone)",
+                      color: "var(--canvas-bg)",
                       opacity: swipeUploading ? 0.5 : 1,
                     }}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
-                    {swipeUploading ? "Upload..." : "Ajouter"}
+                    {swipeUploading ? "Import…" : "Ajouter"}
                   </button>
                   <input
                     ref={swipeInputRef}
@@ -536,7 +490,7 @@ export default function Sidebar() {
                   />
                 </div>
                 <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-                  Drag to canvas as reference
+                  Glisse-dépose sur le canvas comme référence
                 </p>
 
                 {/* Search */}
@@ -556,7 +510,7 @@ export default function Sidebar() {
                   </svg>
                   <input
                     type="text"
-                    placeholder="Search thumbnails..."
+                    placeholder="Rechercher des miniatures…"
                     value={swipeSearch}
                     onChange={(e) => setSwipeSearch(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 rounded-lg text-xs focus:outline-none"
@@ -574,7 +528,7 @@ export default function Sidebar() {
                     <div className="flex items-center gap-2 mb-2">
                       <span className="w-2 h-2 rounded-full" style={{ background: "var(--accent)" }} />
                       <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-                        Mes Références
+                        Mes références
                       </span>
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                         ({uploadedSwipes.length})
@@ -620,7 +574,7 @@ export default function Sidebar() {
                             style={{ background: "rgba(0,0,0,0.7)" }}
                             title="Supprimer"
                           >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ff4444" strokeWidth="2.5" strokeLinecap="round">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="2.5" strokeLinecap="round">
                               <path d="M18 6L6 18M6 6l12 12" />
                             </svg>
                           </button>
@@ -643,7 +597,7 @@ export default function Sidebar() {
                       <path d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#fff" />
                     </svg>
                     <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-                      YouTube Playlist
+                      Playlist YouTube
                     </span>
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                       ({filteredYoutube.length})
@@ -652,7 +606,7 @@ export default function Sidebar() {
 
                   {youtubeLoading && youtubeItems.length === 0 ? (
                     <p className="text-xs py-4 text-center" style={{ color: "var(--text-muted)" }}>
-                      Loading playlist...
+                      Chargement de la playlist…
                     </p>
                   ) : (
                     <div className="grid grid-cols-2 gap-1.5">
@@ -704,7 +658,7 @@ export default function Sidebar() {
                     <div className="flex items-center gap-2 mb-2">
                       <span className="w-2 h-2 rounded-full" style={{ background: "var(--accent)" }} />
                       <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-                        Saved Thumbnails
+                        Miniatures enregistrées
                       </span>
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                         ({filteredSwipe.length})
@@ -755,7 +709,7 @@ export default function Sidebar() {
 
                 {filteredSwipe.length === 0 && filteredYoutube.length === 0 && (
                   <p className="text-xs text-center py-4" style={{ color: "var(--text-muted)" }}>
-                    No thumbnails found
+                    Aucune miniature trouvée
                   </p>
                 )}
               </>
@@ -764,21 +718,21 @@ export default function Sidebar() {
             {activeTab === "models" && (
               <>
                 <h3 className="text-sm font-medium mb-1" style={{ color: "var(--text-primary)" }}>
-                  Générateurs
+                  Modèles d&apos;image
                 </h3>
                 <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-                  Glisse un modèle sur le canvas
+                  Glisse un modèle sur le canvas pour générer
                 </p>
                 <div className="space-y-1">
                   {[
-                    { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro", color: "var(--accent)" },
-                    { id: "gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash", color: "var(--accent)" },
-                    { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", color: "var(--accent)" },
-                    { id: "ideogram", label: "Ideogram v3", color: "#BB68FF" },
-                    { id: "gpt-image-2", label: "GPT Image 2 (4K)", color: "#10a37f" },
-                    { id: "gpt-image-1.5", label: "GPT Image 1.5", color: "#10a37f" },
-                    { id: "gpt-image-1", label: "GPT Image 1", color: "#10a37f" },
-                    { id: "grok-imagine-image", label: "Grok Imagine", color: "#fff" },
+                    { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro", color: PROVIDER_COLORS.gemini },
+                    { id: "gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash", color: PROVIDER_COLORS.gemini },
+                    { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", color: PROVIDER_COLORS.gemini },
+                    { id: "ideogram", label: "Ideogram v3", color: PROVIDER_COLORS.ideogram },
+                    { id: "gpt-image-2", label: "GPT Image 2 (4K)", color: PROVIDER_COLORS.openai },
+                    { id: "gpt-image-1.5", label: "GPT Image 1.5", color: PROVIDER_COLORS.openai },
+                    { id: "gpt-image-1", label: "GPT Image 1", color: PROVIDER_COLORS.openai },
+                    { id: "grok-imagine-image", label: "Grok Imagine", color: PROVIDER_COLORS.grok },
                   ].map((m) => (
                     <button
                       key={m.id}
@@ -811,15 +765,15 @@ export default function Sidebar() {
                     disabled={logoUploading}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all"
                     style={{
-                      background: "var(--accent)",
-                      color: "#fff",
+                      background: "var(--bone)",
+                      color: "var(--canvas-bg)",
                       opacity: logoUploading ? 0.5 : 1,
                     }}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
-                    {logoUploading ? "Upload..." : "Ajouter"}
+                    {logoUploading ? "Import…" : "Ajouter"}
                   </button>
                   <input
                     ref={logoInputRef}
@@ -831,7 +785,7 @@ export default function Sidebar() {
                   />
                 </div>
                 <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-                  Drag to canvas as reference ({logos.length})
+                  Glisse-dépose sur le canvas ({logos.length})
                 </p>
 
                 {logos.length === 0 && (
@@ -846,7 +800,7 @@ export default function Sidebar() {
                       <circle cx="17" cy="17" r="3" />
                     </svg>
                     <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      Upload tes logos ici
+                      Importe tes logos ici
                     </p>
                   </div>
                 )}
@@ -930,7 +884,7 @@ export default function Sidebar() {
                         style={{ background: "rgba(255,255,255,0.05)" }}
                         title="Supprimer"
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ff4444" strokeWidth="2.5" strokeLinecap="round">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="2.5" strokeLinecap="round">
                           <path d="M18 6L6 18M6 6l12 12" />
                         </svg>
                       </button>
@@ -947,32 +901,6 @@ export default function Sidebar() {
         </div>
       )}
     </div>
-  );
-}
-
-function SidebarIcon({
-  children,
-  active,
-  onClick,
-  title,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  title: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className="p-2.5 rounded-xl transition-all"
-      style={{
-        background: active ? "var(--surface)" : "transparent",
-        color: active ? "var(--text-primary)" : "var(--text-tertiary)",
-      }}
-    >
-      {children}
-    </button>
   );
 }
 

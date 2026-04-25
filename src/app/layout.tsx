@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans } from "next/font/google";
+import { DM_Sans, Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -8,9 +8,26 @@ const dmSans = DM_Sans({
   weight: ["400", "500", "600"],
 });
 
+const fraunces = Fraunces({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  style: ["normal", "italic"],
+});
+
+const mono = JetBrains_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
+});
+
 export const metadata: Metadata = {
-  title: "ThumbGen - YouTube Thumbnail Generator",
-  description: "AI-powered YouTube thumbnail generator with infinite canvas",
+  title: "ThumbGen · Illith Studio",
+  description: "AI-powered YouTube thumbnail studio with infinite canvas.",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -19,10 +36,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} h-full antialiased dark`}>
+    <html
+      lang="fr"
+      className={`${dmSans.variable} ${fraunces.variable} ${mono.variable} h-full antialiased dark`}
+      suppressHydrationWarning
+    >
       <body
-        className="min-h-full text-zinc-100"
-        style={{ background: "var(--canvas-bg)", fontFamily: "'DM Sans', system-ui, sans-serif" }}
+        className="min-h-full"
+        style={{
+          background: "var(--ink-1)",
+          color: "var(--bone)",
+          fontFamily: "'DM Sans', system-ui, sans-serif",
+        }}
+        suppressHydrationWarning
       >
         {children}
       </body>

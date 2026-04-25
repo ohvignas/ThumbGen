@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
 import { saveGeneratedImage } from "@/lib/generated-images";
+import { logGeneration } from "@/lib/generations-log";
 
 const DEFAULT_MODEL = "gemini-3-pro-image-preview";
 const ALLOWED_MODELS = [
@@ -28,6 +29,9 @@ function mapAspectRatio(ratio: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+  let modelUsed = "gemini-3-pro-image-preview";
+  let promptForLog: string | null = null;
   try {
     const GEMINI_API_KEY = getSetting("geminiApiKey");
     if (!GEMINI_API_KEY) {
@@ -47,6 +51,8 @@ export async function POST(request: NextRequest) {
     } = body;
 
     const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
+    modelUsed = model;
+    promptForLog = prompt || null;
     const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
     if (!prompt && faceImages.length === 0 && referenceImages.length === 0 && sketchImages.length === 0) {
@@ -154,6 +160,12 @@ export async function POST(request: NextRequest) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("Gemini API error:", errText);
+      logGeneration({
+        provider: "gemini", model: modelUsed, endpoint: "generate",
+        timeMs: Date.now() - start, imageCount: 0,
+        prompt: promptForLog, status: "error",
+        errorMessage: `Gemini API error: ${res.status}`,
+      });
       return NextResponse.json(
         { error: `Gemini API error: ${res.status}` },
         { status: res.status }
@@ -162,8 +174,8 @@ export async function POST(request: NextRequest) {
 
     const result = await res.json();
     const images: string[] = [];
+    const imageIds: string[] = [];
 
-    // Extract images from response and save to disk
     const candidates = result.candidates || [];
     for (const candidate of candidates) {
       const contentParts = candidate.content?.parts || [];
@@ -173,13 +185,13 @@ export async function POST(request: NextRequest) {
           const b64 = imgData.data;
           const mime = imgData.mimeType || imgData.mime_type || "image/png";
           const dataUrl = `data:${mime};base64,${b64}`;
-          const { url } = saveGeneratedImage(dataUrl);
+          const { id, url } = saveGeneratedImage(dataUrl);
           images.push(url);
+          imageIds.push(id);
         }
       }
     }
 
-    // Extract usage/token info from Gemini response
     const usage = result.usageMetadata || {};
     const stats = {
       inputTokens: usage.promptTokenCount || 0,
@@ -188,9 +200,22 @@ export async function POST(request: NextRequest) {
       model,
     };
 
+    logGeneration({
+      provider: "gemini", model, endpoint: "generate",
+      timeMs: Date.now() - start, imageCount: images.length,
+      inputTokens: stats.inputTokens, outputTokens: stats.outputTokens, totalTokens: stats.totalTokens,
+      prompt: promptForLog, generatedImageIds: imageIds,
+    });
+
     return NextResponse.json({ images, stats });
   } catch (err) {
     console.error("Nano Banana generation error:", err);
+    logGeneration({
+      provider: "gemini", model: modelUsed, endpoint: "generate",
+      timeMs: Date.now() - start, imageCount: 0,
+      prompt: promptForLog, status: "error",
+      errorMessage: err instanceof Error ? err.message : "Generation failed",
+    });
     return NextResponse.json({ error: "Generation failed" }, { status: 500 });
   }
 }

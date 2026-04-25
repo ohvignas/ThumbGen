@@ -190,7 +190,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
           <textarea
             value={data.prompt || ""}
             onChange={(e) => updateNodeData(id, { prompt: e.target.value })}
-            placeholder="Décris ta miniature : un gros plan de mon visage choqué avec le logo Claude..."
+            placeholder="Décris ta miniature : un gros plan de mon visage choqué avec le logo Claude…"
             className="w-full h-24 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none nopan nodrag"
             style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid transparent" }}
             onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
@@ -214,7 +214,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
                     <circle cx="12" cy="12" r="10" strokeDasharray="60" strokeDashoffset="20" />
                   </svg>
-                  Amélioration en cours...
+                  Amélioration en cours…
                 </>
               ) : (
                 <>
@@ -247,7 +247,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
             <textarea
               value={videoScript}
               onChange={(e) => setVideoScript(e.target.value)}
-              placeholder="Décris ta vidéo : sujet, titre, script, audience..."
+              placeholder="Décris ta vidéo : sujet, titre, script, audience…"
               className="flex-1 h-16 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none nopan nodrag"
               style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid transparent" }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
@@ -259,7 +259,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
               className="px-4 rounded-xl text-xs font-medium transition-all flex items-center gap-1 nopan nodrag flex-shrink-0"
               style={{
                 background: loading ? "var(--surface)" : "var(--accent)",
-                color: loading ? "var(--text-muted)" : "#000",
+                color: loading ? "var(--text-muted)" : "var(--canvas-bg)",
                 opacity: !videoScript ? 0.4 : 1,
               }}
             >
@@ -275,7 +275,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
             </button>
           </div>
 
-          {error && <p className="text-xs px-2" style={{ color: "#EF9092" }}>{error}</p>}
+          {error && <p className="text-xs px-2" style={{ color: "var(--ember)" }}>{error}</p>}
 
           {/* Selected axes summary */}
           {hasAxes && (
@@ -287,7 +287,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
                   </span>
                 ))}
               </div>
-              <button onClick={clearAxes} className="flex-shrink-0 p-1 rounded-full nopan nodrag" style={{ color: "#EF9092" }} title="Supprimer la sélection">
+              <button onClick={clearAxes} className="flex-shrink-0 p-1 rounded-full nopan nodrag" style={{ color: "var(--ember)" }} title="Supprimer la sélection">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
@@ -349,7 +349,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
                     <button
                       onClick={applySelectedAxes}
                       className="w-full py-2 rounded-xl text-xs font-medium transition-all nopan nodrag"
-                      style={{ background: "var(--accent)", color: "#000" }}
+                      style={{ background: "var(--accent)", color: "var(--canvas-bg)" }}
                     >
                       {checkedAxes.size <= 1 ? "Utiliser cet axe" : `Utiliser ${checkedAxes.size} axes`}
                     </button>

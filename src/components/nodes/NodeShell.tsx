@@ -59,17 +59,17 @@ export default function NodeShell({
 
   return (
     <div
-      className="node-card rounded-2xl border-2 transition-all"
+      className="node-card rounded-xl border transition-all"
       style={{
         width,
         background: "var(--node-bg)",
         fontFamily: "'DM Sans', system-ui, sans-serif",
-        borderColor: accentColor ? accentColor + "40" : "transparent",
+        borderColor: accentColor ? accentColor + "40" : "var(--line-faint)",
       }}
     >
       {/* Color stripe */}
       {accentColor && (
-        <div style={{ height: 3, background: accentColor, borderRadius: "14px 14px 0 0" }} />
+        <div style={{ height: 3, background: accentColor, borderRadius: "12px 12px 0 0" }} />
       )}
       {/* Header */}
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
@@ -89,7 +89,7 @@ export default function NodeShell({
               className="text-sm font-medium bg-transparent focus:outline-none nopan nodrag px-1 rounded"
               style={{
                 color: "var(--text-primary)",
-                border: "1px solid var(--accent)",
+                border: "1px solid var(--bone-soft)",
                 minWidth: 60,
               }}
             />
@@ -122,15 +122,15 @@ export default function NodeShell({
           </button>
           {menuOpen && (
             <div
-              className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden shadow-2xl min-w-[140px] py-1 z-50 nopan nodrag"
+              className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden min-w-[140px] py-1 z-50 nopan nodrag"
               style={{
                 background: "var(--node-bg)",
-                border: "1px solid var(--surface)",
+                border: "1px solid var(--line-strong)",
               }}
             >
               {onRename && (
                 <NodeMenuItem
-                  label="Rename"
+                  label="Renommer"
                   onClick={() => {
                     setRenameValue(title);
                     setRenaming(true);
@@ -140,7 +140,7 @@ export default function NodeShell({
               )}
               {onRemoveBg && (
                 <NodeMenuItem
-                  label={removingBg ? "Removing..." : "Remove BG"}
+                  label={removingBg ? "Suppression…" : "Retirer le fond"}
                   onClick={() => {
                     if (!removingBg) onRemoveBg();
                     setMenuOpen(false);
@@ -149,7 +149,7 @@ export default function NodeShell({
               )}
               {onDuplicate && (
                 <NodeMenuItem
-                  label="Duplicate"
+                  label="Dupliquer"
                   onClick={() => {
                     onDuplicate();
                     setMenuOpen(false);
@@ -158,7 +158,7 @@ export default function NodeShell({
               )}
               {onDelete && (
                 <NodeMenuItem
-                  label="Delete"
+                  label="Supprimer"
                   onClick={() => {
                     onDelete();
                     setMenuOpen(false);
@@ -190,7 +190,7 @@ function NodeMenuItem({
     <button
       onClick={onClick}
       className="w-full text-left px-3 py-2 text-xs transition-colors"
-      style={{ color: danger ? "#EF9092" : "var(--text-secondary)" }}
+      style={{ color: danger ? "var(--ember)" : "var(--text-secondary)" }}
       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >

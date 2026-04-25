@@ -1,31 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import { getGeneratedImagePath } from "@/lib/generated-images";
+import { getGeneratedImage } from "@/lib/generated-images";
 
-const MIME_TYPES: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-};
-
+// Backward-compat: support both ?id=<uuid> (new) and ?f=<filename> (legacy URLs in saved projects)
 export async function GET(request: NextRequest) {
-  const filename = request.nextUrl.searchParams.get("f");
-  if (!filename) {
-    return NextResponse.json({ error: "Missing filename" }, { status: 400 });
+  const id = request.nextUrl.searchParams.get("id");
+  const f = request.nextUrl.searchParams.get("f");
+
+  let imageId = id;
+  if (!imageId && f) {
+    // legacy: filename was "<uuid>.<ext>"
+    imageId = f.split(".")[0];
+  }
+  if (!imageId) {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  const filePath = getGeneratedImagePath(filename);
-  if (!filePath) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const img = getGeneratedImage(imageId);
+  if (!img) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const ext = filename.split(".").pop()?.toLowerCase() || "png";
-  const buffer = fs.readFileSync(filePath);
-
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(img.data), {
     headers: {
-      "Content-Type": MIME_TYPES[ext] || "image/png",
+      "Content-Type": img.mimeType,
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });

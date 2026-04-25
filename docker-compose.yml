@@ -5,7 +5,8 @@ services:
       args:
         GEMINI_API_KEY: ${GEMINI_API_KEY}
         IDEOGRAM_API_KEY: ${IDEOGRAM_API_KEY:-}
-        NOTION_API_KEY: ${NOTION_API_KEY:-}
+        OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+        GROK_API_KEY: ${GROK_API_KEY:-}
         YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
         SITE_PASSWORD: ${SITE_PASSWORD:-}
     container_name: thumbgen
@@ -17,6 +18,7 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - IDEOGRAM_API_KEY=${IDEOGRAM_API_KEY:-}
-      - NOTION_API_KEY=${NOTION_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GROK_API_KEY=${GROK_API_KEY:-}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}
       - SITE_PASSWORD=${SITE_PASSWORD:-}

@@ -64,9 +64,12 @@ function CanvasInner() {
     }).catch(() => {});
   }, []);
 
-  // Load project on mount
+  // Load last-opened project on mount (falls back to "default" when none was saved)
   useEffect(() => {
-    loadProject();
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => loadProject(s.currentProjectId || "default"))
+      .catch(() => loadProject());
   }, [loadProject]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -204,12 +207,12 @@ function CanvasInner() {
     </svg>
   );
   const faceIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F1A0FA" strokeWidth="1.5" strokeLinecap="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="1.5" strokeLinecap="round">
       <circle cx="12" cy="8" r="5" /><path d="M20 21a8 8 0 0 0-16 0" />
     </svg>
   );
   const imageIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF9092" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4 4-6 5 7" />
     </svg>
   );
@@ -217,12 +220,12 @@ function CanvasInner() {
   const contextMenuSections = contextMenu
     ? [
         {
-          title: "Inputs",
+          title: "Entrées",
           items: [
             { label: "Prompt", icon: promptIcon, onClick: () => addNode("prompt", contextMenu.flowPos) },
-            { label: "Sketch", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addNode("sketch", contextMenu.flowPos) },
-            { label: "Face Reference", icon: faceIcon, onClick: () => addNode("faceReference", contextMenu.flowPos) },
-            { label: "Image / Logo", icon: imageIcon, onClick: () => addNode("swipeFile", contextMenu.flowPos) },
+            { label: "Croquis", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addNode("sketch", contextMenu.flowPos) },
+            { label: "Visage de référence", icon: faceIcon, onClick: () => addNode("faceReference", contextMenu.flowPos) },
+            { label: "Image / logo", icon: imageIcon, onClick: () => addNode("swipeFile", contextMenu.flowPos) },
           ],
         },
         {
@@ -269,7 +272,7 @@ function CanvasInner() {
           variant={BackgroundVariant.Dots}
           gap={20}
           size={0.8}
-          color="#65616b"
+          color="var(--bone-faint)"
         />
 
         {/* Project selector + save indicator */}
@@ -278,7 +281,7 @@ function CanvasInner() {
             <ProjectBar />
             {saving && (
               <span className="text-xs px-2 py-1 rounded-lg" style={{ color: "var(--text-muted)", background: "var(--node-bg)" }}>
-                Saving...
+                Enregistrement…
               </span>
             )}
           </div>
@@ -305,12 +308,12 @@ function CanvasInner() {
           y={edgeDropMenu.y}
           sections={[
             {
-              title: "Inputs",
+              title: "Entrées",
               items: [
                 { label: "Prompt", icon: promptIcon, onClick: () => addConnectedNode("prompt") },
-                { label: "Sketch", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addConnectedNode("sketch") },
-                { label: "Face Reference", icon: faceIcon, onClick: () => addConnectedNode("faceReference") },
-                { label: "Image / Logo", icon: imageIcon, onClick: () => addConnectedNode("swipeFile") },
+                { label: "Croquis", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addConnectedNode("sketch") },
+                { label: "Visage de référence", icon: faceIcon, onClick: () => addConnectedNode("faceReference") },
+                { label: "Image / logo", icon: imageIcon, onClick: () => addConnectedNode("swipeFile") },
               ],
             },
             {
@@ -322,7 +325,7 @@ function CanvasInner() {
             {
               title: "",
               items: [
-                { label: "Preview", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BB68FF" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>, onClick: () => addConnectedNode("preview") },
+                { label: "Aperçu", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>, onClick: () => addConnectedNode("preview") },
               ],
             },
           ]}

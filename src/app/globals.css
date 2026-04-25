@@ -1,16 +1,38 @@
 @import "tailwindcss";
 
 :root {
-  --canvas-bg: #0E0E13;
-  --node-bg: #212126;
-  --node-bg-hover: #2a2a30;
-  --surface: #353539;
+  /* — Atelier Nocturne design system — */
+  /* Layered dark grounds, warm ivory text, magenta brand accent */
+  --ink-0: #08080C;
+  --ink-1: #0F0F14;
+  --ink-2: #15151B;
+  --ink-3: #1E1E25;
+
+  --line-faint: rgba(255, 255, 255, 0.06);
+  --line: rgba(255, 255, 255, 0.10);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  --bone: #F4F0E5;
+  --bone-soft: rgba(244, 240, 229, 0.78);
+  --bone-muted: rgba(244, 240, 229, 0.48);
+  --bone-faint: rgba(244, 240, 229, 0.28);
+
+  --brand: #E6007E;
+  --brand-tint: rgba(230, 0, 126, 0.14);
+
+  --ember: #FF6B5B;
+
+  /* — Workspace tokens (kept for the canvas — DO NOT change unless rebuilding canvas) — */
+  --canvas-bg: var(--ink-1);
+  --node-bg: var(--ink-2);
+  --node-bg-hover: var(--ink-3);
+  --surface: #2D2D36;
   --accent: #6EDDB3;
   --accent-yellow: #F7FFA8;
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.8);
-  --text-tertiary: rgba(255, 255, 255, 0.64);
-  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-primary: var(--bone);
+  --text-secondary: var(--bone-soft);
+  --text-tertiary: var(--bone-muted);
+  --text-muted: var(--bone-faint);
   --handle-size: 18px;
   --node-radius: 12px;
   --node-width: 320px;
@@ -52,7 +74,6 @@ body {
 
 .react-flow__handle:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 12px rgba(110, 221, 179, 0.4);
 }
 
 /* Handle labels */
@@ -98,12 +119,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--ink-3);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--surface);
 }
 
 /* Node selection highlight */

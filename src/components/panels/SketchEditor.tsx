@@ -36,7 +36,7 @@ function makeFrameElements(ratio: string) {
       y: -dims.h / 2,
       width: dims.w,
       height: dims.h,
-      strokeColor: "#60a5fa",
+      strokeColor: "var(--bone)",
       backgroundColor: "transparent",
       fillStyle: "solid" as const,
       strokeWidth: 2,
@@ -56,7 +56,7 @@ function makeFrameElements(ratio: string) {
       text: `Zone miniature ${dims.label}`,
       fontSize: 16,
       fontFamily: 1,
-      strokeColor: "#60a5fa",
+      strokeColor: "var(--bone)",
       opacity: 40,
       locked: true,
     },
@@ -68,7 +68,7 @@ function AssetPanel({ assets, onAddImage }: { assets: WorkflowAsset[]; onAddImag
     return (
       <div
         className="flex flex-col items-center justify-center h-full"
-        style={{ width: 180, background: "#16161e", borderLeft: "1px solid rgba(255,255,255,0.06)" }}
+        style={{ width: 180, background: "var(--ink-2)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}
       >
         <p className="text-[10px] text-center px-4" style={{ color: "rgba(255,255,255,0.3)" }}>
           Ajoute des nodes Face, Logo ou Image sur ton canvas pour les voir ici
@@ -80,7 +80,7 @@ function AssetPanel({ assets, onAddImage }: { assets: WorkflowAsset[]; onAddImag
   return (
     <div
       className="flex flex-col h-full"
-      style={{ width: 180, background: "#16161e", borderLeft: "1px solid rgba(255,255,255,0.06)" }}
+      style={{ width: 180, background: "var(--ink-2)", borderLeft: "1px solid rgba(255,255,255,0.06)" }}
     >
       <div className="px-3 pt-3 pb-2">
         <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -96,7 +96,7 @@ function AssetPanel({ assets, onAddImage }: { assets: WorkflowAsset[]; onAddImag
               onClick={() => onAddImage(item.url)}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all"
               style={{ border: "1px solid transparent", background: "rgba(255,255,255,0.03)" }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#60a5fa"; }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--bone)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = "transparent"; }}
               title={`Ajouter "${item.label}"`}
             >
@@ -107,7 +107,7 @@ function AssetPanel({ assets, onAddImage }: { assets: WorkflowAsset[]; onAddImag
                 loading="lazy"
               />
               <div className="min-w-0 text-left">
-                <p className="text-[10px] font-medium truncate" style={{ color: "#fff" }}>
+                <p className="text-[10px] font-medium truncate" style={{ color: "var(--bone)" }}>
                   {item.label}
                 </p>
                 <p className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>
@@ -291,18 +291,18 @@ export default function SketchEditor() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col" style={{ background: "#1e1e2e" }}>
+    <div className="fixed inset-0 z-[9999] flex flex-col" style={{ background: "var(--ink-3)" }}>
       {/* Top bar */}
       <div
         className="flex items-center justify-between px-4 py-2 flex-shrink-0"
-        style={{ background: "#16161e", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+        style={{ background: "var(--ink-2)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
       >
         <div className="flex items-center gap-3">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round">
             <path d="M12 19l7-7 3 3-7 7-3-3z" />
             <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
           </svg>
-          <span className="text-sm font-medium" style={{ color: "#fff" }}>Sketch Editor</span>
+          <span className="text-sm font-medium" style={{ color: "var(--bone)" }}>Éditeur de croquis</span>
           <div className="flex gap-1 ml-4">
             {Object.entries(RATIOS).map(([k, val]) => (
               <button
@@ -310,8 +310,8 @@ export default function SketchEditor() {
                 onClick={() => changeRatio(k)}
                 className="px-2 py-0.5 rounded text-[11px] transition-all"
                 style={{
-                  background: ratio === k ? "#60a5fa" : "rgba(255,255,255,0.06)",
-                  color: ratio === k ? "#000" : "rgba(255,255,255,0.5)",
+                  background: ratio === k ? "var(--bone)" : "rgba(255,255,255,0.06)",
+                  color: ratio === k ? "var(--canvas-bg)" : "var(--bone-muted)",
                 }}
               >
                 {val.label}
@@ -326,7 +326,7 @@ export default function SketchEditor() {
           <button onClick={handleCancel} className="px-3 py-1.5 rounded-lg text-xs" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
             Annuler
           </button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-1.5 rounded-lg text-xs font-medium" style={{ background: saving ? "rgba(255,255,255,0.1)" : "#60a5fa", color: saving ? "rgba(255,255,255,0.5)" : "#000" }}>
+          <button onClick={handleSave} disabled={saving} className="px-4 py-1.5 rounded-lg text-xs font-medium" style={{ background: saving ? "rgba(255,255,255,0.1)" : "var(--bone)", color: saving ? "var(--bone-faint)" : "var(--canvas-bg)" }}>
             {saving ? "Export..." : "Sauvegarder"}
           </button>
         </div>

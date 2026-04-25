@@ -15,7 +15,6 @@ export type NodeData = {
   label?: string;
   imageUrl?: string;
   imageBase64?: string;
-  imageR2Key?: string;
   prompt?: string;
   negativePrompt?: string;
   model?: string;
@@ -26,7 +25,6 @@ export type NodeData = {
   renderingSpeed?: string;
   isGenerating?: boolean;
   generatedImages?: string[];
-  generatedImageKeys?: string[];
   selectedImageIndex?: number;
   maskDataUrl?: string;
   numImages?: number; // Number of images to generate per model

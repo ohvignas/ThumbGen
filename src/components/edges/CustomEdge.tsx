@@ -23,7 +23,7 @@ export default function CustomEdge({
   });
 
   const { setEdges } = useReactFlow();
-  const color = selected ? "#ff6b6b" : "#6EDDB3";
+  const color = selected ? "var(--ember)" : "var(--accent)";
 
   const handleDelete = () => {
     setEdges((edges) => edges.filter((e) => e.id !== id));
@@ -62,15 +62,15 @@ export default function CustomEdge({
               width: 24,
               height: 24,
               borderRadius: "50%",
-              background: "#ff4444",
-              border: "2px solid #1e1e2e",
+              background: "var(--ember)",
+              border: "2px solid var(--ink-1)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
             }}
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--bone)" strokeWidth="1.5" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
 import { saveGeneratedImage } from "@/lib/generated-images";
+import { logGeneration } from "@/lib/generations-log";
 const ENDPOINT = "https://api.ideogram.ai/v1/ideogram-v3/generate";
 
 function dataUrlToBlob(dataUrl: string): { blob: Blob; ext: string } {
@@ -20,6 +21,8 @@ function normalizeAspectRatio(ratio: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+  let promptForLog: string | null = null;
   try {
     const IDEOGRAM_API_KEY = getSetting("ideogramApiKey");
     if (!IDEOGRAM_API_KEY) {
@@ -39,6 +42,7 @@ export async function POST(request: NextRequest) {
 
     // Ideogram requires a prompt string, so provide a default when images are connected
     const effectivePrompt = prompt || "Recreate this YouTube thumbnail with the referenced person and style";
+    promptForLog = prompt || null;
 
     const formData = new FormData();
     formData.append("prompt", effectivePrompt);
@@ -70,6 +74,12 @@ export async function POST(request: NextRequest) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("Ideogram API error:", errText);
+      logGeneration({
+        provider: "ideogram", model: "ideogram", endpoint: "generate",
+        timeMs: Date.now() - start, imageCount: 0,
+        prompt: promptForLog, status: "error",
+        errorMessage: `Ideogram API error: ${res.status}`,
+      });
       return NextResponse.json(
         { error: `Ideogram API error: ${res.status}` },
         { status: res.status }
@@ -78,8 +88,8 @@ export async function POST(request: NextRequest) {
 
     const result = await res.json();
     const images: string[] = [];
+    const imageIds: string[] = [];
 
-    // Download images and save to disk
     for (const item of result.data || []) {
       if (item.url) {
         try {
@@ -87,17 +97,29 @@ export async function POST(request: NextRequest) {
           const imgBuffer = await imgRes.arrayBuffer();
           const b64 = Buffer.from(imgBuffer).toString("base64");
           const dataUrl = `data:image/png;base64,${b64}`;
-          const { url } = saveGeneratedImage(dataUrl);
+          const { id, url } = saveGeneratedImage(dataUrl);
           images.push(url);
+          imageIds.push(id);
         } catch {
           console.error("Failed to download generated image");
         }
       }
     }
 
+    logGeneration({
+      provider: "ideogram", model: "ideogram", endpoint: "generate",
+      timeMs: Date.now() - start, imageCount: images.length,
+      prompt: promptForLog, generatedImageIds: imageIds,
+    });
     return NextResponse.json({ images });
   } catch (err) {
     console.error("Ideogram generation error:", err);
+    logGeneration({
+      provider: "ideogram", model: "ideogram", endpoint: "generate",
+      timeMs: Date.now() - start, imageCount: 0,
+      prompt: promptForLog, status: "error",
+      errorMessage: err instanceof Error ? err.message : "Generation failed",
+    });
     return NextResponse.json({ error: "Generation failed" }, { status: 500 });
   }
 }
