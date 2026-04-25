@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getSetting } from "@/lib/settings";
-import { parseChannelInput } from "@/lib/youtube/channel";
+import { resolveChannelId } from "@/lib/youtube/channel";
 import { ToolDefinition } from "./types";
 import { registerTool } from "./index";
 
@@ -13,7 +13,7 @@ const InputSchema = z.object({
 export const getChannelVideosTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "get_channel_videos",
   description:
-    "Lists videos of a YouTube channel sorted by date (default) or view count. Useful to see what's working for the channel — top-performing thumbnails are inspiration material.",
+    "Lists videos of a YouTube channel sorted by date (default) or view count. Useful to see what's working for the channel — top-performing thumbnails are inspiration material. QUOTA: 100 units per call.",
   inputSchema: InputSchema,
   handler: async ({ channel, limit, sort }) => {
     const apiKey = getSetting("youtubeApiKey");
@@ -24,32 +24,11 @@ export const getChannelVideosTool: ToolDefinition<z.infer<typeof InputSchema>> =
       };
     }
 
-    const parsed = parseChannelInput(channel);
-    let channelId: string | null = null;
-    if (!parsed) {
-      channelId = channel;
-    } else if (parsed.type === "channelId") {
-      channelId = parsed.value;
-    } else {
-      const params = new URLSearchParams({
-        part: "id",
-        forHandle: parsed.value.replace("@", ""),
-        key: apiKey,
-      });
-      const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?${params}`);
-      if (!res.ok)
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Channel lookup failed: ${res.status}` }],
-        };
-      const data = await res.json();
-      channelId = data.items?.[0]?.id ?? null;
+    const resolved = await resolveChannelId(apiKey, channel);
+    if (!resolved.ok) {
+      return { isError: true, content: [{ type: "text", text: resolved.error }] };
     }
-    if (!channelId)
-      return {
-        isError: true,
-        content: [{ type: "text", text: `Channel not found: ${channel}` }],
-      };
+    const channelId = resolved.id;
 
     const params = new URLSearchParams({
       part: "snippet",

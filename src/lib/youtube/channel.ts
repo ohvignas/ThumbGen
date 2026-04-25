@@ -57,6 +57,50 @@ export function parseChannelInput(
   return null;
 }
 
+/**
+ * Resolves a user-provided channel string (handle, URL, or raw channel ID)
+ * to a YouTube channel ID. Returns `{ ok: false, error }` when:
+ *  - the string can't be parsed AND doesn't look like a UC… channel ID
+ *  - the YouTube API call fails
+ *  - the handle doesn't resolve to any channel
+ */
+export async function resolveChannelId(
+  apiKey: string,
+  channel: string
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const parsed = parseChannelInput(channel);
+
+  // Unparseable: only accept it as-is if it looks like a raw channel ID
+  if (!parsed) {
+    if (/^UC[\w-]{20,}$/.test(channel.trim())) {
+      return { ok: true, id: channel.trim() };
+    }
+    return { ok: false, error: `Cannot parse channel: ${channel}` };
+  }
+
+  if (parsed.type === "channelId") {
+    return { ok: true, id: parsed.value };
+  }
+
+  // Handle → channel ID via YouTube Data API
+  const params = new URLSearchParams({
+    part: "id",
+    forHandle: parsed.value.replace("@", ""),
+    key: apiKey,
+  });
+  let res: Response;
+  try {
+    res = await fetch(`https://www.googleapis.com/youtube/v3/channels?${params}`);
+  } catch (e) {
+    return { ok: false, error: `Network error: ${(e as Error).message}` };
+  }
+  if (!res.ok) return { ok: false, error: `Channel lookup failed: ${res.status}` };
+  const data = await res.json();
+  const id = data.items?.[0]?.id;
+  if (!id) return { ok: false, error: `No channel found for handle ${parsed.value}` };
+  return { ok: true, id };
+}
+
 export async function resolveUploadsPlaylistId(
   apiKey: string,
   input: string
