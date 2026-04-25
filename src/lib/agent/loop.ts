@@ -143,6 +143,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
   let totalInput = 0;
   let totalOutput = 0;
   let assistantBlocks: ContentBlock[] = [];
+  // Sidecar map: tool_use id → { images, summary } extracted from tool_result.
+  // Merged onto the persisted blocks at save time without mutating the in-memory
+  // history (Anthropic 400s if it sees unknown fields on tool_use blocks).
+  const toolMetaById = new Map<string, { images: string[]; summary: string }>();
 
   while (iter++ < MAX_ITER) {
     if (abort.aborted) break;
@@ -244,18 +248,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
             const summary = summarizeToolResult(r as { content: unknown });
             const images = extractImageUrls(r as { content: unknown });
             send("tool_result", { id: tu.id, name: tu.name, summary, images });
-            // Persist images + summary directly on the tool_use block in our
-            // accumulated assistantBlocks so the chat UI can re-display them
-            // after the live message is replaced by the DB refetch. These
-            // custom underscore-prefixed fields are stripped before being
-            // sent to Anthropic (see history-build step).
-            const matchingTU = assistantBlocks.find(
-              (b) => (b as { type?: string; id?: string }).type === "tool_use" && (b as { id?: string }).id === tu.id,
-            ) as Record<string, unknown> | undefined;
-            if (matchingTU) {
-              matchingTU._images = images;
-              matchingTU._summary = summary;
-            }
+            // Stash images+summary in the sidecar map; we'll merge them onto
+            // the persisted tool_use block at save time. Don't mutate the
+            // in-memory tool_use block — Anthropic rejects unknown fields.
+            toolMetaById.set(tu.id, { images, summary });
             toolResults.push({
               type: "tool_result",
               tool_use_id: tu.id,
@@ -297,10 +293,23 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     (totalInput * PRICE_INPUT_PER_M) / 1_000_000 +
     (totalOutput * PRICE_OUTPUT_PER_M) / 1_000_000;
 
+  // Merge sidecar tool metadata onto the tool_use blocks we persist (so the
+  // chat UI can re-render galleries on refetch). The merged shape is only ever
+  // read by our display layer — it never goes back to Anthropic because the
+  // history-build step strips tool_use blocks entirely.
+  const persistedBlocks = assistantBlocks.map((b) => {
+    const block = b as { type?: string; id?: string };
+    if (block.type === "tool_use" && block.id && toolMetaById.has(block.id)) {
+      const meta = toolMetaById.get(block.id)!;
+      return { ...b, _images: meta.images, _summary: meta.summary };
+    }
+    return b;
+  });
+
   appendMessage({
     conversation_id,
     role: "assistant",
-    content_json: JSON.stringify(assistantBlocks),
+    content_json: JSON.stringify(persistedBlocks),
     interrupted: abort.aborted ? 1 : 0,
     total_input_tokens: totalInput,
     total_output_tokens: totalOutput,
