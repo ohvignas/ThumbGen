@@ -38,20 +38,30 @@ Rules:
  * Note: trigger_generation is referenced in the prompt but is NOT yet a registered
  * tool. When implemented (later milestone), the prompt remains accurate.
  */
-export function buildSystemMessages(canvasSnapshot: unknown): Array<{
+export function buildSystemMessages(
+  canvasSnapshot: unknown,
+  projectId?: string,
+): Array<{
   type: "text";
   text: string;
   cache_control?: { type: "ephemeral" };
 }> {
-  return [
+  const blocks: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
     {
       type: "text",
       text: AGENT_SYSTEM_PROMPT,
       cache_control: { type: "ephemeral" },
     },
-    {
-      type: "text",
-      text: `<canvas_state>\n${JSON.stringify(canvasSnapshot, null, 2)}\n</canvas_state>`,
-    },
   ];
+  if (projectId) {
+    blocks.push({
+      type: "text",
+      text: `<project_id>${projectId}</project_id>\n\nThe project_id above identifies the current canvas. Pass it as the \`project_id\` argument to any tool that takes one (apply_workflow, get_canvas_state, list_past_generations, trigger_generation, etc.).`,
+    });
+  }
+  blocks.push({
+    type: "text",
+    text: `<canvas_state>\n${JSON.stringify(canvasSnapshot, null, 2)}\n</canvas_state>`,
+  });
+  return blocks;
 }

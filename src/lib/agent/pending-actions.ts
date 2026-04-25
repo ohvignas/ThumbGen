@@ -42,6 +42,15 @@ export function resolvePending(toolUseId: string, result: unknown): boolean {
   return true;
 }
 
+/**
+ * Removes a single pending entry without resolving it. Use this when the
+ * waiter has been abandoned (e.g. agent loop aborted while UI tool was
+ * pending) to prevent a memory leak.
+ */
+export function abandonPending(toolUseId: string): void {
+  pending.delete(toolUseId);
+}
+
 /** For testing only. */
 export function _clearPending(): void {
   pending.clear();

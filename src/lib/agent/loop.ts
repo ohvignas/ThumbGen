@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getInMemoryMcpClient } from "@/lib/agent/mcp/in-memory-client";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
 import { appendMessage, listMessages } from "@/lib/agent/conversation/store";
-import { registerPending } from "@/lib/agent/pending-actions";
+import { registerPending, abandonPending } from "@/lib/agent/pending-actions";
 import { BROWSER_TOOL_DEFS, BROWSER_TOOL_NAMES } from "@/lib/agent/browser-tools";
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
 import { getSetting } from "@/lib/settings";
@@ -36,7 +36,7 @@ type ContentBlock =
   | { type: "tool_result"; tool_use_id: string; content: unknown };
 
 export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
-  const { conversation_id, project_id: _project_id, message, canvas_snapshot, abort, send } = opts;
+  const { conversation_id, project_id, message, canvas_snapshot, abort, send } = opts;
 
   // 1. Build user content blocks (text + resolved image attachments)
   const userBlocks: ContentBlock[] = [{ type: "text", text: message.text || "" }];
@@ -112,7 +112,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
   }
 
   const anthropic = new Anthropic({ apiKey });
-  const systemBlocks = buildSystemMessages(canvas_snapshot);
+  const systemBlocks = buildSystemMessages(canvas_snapshot, project_id);
 
   // 6. Loop
   let iter = 0;
@@ -165,22 +165,42 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
         });
 
         if (BROWSER_TOOL_NAMES.has(tu.name)) {
-          // UI tool — emit request, await browser response
+          // UI tool — emit request, await browser response (or abort)
           send("ui_tool_request", { id: tu.id, name: tu.name, input: tu.input });
-          const result = await Promise.race([
-            registerPending(tu.id),
-            new Promise<{ aborted: true }>((resolve) => {
-              abort.addEventListener("abort", () => resolve({ aborted: true }), { once: true });
-            }),
-          ]);
+          let result: unknown;
+          let wasAborted = false;
+          try {
+            result = await Promise.race([
+              registerPending(tu.id),
+              new Promise<{ aborted: true }>((resolve) => {
+                abort.addEventListener(
+                  "abort",
+                  () => {
+                    wasAborted = true;
+                    resolve({ aborted: true });
+                  },
+                  { once: true },
+                );
+              }),
+            ]);
+          } finally {
+            // If we aborted before the browser responded, drop the pending entry
+            // (otherwise it would leak — the browser POST would still resolve it
+            // into nothing, which is harmless, but the Map entry stays).
+            if (wasAborted) abandonPending(tu.id);
+          }
           send("ui_tool_response_ack", { id: tu.id });
           toolResults.push({
             type: "tool_result",
             tool_use_id: tu.id,
+            // UI tool results are small objects ({source_ids: [...]} | {skipped: true})
+            // — JSON-stringify is fine.
             content: JSON.stringify(result),
           });
         } else {
-          // MCP tool
+          // MCP tool — pass content blocks through directly so image-returning
+          // tools (generate_sketch, remix_image, edit_image) make their images
+          // visible to Claude on the next turn instead of degrading to JSON text.
           try {
             const r = await mcp.callTool({
               name: tu.name,
@@ -191,7 +211,9 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
             toolResults.push({
               type: "tool_result",
               tool_use_id: tu.id,
-              content: JSON.stringify(r.content),
+              // Anthropic accepts content as ContentBlock[] directly — preserves
+              // text + image blocks correctly.
+              content: r.content as never,
             });
           } catch (e) {
             const errText = (e as Error).message;
