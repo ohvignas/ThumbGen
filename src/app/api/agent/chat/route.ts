@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
+import { runAgentLoop } from "@/lib/agent/loop";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type SseEvent = string;
-
-function sseFormat(event: string, data: unknown): SseEvent {
+function sseFormat(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
@@ -14,7 +13,7 @@ export async function POST(req: NextRequest) {
     | {
         conversation_id?: string;
         project_id?: string;
-        message?: { text?: string; attachments?: unknown[] };
+        message?: { text?: string; attachments?: Array<{ type: "image"; source: string }> };
         canvas_snapshot?: unknown;
       }
     | null;
@@ -24,8 +23,6 @@ export async function POST(req: NextRequest) {
   }
 
   const ac = new AbortController();
-  // If the client closes the connection (e.g. user clicks Stop),
-  // forward to the agent loop via the AbortController.
   if (req.signal) {
     req.signal.addEventListener("abort", () => ac.abort());
   }
@@ -34,14 +31,25 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const enc = new TextEncoder();
       const send = (event: string, data: unknown) => {
-        controller.enqueue(enc.encode(sseFormat(event, data)));
+        try {
+          controller.enqueue(enc.encode(sseFormat(event, data)));
+        } catch {
+          // controller might be closed if aborted — ignore
+        }
       };
 
       try {
-        // The actual agent loop is wired up in Task 21. For now, this skeleton
-        // just validates the SSE pipe end-to-end with a "ready" event.
-        send("text_delta", { content: "[skeleton: agent loop not yet wired]" });
-        send("done", { ok: true });
+        await runAgentLoop({
+          conversation_id: body.conversation_id!,
+          project_id: body.project_id!,
+          message: {
+            text: body.message?.text ?? "",
+            attachments: body.message?.attachments,
+          },
+          canvas_snapshot: body.canvas_snapshot,
+          abort: ac.signal,
+          send,
+        });
       } catch (e) {
         send("error", { message: (e as Error).message });
       } finally {

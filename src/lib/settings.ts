@@ -13,6 +13,7 @@ export type AppSettings = {
   favoriteModel?: string;
   currentProjectId?: string;
   mcpApiKey?: string;
+  anthropicApiKey?: string;
 };
 
 const KEYS: (keyof AppSettings)[] = [
@@ -27,6 +28,7 @@ const KEYS: (keyof AppSettings)[] = [
   "favoriteModel",
   "currentProjectId",
   "mcpApiKey",
+  "anthropicApiKey",
 ];
 
 const ENV_MAP: Record<keyof AppSettings, string> = {
@@ -41,6 +43,7 @@ const ENV_MAP: Record<keyof AppSettings, string> = {
   favoriteModel: "FAVORITE_MODEL",
   currentProjectId: "CURRENT_PROJECT_ID",
   mcpApiKey: "MCP_API_KEY",
+  anthropicApiKey: "ANTHROPIC_API_KEY",
 };
 
 export function getSettings(): AppSettings {
