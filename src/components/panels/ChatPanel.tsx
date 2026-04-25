@@ -6,7 +6,9 @@ import { useCanvasStore } from "@/store/canvas-store";
 import ConversationList from "./chat/ConversationList";
 import MessageList from "./chat/MessageList";
 import Composer from "./chat/Composer";
+import PendingUiAction, { UiToolRequest } from "./chat/PendingUiAction";
 import type { DisplayMessage, MessageBlock } from "./chat/Message";
+import type { ChatEvent } from "@/hooks/useChat";
 
 /**
  * Right-side chat panel. Slide-in 420px wide. Mounted from Canvas.
@@ -29,7 +31,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
 
-  const { send, stop, streaming, events, reset } = useChat();
+  const { send, stop, streaming, events, reset, respondToUiTool } = useChat();
 
   const [history, setHistory] = useState<DisplayMessage[]>([]);
 
@@ -97,6 +99,21 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   }, [events]);
 
   const messages = liveMessage ? [...history, liveMessage] : history;
+
+  const pendingUiRequest = useMemo<UiToolRequest | null>(() => {
+    const requests = events.filter((e) => e.type === "ui_tool_request");
+    if (requests.length === 0) return null;
+    const last = requests[requests.length - 1] as Extract<ChatEvent, { type: "ui_tool_request" }>;
+    const acked = events.some(
+      (e) => e.type === "ui_tool_response_ack" && (e as { id: string }).id === last.id,
+    );
+    if (acked) return null;
+    return {
+      id: last.id,
+      name: last.name as "request_user_image" | "request_user_sketch",
+      input: last.input as { reason?: string; suggested_kind?: string; initial_image_id?: string },
+    };
+  }, [events]);
 
   const onSend = useCallback(async () => {
     if (!activeConversationId) {
@@ -168,6 +185,13 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       <ConversationList projectId={projectId} />
 
       <MessageList messages={messages} />
+
+      {pendingUiRequest && (
+        <PendingUiAction
+          request={pendingUiRequest}
+          onResolve={(id, result) => respondToUiTool(id, result)}
+        />
+      )}
 
       <Composer onSend={onSend} streaming={streaming} onStop={stop} />
 
