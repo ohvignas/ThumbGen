@@ -114,17 +114,22 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
   // Tools list — attach cache_control to the LAST tool to mark a cache breakpoint.
   // Anthropic prompt caching: every block up to and including the marked block is
   // cached. After the first request, subsequent turns hit the cache for the
-  // entire tools array (~3-4K tokens) at ~10% of the input price. Saves real
-  // money on multi-turn brainstorms.
+  // entire tools array (~3-4K tokens) at ~10% of the input price.
+  //
+  // IMPORTANT: cache_control is documented on CUSTOM tools (the example in
+  // the official docs uses a get_time custom tool). Server tools like
+  // web_search_20250305 have a different shape and the doc doesn't confirm
+  // they accept cache_control. To be safe, server tools come FIRST and the
+  // breakpoint goes on the last CUSTOM tool — the breakpoint still caches
+  // the entire prefix (server + mcp + browser tools).
+  const lastBrowserIdx = browserToolSpecs.length - 1;
+  const browserToolSpecsWithCache = browserToolSpecs.map((spec, i) =>
+    i === lastBrowserIdx ? { ...spec, cache_control: { type: "ephemeral" as const } } : spec,
+  );
   const tools = [
+    { type: "web_search_20250305", name: "web_search", max_uses: 5 },
     ...mcpToolSpecs,
-    ...browserToolSpecs,
-    {
-      type: "web_search_20250305",
-      name: "web_search",
-      max_uses: 5,
-      cache_control: { type: "ephemeral" as const },
-    },
+    ...browserToolSpecsWithCache,
   ];
 
   // 5. Resolve API key
