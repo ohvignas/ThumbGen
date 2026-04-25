@@ -6,6 +6,11 @@ import { registerPending, abandonPending } from "@/lib/agent/pending-actions";
 import { BROWSER_TOOL_DEFS, BROWSER_TOOL_NAMES } from "@/lib/agent/browser-tools";
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
 import { getSetting } from "@/lib/settings";
+import { startGcLoop } from "./gc";
+
+if (typeof window === "undefined") {
+  startGcLoop();
+}
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_ITER = 25;
