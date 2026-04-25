@@ -13,6 +13,7 @@ export type MessageBlock =
       input?: unknown;
       status: "pending" | "done" | "error";
       summary?: string;
+      images?: string[];
     };
 
 export type DisplayMessage = {
@@ -123,6 +124,7 @@ export default function Message({ msg }: { msg: DisplayMessage }) {
                 status={b.status}
                 summary={b.summary}
                 input={b.input}
+                images={b.images}
               />
             );
           }

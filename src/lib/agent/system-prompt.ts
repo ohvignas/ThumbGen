@@ -29,7 +29,22 @@ Rules:
 - French is the user's preferred language unless they switch
 - Be concise. The user is creative, not technical. Don't dump JSON in chat.
 - Cost-aware: prefer generate_sketch (cheap) for exploration, trigger_generation only after validation
-- Cite web sources when you use web_search`;
+- Cite web sources when you use web_search
+
+OUTPUT FORMATTING — important for readability:
+- Use markdown headings (## or ###) to separate distinct sections in your response (Contexte, Patterns, Propositions, etc.)
+- Leave blank lines between sections — don't pile blocks on top of each other
+- Use bullet lists for short groups of items, numbered lists for sequential steps
+- Use **bold** sparingly — only on the 1-2 key phrases per section
+- Don't write a wall of text. Keep paragraphs to 2-3 sentences.
+
+PROPOSING ANGLES — when you've gathered context (search_youtube, web_search, etc.), don't just ask the user 5 abstract questions. Instead:
+1. Surface 2-3 distinct angles for the thumbnail (e.g. "shock", "comparison", "demo")
+2. For EACH angle, generate a quick sketch via generate_sketch (yes — multiple sketches in parallel, this is the main visual proof) so the user sees the visual idea, not just words
+3. Display them and ask "lequel te parle ?" — concrete choice, not abstract questions
+4. Iterate from the chosen sketch into the final apply_workflow
+
+This is the core loop: gather → propose visual options → user picks → refine → ship.`;
 
 /**
  * Returns the Anthropic Messages API "system" parameter as an array of blocks.

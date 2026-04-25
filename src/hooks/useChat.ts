@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from "react";
 export type ChatEvent =
   | { type: "text_delta"; content: string }
   | { type: "tool_call"; id: string; name: string; input: unknown; scope: "ui" | "server" }
-  | { type: "tool_result"; id: string; name: string; summary: string }
+  | { type: "tool_result"; id: string; name: string; summary: string; images?: string[] }
   | { type: "ui_tool_request"; id: string; name: string; input: unknown }
   | { type: "ui_tool_response_ack"; id: string }
   | { type: "done"; usage?: { input: number; output: number }; cost?: number }

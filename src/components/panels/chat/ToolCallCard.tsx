@@ -1,10 +1,12 @@
 "use client";
+import { useState } from "react";
 
 const FRIENDLY_NAMES: Record<string, string> = {
   web_search: "recherche web",
   generate_sketch: "croquis",
   apply_workflow: "workflow appliqué",
   extract_youtube_script: "transcript YouTube",
+  search_youtube: "recherche YouTube",
   search_youtube_channel: "recherche dans la chaîne",
   get_channel_videos: "vidéos de la chaîne",
   trigger_generation: "génération finale",
@@ -26,15 +28,18 @@ export type ToolCallCardProps = {
   status: "pending" | "done" | "error";
   summary?: string;
   input?: unknown;
+  images?: string[];
 };
 
 /**
  * Atelier Nocturne tool-call display.
  * Hairline left bar + mono eyebrow + Fraunces italic label.
  * No emoji. Status communicated via the bar color and a small mono glyph.
+ * Renders a thumbnail gallery when the tool returns images (e.g. search_youtube).
  */
-export default function ToolCallCard({ name, status, summary, input }: ToolCallCardProps) {
+export default function ToolCallCard({ name, status, summary, input, images }: ToolCallCardProps) {
   const label = FRIENDLY_NAMES[name] ?? name;
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const barColor =
     status === "error" ? "var(--ember)" : status === "done" ? "var(--bone-faint)" : "var(--bone-muted)";
@@ -43,9 +48,11 @@ export default function ToolCallCard({ name, status, summary, input }: ToolCallC
   const glyphColor =
     status === "error" ? "var(--ember)" : status === "done" ? "var(--text-muted)" : "var(--text-tertiary)";
 
+  const hasImages = images && images.length > 0;
+
   return (
     <div
-      className="flex items-stretch gap-2.5 my-1.5 text-xs"
+      className="flex items-stretch gap-2.5 my-2 text-xs"
       style={{ paddingLeft: 2 }}
     >
       <div
@@ -70,6 +77,18 @@ export default function ToolCallCard({ name, status, summary, input }: ToolCallC
           >
             {glyph}
           </span>
+          {hasImages && (
+            <span
+              className="text-[9px] uppercase shrink-0"
+              style={{
+                color: "var(--text-muted)",
+                fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
+                letterSpacing: "0.18em",
+              }}
+            >
+              · {images!.length} thumb.
+            </span>
+          )}
         </div>
         <div
           className="mt-0.5 italic"
@@ -82,7 +101,80 @@ export default function ToolCallCard({ name, status, summary, input }: ToolCallC
         >
           {label}
         </div>
-        {summary && (
+
+        {hasImages && (
+          <div className="thumb-grid mt-2">
+            {images!.map((url, i) => (
+              <a
+                key={`${url}-${i}`}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="thumb-cell"
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+                style={{
+                  transform: hoveredIdx === i ? "translateY(-2px) scale(1.04)" : "none",
+                  zIndex: hoveredIdx === i ? 2 : 1,
+                  boxShadow:
+                    hoveredIdx === i
+                      ? "0 8px 16px rgba(0,0,0,0.4)"
+                      : "0 2px 4px rgba(0,0,0,0.2)",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt="thumbnail" loading="lazy" />
+                <span className="thumb-overlay" />
+              </a>
+            ))}
+            <style jsx>{`
+              .thumb-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 6px;
+              }
+              .thumb-cell {
+                position: relative;
+                aspect-ratio: 16 / 9;
+                overflow: hidden;
+                border-radius: 6px;
+                border: 1px solid var(--line);
+                background: var(--ink-3);
+                transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                            box-shadow 0.18s ease,
+                            border-color 0.18s ease;
+                display: block;
+              }
+              .thumb-cell:hover { border-color: var(--bone-muted); }
+              .thumb-cell img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+                transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                            filter 0.3s ease;
+                filter: saturate(0.92) brightness(0.92);
+              }
+              .thumb-cell:hover img {
+                transform: scale(1.06);
+                filter: saturate(1.05) brightness(1);
+              }
+              .thumb-overlay {
+                position: absolute;
+                inset: 0;
+                background:
+                  linear-gradient(180deg, rgba(8,8,12,0) 60%, rgba(8,8,12,0.6) 100%),
+                  radial-gradient(circle at 100% 0%, rgba(230,0,126,0.0) 60%, rgba(230,0,126,0.18) 100%);
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.2s ease;
+              }
+              .thumb-cell:hover .thumb-overlay { opacity: 1; }
+            `}</style>
+          </div>
+        )}
+
+        {summary && !hasImages && (
           <div
             className="mt-1 line-clamp-3 whitespace-pre-wrap break-words"
             style={{ color: "var(--text-tertiary)" }}

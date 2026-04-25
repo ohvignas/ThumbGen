@@ -234,7 +234,8 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
               arguments: (tu.input ?? {}) as Record<string, unknown>,
             });
             const summary = summarizeToolResult(r as { content: unknown });
-            send("tool_result", { id: tu.id, name: tu.name, summary });
+            const images = extractImageUrls(r as { content: unknown });
+            send("tool_result", { id: tu.id, name: tu.name, summary, images });
             toolResults.push({
               type: "tool_result",
               tool_use_id: tu.id,
@@ -293,4 +294,22 @@ function summarizeToolResult(r: { content: unknown }): string {
     (c: { type?: string; text?: string }) => c.type === "text" && c.text,
   ) as { text?: string } | undefined;
   return (first?.text ?? "").slice(0, 200);
+}
+
+/**
+ * Extracts image URLs from a tool result so the chat UI can preview them
+ * inline (e.g. YouTube thumbnails from search_youtube). Looks for HTTPS
+ * image-like URLs in any text block.
+ */
+function extractImageUrls(r: { content: unknown }): string[] {
+  if (!Array.isArray(r.content)) return [];
+  const urls = new Set<string>();
+  for (const c of r.content as Array<{ type?: string; text?: string }>) {
+    if (c.type !== "text" || !c.text) continue;
+    // Match common YouTube thumbnail hosts + generic image extensions
+    const re = /https?:\/\/[^\s)\]"<>]+?(?:\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s)\]"<>]*)?|i\.ytimg\.com\/[^\s)\]"<>]+|i9\.ytimg\.com\/[^\s)\]"<>]+)/gi;
+    const matches = c.text.match(re);
+    if (matches) for (const m of matches) urls.add(m);
+  }
+  return Array.from(urls).slice(0, 12); // cap for sanity
 }

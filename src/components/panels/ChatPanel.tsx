@@ -94,7 +94,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         const idx = blocks.findIndex((b) => b.type === "tool_call" && b.id === e.id);
         if (idx >= 0) {
           const cur = blocks[idx] as Extract<MessageBlock, { type: "tool_call" }>;
-          blocks[idx] = { ...cur, status: "done", summary: e.summary };
+          blocks[idx] = { ...cur, status: "done", summary: e.summary, images: e.images };
         }
       } else if (e.type === "error") {
         flushText();
