@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useCanvasStore } from "@/store/canvas-store";
 
 const FRIENDLY_NAMES: Record<string, string> = {
   web_search: "recherche web",
@@ -37,9 +38,36 @@ export type ToolCallCardProps = {
  * No emoji. Status communicated via the bar color and a small mono glyph.
  * Renders a thumbnail gallery when the tool returns images (e.g. search_youtube).
  */
+function extractSketchId(url: string): string | null {
+  const m = url.match(/\/api\/generated-sketches\/(sk_[a-z0-9]+)/);
+  return m ? m[1] : null;
+}
+
 export default function ToolCallCard({ name, status, summary, input, images }: ToolCallCardProps) {
   const label = FRIENDLY_NAMES[name] ?? name;
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [appliedIdx, setAppliedIdx] = useState<Set<number>>(new Set());
+  const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
+  const projectId = useCanvasStore((s) => s.currentProjectId);
+  const loadProject = useCanvasStore((s) => s.loadProject);
+
+  const applySketchToCanvas = async (sketchId: string, idx: number) => {
+    if (appliedIdx.has(idx) || applyingIdx === idx) return;
+    setApplyingIdx(idx);
+    try {
+      const res = await fetch("/api/agent/apply-sketch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sketch_id: sketchId, project_id: projectId }),
+      });
+      if (res.ok) {
+        setAppliedIdx((prev) => new Set(prev).add(idx));
+        await loadProject(projectId);
+      }
+    } finally {
+      setApplyingIdx(null);
+    }
+  };
 
   const barColor =
     status === "error" ? "var(--ember)" : status === "done" ? "var(--bone-faint)" : "var(--bone-muted)";
@@ -104,35 +132,73 @@ export default function ToolCallCard({ name, status, summary, input, images }: T
 
         {hasImages && (
           <div className="thumb-grid mt-2">
-            {images!.map((url, i) => (
-              <a
-                key={`${url}-${i}`}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="thumb-cell"
-                onMouseEnter={() => setHoveredIdx(i)}
-                onMouseLeave={() => setHoveredIdx(null)}
-                style={{
-                  transform: hoveredIdx === i ? "translateY(-2px) scale(1.04)" : "none",
-                  zIndex: hoveredIdx === i ? 2 : 1,
-                  boxShadow:
-                    hoveredIdx === i
-                      ? "0 8px 16px rgba(0,0,0,0.4)"
-                      : "0 2px 4px rgba(0,0,0,0.2)",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="thumbnail" loading="lazy" />
-                <span className="thumb-overlay" />
-              </a>
-            ))}
+            {images!.map((url, i) => {
+              const sketchId = extractSketchId(url);
+              const isSketch = sketchId !== null;
+              const isApplied = appliedIdx.has(i);
+              const isApplying = applyingIdx === i;
+              return (
+                <div key={`${url}-${i}`} className="thumb-wrapper">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="thumb-cell"
+                    onMouseEnter={() => setHoveredIdx(i)}
+                    onMouseLeave={() => setHoveredIdx(null)}
+                    style={{
+                      transform: hoveredIdx === i ? "translateY(-2px) scale(1.04)" : "none",
+                      zIndex: hoveredIdx === i ? 2 : 1,
+                      boxShadow:
+                        hoveredIdx === i
+                          ? "0 8px 16px rgba(0,0,0,0.4)"
+                          : "0 2px 4px rgba(0,0,0,0.2)",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="thumbnail" loading="lazy" />
+                    <span className="thumb-overlay" />
+                  </a>
+                  {isSketch && (
+                    <button
+                      type="button"
+                      className="apply-btn"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        applySketchToCanvas(sketchId!, i);
+                      }}
+                      disabled={isApplied || isApplying}
+                      title={isApplied ? "Ajouté au canvas" : "Ajouter ce sketch au canvas"}
+                      aria-label="Ajouter au canvas"
+                    >
+                      {isApplied ? (
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : isApplying ? (
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="apply-spin">
+                          <circle cx="12" cy="12" r="9" strokeDasharray="56" strokeDashoffset="20" />
+                        </svg>
+                      ) : (
+                        <>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                          <span>canvas</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <style jsx>{`
               .thumb-grid {
                 display: grid;
                 grid-template-columns: repeat(2, 1fr);
                 gap: 6px;
               }
+              .thumb-wrapper { position: relative; }
               .thumb-cell {
                 position: relative;
                 aspect-ratio: 16 / 9;
@@ -146,6 +212,43 @@ export default function ToolCallCard({ name, status, summary, input, images }: T
                 display: block;
               }
               .thumb-cell:hover { border-color: var(--bone-muted); }
+              .apply-btn {
+                position: absolute;
+                top: 4px;
+                right: 4px;
+                z-index: 3;
+                display: flex;
+                align-items: center;
+                gap: 3px;
+                padding: 3px 6px;
+                font-family: var(--font-mono), 'JetBrains Mono', monospace;
+                font-size: 9px;
+                text-transform: uppercase;
+                letter-spacing: 0.12em;
+                background: rgba(15, 15, 20, 0.85);
+                color: var(--bone);
+                border: 1px solid var(--brand);
+                border-radius: 4px;
+                cursor: pointer;
+                opacity: 0;
+                transition: opacity 0.18s ease, background 0.15s ease;
+                backdrop-filter: blur(6px);
+              }
+              .thumb-wrapper:hover .apply-btn { opacity: 1; }
+              .apply-btn:hover { background: var(--brand); color: var(--ink-1); }
+              .apply-btn:disabled {
+                opacity: 1;
+                background: var(--brand);
+                color: var(--ink-1);
+                cursor: default;
+              }
+              .apply-spin {
+                animation: applyspin 0.8s linear infinite;
+              }
+              @keyframes applyspin {
+                from { transform: rotate(0); }
+                to { transform: rotate(360deg); }
+              }
               .thumb-cell img {
                 width: 100%;
                 height: 100%;
