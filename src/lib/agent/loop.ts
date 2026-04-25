@@ -111,10 +111,20 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     input_schema: t.inputSchema as Record<string, unknown>,
   }));
 
+  // Tools list — attach cache_control to the LAST tool to mark a cache breakpoint.
+  // Anthropic prompt caching: every block up to and including the marked block is
+  // cached. After the first request, subsequent turns hit the cache for the
+  // entire tools array (~3-4K tokens) at ~10% of the input price. Saves real
+  // money on multi-turn brainstorms.
   const tools = [
     ...mcpToolSpecs,
     ...browserToolSpecs,
-    { type: "web_search_20250305", name: "web_search", max_uses: 5 },
+    {
+      type: "web_search_20250305",
+      name: "web_search",
+      max_uses: 5,
+      cache_control: { type: "ephemeral" as const },
+    },
   ];
 
   // 5. Resolve API key
