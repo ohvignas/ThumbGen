@@ -335,10 +335,17 @@ function extractImageUrls(r: { content: unknown }): string[] {
   const urls = new Set<string>();
   for (const c of r.content as Array<{ type?: string; text?: string }>) {
     if (c.type !== "text" || !c.text) continue;
-    // Match common YouTube thumbnail hosts + generic image extensions
-    const re = /https?:\/\/[^\s)\]"<>]+?(?:\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s)\]"<>]*)?|i\.ytimg\.com\/[^\s)\]"<>]+|i9\.ytimg\.com\/[^\s)\]"<>]+)/gi;
-    const matches = c.text.match(re);
-    if (matches) for (const m of matches) urls.add(m);
+    // External image URLs (YouTube thumbnails, generic image extensions)
+    const httpsRe = /https?:\/\/[^\s)\]"<>]+?(?:\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s)\]"<>]*)?|i\.ytimg\.com\/[^\s)\]"<>]+|i9\.ytimg\.com\/[^\s)\]"<>]+)/gi;
+    const httpsMatches = c.text.match(httpsRe);
+    if (httpsMatches) for (const m of httpsMatches) urls.add(m);
+    // Internal sketch references — generate_sketch returns "generated:sk_<hex>"
+    // strings that the chat UI needs as servable URLs.
+    const sketchRe = /generated:(sk_[a-z0-9]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = sketchRe.exec(c.text)) !== null) {
+      urls.add(`/api/generated-sketches/${m[1]}`);
+    }
   }
   return Array.from(urls).slice(0, 12); // cap for sanity
 }
