@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { resolveImageSource, markAttached } from "@/lib/agent/tools/_helpers/image-source";
+import { resolveImageSource, markAttached, imageExists } from "@/lib/agent/tools/_helpers/image-source";
 import { getDb } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 
@@ -56,6 +56,29 @@ describe("resolveImageSource", () => {
 
   it("rejects an unsupported scheme", async () => {
     await expect(resolveImageSource("https://example.com/x.png")).rejects.toThrow();
+  });
+});
+
+describe("imageExists (cheap existence check, no bytes loaded)", () => {
+  it("returns true for an existing stored:lg_ source", () => {
+    const id = uuid();
+    getDb()
+      .prepare("INSERT INTO logos (id, label, mime_type, size, data) VALUES (?, ?, ?, ?, ?)")
+      .run(id, "Exists", "image/png", 1, Buffer.from([0]));
+    expect(imageExists(`stored:lg_${id}`)).toBe(true);
+  });
+
+  it("returns false for an unknown stored:lg_ source", () => {
+    expect(imageExists("stored:lg_does-not-exist")).toBe(false);
+  });
+
+  it("returns true for any data: URI (assumed valid post-schema)", () => {
+    expect(imageExists("data:image/png;base64,iVBORw0KGgo=")).toBe(true);
+  });
+
+  it("returns false for unsupported schemes", () => {
+    expect(imageExists("https://example.com/x.png")).toBe(false);
+    expect(imageExists("stored:zz_xxx")).toBe(false);
   });
 });
 

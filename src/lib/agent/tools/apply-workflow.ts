@@ -5,7 +5,7 @@ import { registerTool } from "./index";
 import { BlueprintSchema } from "@/lib/agent/blueprint/schema";
 import { diffBlueprints } from "@/lib/agent/blueprint/diff";
 import { autoLayout } from "./_helpers/auto-layout";
-import { resolveImageSource, markAttached } from "./_helpers/image-source";
+import { imageExists, markAttached } from "./_helpers/image-source";
 
 const InputSchema = z.object({
   project_id: z.string(),
@@ -28,18 +28,14 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     }
     const target = parsed.data;
 
-    // 2. Validate every image_source resolves
+    // 2. Validate every image_source exists (cheap — no bytes loaded)
     for (const node of target.nodes) {
-      const src = (node.data as { image_source?: string }).image_source;
-      if (src) {
-        try {
-          await resolveImageSource(src);
-        } catch (e) {
-          return {
-            isError: true,
-            content: [{ type: "text", text: `Image source unresolvable on node ${node.id}: ${(e as Error).message}` }],
-          };
-        }
+      const src = getImageSource(node);
+      if (src && !imageExists(src)) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Image source not found on node ${node.id}: ${src}` }],
+        };
       }
     }
 
@@ -70,7 +66,7 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
 
     // 7. Mark referenced uploads/sketches as attached (skip GC)
     for (const node of target.nodes) {
-      const src = (node.data as { image_source?: string }).image_source;
+      const src = getImageSource(node);
       if (src) markAttached(src);
     }
 
@@ -83,5 +79,17 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     };
   },
 };
+
+// Helper: type-safe extraction of image_source from a validated node.
+// The Blueprint Zod schema's discriminated-union validation lives inside a
+// superRefine, so the inferred `data` type is Record<string, unknown>.
+type ValidatedNode = { id: string; type: string; data: Record<string, unknown> };
+function getImageSource(node: ValidatedNode): string | undefined {
+  const v = node.data.image_source;
+  return typeof v === "string" ? v : undefined;
+}
+
+// TODO(v2): optimistic locking via projects.updated_at if-match — currently
+// concurrent writers (browser + remote MCP) silently last-write-wins.
 
 registerTool(applyWorkflowTool);

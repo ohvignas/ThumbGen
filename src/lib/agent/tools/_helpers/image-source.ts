@@ -59,6 +59,36 @@ export async function resolveImageSource(source: string): Promise<ResolvedImage>
   throw new Error(`Unsupported image source scheme: ${source}`);
 }
 
+/**
+ * Cheap existence check — does NOT load image bytes. Use this in validation
+ * paths (apply_workflow) where you only need to know "is this reference valid".
+ * Returns true for `data:image/...` (assumed valid since the schema validated).
+ */
+export function imageExists(source: string): boolean {
+  if (source.startsWith("data:image/")) return true;
+
+  if (source.startsWith("stored:")) {
+    const m = source.match(/^stored:(lg|sf|fr|gi)_(.+)$/);
+    if (!m) return false;
+    const [, prefix, id] = m as [string, StoredPrefix, string];
+    const table = TABLE_BY_PREFIX[prefix];
+    const row = getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
+    return Boolean(row);
+  }
+
+  if (source.startsWith("generated:")) {
+    const id = source.slice("generated:".length);
+    return Boolean(getDb().prepare("SELECT 1 FROM generated_sketches WHERE id = ?").get(id));
+  }
+
+  if (source.startsWith("uploaded:")) {
+    const id = source.slice("uploaded:".length);
+    return Boolean(getDb().prepare("SELECT 1 FROM chat_uploads WHERE id = ?").get(id));
+  }
+
+  return false;
+}
+
 export function markAttached(source: string): void {
   if (source.startsWith("generated:")) {
     const id = source.slice("generated:".length);
