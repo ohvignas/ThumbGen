@@ -19,6 +19,7 @@ import SketchNode from "./nodes/SketchNode";
 import CustomEdge from "./edges/CustomEdge";
 import Sidebar from "./panels/Sidebar";
 import ZoomBar from "./panels/ZoomBar";
+import ChatPanel from "./panels/ChatPanel";
 import ContextMenu from "./panels/ContextMenu";
 import ProjectBar from "./panels/ProjectBar";
 import SketchEditor from "./panels/SketchEditor";
@@ -51,7 +52,7 @@ const STAR_ICON = (color: string, fill = false) => (
 );
 
 function CanvasInner() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, addNodeAndConnect, loadProject, saving } =
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, addNodeAndConnect, loadProject, saving, currentProjectId } =
     useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
   const [providers, setProviders] = useState<Record<string, boolean>>({ gemini: true });
@@ -290,6 +291,8 @@ function CanvasInner() {
         <Sidebar />
         <ZoomBar />
       </ReactFlow>
+
+      <ChatPanel projectId={currentProjectId} />
 
       {/* Right-click context menu */}
       {contextMenu && (
