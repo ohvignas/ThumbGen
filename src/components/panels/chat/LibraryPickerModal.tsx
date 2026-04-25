@@ -37,7 +37,7 @@ export default function LibraryPickerModal({
             const label = (r[cfg.labelKey] as string) || "Untitled";
             return {
               source: `stored:${cfg.storedPrefix}_${id}`,
-              preview_url: `${cfg.imagePrefix}/${id}`,
+              preview_url: `${cfg.imagePrefix}?f=${encodeURIComponent(id)}`,
               label,
             };
           }),
