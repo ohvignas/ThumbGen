@@ -15,8 +15,8 @@ export type AgentModel = {
 
 export const AGENT_MODELS: AgentModel[] = [
   {
-    id: "google/gemini-3-pro-preview",
-    label: "Gemini 3 Pro (preview)",
+    id: "google/gemini-3.1-pro-preview",
+    label: "Gemini 3.1 Pro (preview)",
     provider: "google",
     supportsThinking: true,
     pricing: { inputPerM: 2.0, outputPerM: 12.0, cachedInputPerM: 0.5 },
@@ -44,7 +44,7 @@ export const AGENT_MODELS: AgentModel[] = [
   },
 ];
 
-export const DEFAULT_AGENT_MODEL = "google/gemini-3-pro-preview";
+export const DEFAULT_AGENT_MODEL = "google/gemini-3.1-pro-preview";
 
 export function getModelById(id: string): AgentModel | undefined {
   // Strip the :online suffix used for web-search variants when looking up.

@@ -297,7 +297,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           Modèle de l&apos;agent
         </label>
         <select
-          value={agentModel || settings?.agentModel || "google/gemini-3-pro-preview"}
+          value={agentModel || settings?.agentModel || "google/gemini-3.1-pro-preview"}
           onChange={(e) => setAgentModel(e.target.value)}
           className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
           style={{

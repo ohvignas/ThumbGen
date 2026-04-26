@@ -28,7 +28,7 @@ export async function GET() {
     hasYoutube: !!(settings.youtubeApiKey || process.env.YOUTUBE_API_KEY),
     language: settings.language || "fr",
     favoriteModel: settings.favoriteModel || "gemini-3.1-flash-image-preview",
-    agentModel: settings.agentModel || "google/gemini-3-pro-preview",
+    agentModel: settings.agentModel || "google/gemini-3.1-pro-preview",
     agentWebSearch: settings.agentWebSearch ?? "1",
     currentProjectId: settings.currentProjectId || "default",
   });

@@ -3,7 +3,7 @@ import { AGENT_MODELS, getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/mod
 
 describe("AGENT_MODELS", () => {
   it("has gemini 3 pro as the default", () => {
-    expect(DEFAULT_AGENT_MODEL).toBe("google/gemini-3-pro-preview");
+    expect(DEFAULT_AGENT_MODEL).toBe("google/gemini-3.1-pro-preview");
     expect(getModelById(DEFAULT_AGENT_MODEL)).toBeDefined();
   });
 
