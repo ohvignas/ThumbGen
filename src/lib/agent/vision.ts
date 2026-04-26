@@ -1,5 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { getSetting } from "@/lib/settings";
+import { getOpenRouterClient } from "@/lib/agent/llm-client";
 
 export type FaceTags = {
   emotions: string[];          // ["surprise", "shock"]
@@ -9,7 +8,9 @@ export type FaceTags = {
   caption: string;              // one short sentence
 };
 
-const VISION_MODEL = "claude-haiku-4-5"; // cheap multimodal — fits tagging well
+// Same Haiku model as auto-title — Haiku via OpenRouter is reliable,
+// vision-capable, and cheap (~$0.001 per face).
+const VISION_MODEL = "anthropic/claude-haiku-4.5";
 
 const TAG_PROMPT = `You are tagging a face/expression photo for thumbnail design retrieval.
 
@@ -25,32 +26,35 @@ Return ONLY a compact JSON object with this shape (no prose, no fences):
 Important: focus on the EMOTION and EXPRESSION as it would translate to a YouTube thumbnail face. If multiple plausible labels exist, pick the strongest one.`;
 
 /**
- * Sends an image to Claude vision and returns structured emotion tags.
- * Throws on missing API key or upstream failure.
+ * Sends an image to a vision model via OpenRouter and returns structured
+ * emotion tags. Throws on missing API key or upstream failure.
  */
 export async function tagFaceImage(bytes: Buffer, mimeType: string): Promise<FaceTags> {
-  const apiKey = getSetting("anthropicApiKey") || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+  const client = getOpenRouterClient();
+  if (!client) throw new Error("OpenRouter API key not configured.");
 
-  const client = new Anthropic({ apiKey });
-  const resp = await client.messages.create({
+  const resp = await client.chat.completions.create({
     model: VISION_MODEL,
     max_tokens: 400,
     messages: [
       {
         role: "user",
         content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mimeType as "image/png", data: bytes.toString("base64") },
-          },
           { type: "text", text: TAG_PROMPT },
+          {
+            type: "image_url",
+            image_url: { url: `data:${mimeType};base64,${bytes.toString("base64")}` },
+          },
         ],
       },
     ],
   });
 
-  const text = (resp.content.find((c) => c.type === "text") as { text?: string } | undefined)?.text ?? "";
+  const text = resp.choices[0]?.message?.content;
+  if (!text || typeof text !== "string") {
+    throw new Error("Vision model returned no text.");
+  }
+
   // Strip optional code fences and parse the first JSON object.
   const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/gm, "").trim();
   try {
