@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import McpSettingsSection from "./settings/McpSettingsSection";
+import { AGENT_MODELS } from "@/lib/agent/models";
 
 type SettingsData = {
   geminiApiKey: string;
@@ -9,6 +10,7 @@ type SettingsData = {
   openaiApiKey: string;
   grokApiKey: string;
   anthropicApiKey: string;
+  openrouterApiKey: string;
   youtubeApiKey: string;
   youtubePlaylistId: string;
   hasGemini: boolean;
@@ -16,8 +18,11 @@ type SettingsData = {
   hasOpenai: boolean;
   hasGrok: boolean;
   hasAnthropic: boolean;
+  hasOpenrouter: boolean;
   hasYoutube: boolean;
   language: string;
+  agentModel: string;
+  agentWebSearch: string;
 };
 
 export default function SettingsPanel({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
@@ -27,6 +32,9 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
   const [openai, setOpenai] = useState("");
   const [grok, setGrok] = useState("");
   const [anthropic, setAnthropic] = useState("");
+  const [openrouter, setOpenrouter] = useState("");
+  const [agentModel, setAgentModel] = useState("");
+  const [agentWebSearch, setAgentWebSearch] = useState(true);
   const [ytKey, setYtKey] = useState("");
   const [ytPlaylist, setYtPlaylist] = useState("");
   const [language, setLanguage] = useState("fr");
@@ -36,10 +44,12 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
-      .then((data: SettingsData) => {
-        setSettings(data);
-        setYtPlaylist(data.youtubePlaylistId || "");
-        setLanguage(data.language || "fr");
+      .then((s: SettingsData) => {
+        setSettings(s);
+        setYtPlaylist(s.youtubePlaylistId || "");
+        setLanguage(s.language || "fr");
+        setAgentModel(s.agentModel || "");
+        setAgentWebSearch((s.agentWebSearch ?? "1") !== "0");
       })
       .catch(() => {});
   }, []);
@@ -53,6 +63,9 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
     if (openai) body.openaiApiKey = openai;
     if (grok) body.grokApiKey = grok;
     if (anthropic) body.anthropicApiKey = anthropic;
+    if (openrouter) body.openrouterApiKey = openrouter;
+    if (agentModel) body.agentModel = agentModel;
+    body.agentWebSearch = agentWebSearch ? "1" : "0";
     if (ytKey) body.youtubeApiKey = ytKey;
     body.youtubePlaylistId = ytPlaylist;
     body.language = language;
@@ -241,6 +254,74 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         >
           Obtenir une clé →
         </a>
+      </div>
+
+      {/* OpenRouter — agent model gateway */}
+      <div className="mb-4">
+        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
+          Clé OpenRouter <span style={{ color: "var(--brand)" }}>·</span> agent IA
+        </label>
+        <div className="flex items-center gap-2 mb-1">
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{ background: settings?.hasOpenrouter ? "var(--accent)" : "var(--bone-faint)" }}
+          />
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            {settings?.hasOpenrouter ? `Connecté (${settings?.openrouterApiKey})` : "Non configuré"}
+          </span>
+        </div>
+        <input
+          type="password"
+          placeholder="sk-or-v1-..."
+          value={openrouter}
+          onChange={(e) => setOpenrouter(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
+          style={{
+            background: "var(--surface)",
+            color: "var(--text-secondary)",
+            border: "1px solid transparent",
+          }}
+        />
+        <a
+          href="https://openrouter.ai/keys"
+          target="_blank"
+          rel="noopener"
+          className="text-[10px] mt-1 block"
+          style={{ color: "var(--accent)" }}
+        >
+          Obtenir une clé →
+        </a>
+
+        {/* Model picker */}
+        <label className="text-xs font-medium mt-3 mb-1 block" style={{ color: "var(--text-secondary)" }}>
+          Modèle de l&apos;agent
+        </label>
+        <select
+          value={agentModel || settings?.agentModel || "google/gemini-3-pro-preview"}
+          onChange={(e) => setAgentModel(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
+          style={{
+            background: "var(--surface)",
+            color: "var(--text-secondary)",
+            border: "1px solid transparent",
+          }}
+        >
+          {AGENT_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label} — ${m.pricing.inputPerM}/${m.pricing.outputPerM} per M
+            </option>
+          ))}
+        </select>
+
+        {/* Web search toggle */}
+        <label className="flex items-center gap-2 mt-3 text-xs" style={{ color: "var(--text-secondary)" }}>
+          <input
+            type="checkbox"
+            checked={agentWebSearch}
+            onChange={(e) => setAgentWebSearch(e.target.checked)}
+          />
+          Recherche web automatique (variant :online)
+        </label>
       </div>
 
       {/* Anthropic — needed by the chat agent */}

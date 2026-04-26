@@ -16,6 +16,7 @@ export async function GET() {
     openaiApiKey: mask(settings.openaiApiKey),
     grokApiKey: mask(settings.grokApiKey),
     anthropicApiKey: mask(settings.anthropicApiKey),
+    openrouterApiKey: mask(settings.openrouterApiKey),
     youtubeApiKey: mask(settings.youtubeApiKey),
     youtubePlaylistId: settings.youtubePlaylistId || "",
     hasGemini: !!(settings.geminiApiKey || process.env.GEMINI_API_KEY),
@@ -23,9 +24,12 @@ export async function GET() {
     hasOpenai: !!(settings.openaiApiKey || process.env.OPENAI_API_KEY),
     hasGrok: !!(settings.grokApiKey || process.env.GROK_API_KEY),
     hasAnthropic: !!(settings.anthropicApiKey || process.env.ANTHROPIC_API_KEY),
+    hasOpenrouter: !!(settings.openrouterApiKey || process.env.OPENROUTER_API_KEY),
     hasYoutube: !!(settings.youtubeApiKey || process.env.YOUTUBE_API_KEY),
     language: settings.language || "fr",
     favoriteModel: settings.favoriteModel || "gemini-3.1-flash-image-preview",
+    agentModel: settings.agentModel || "google/gemini-3-pro-preview",
+    agentWebSearch: settings.agentWebSearch ?? "1",
     currentProjectId: settings.currentProjectId || "default",
   });
 }
