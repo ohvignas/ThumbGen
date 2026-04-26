@@ -167,15 +167,35 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
   for (let iter = 0; iter < MAX_ITER; iter++) {
     if (abort.aborted) break;
 
-    const stream = await client.chat.completions.create({
-      model: modelId,
-      max_tokens: MAX_TOKENS,
-      messages: oaiMessages,
-      tools: tools.length ? (tools as never) : undefined,
-      tool_choice: tools.length ? "auto" : undefined,
-      stream: true,
-      ...(modelInfo?.supportsThinking ? ({ reasoning_effort: REASONING_EFFORT } as never) : {}),
-    });
+    let stream: AsyncIterable<{
+      choices?: Array<{ delta?: unknown }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    }>;
+    try {
+      stream = (await client.chat.completions.create({
+        model: modelId,
+        max_tokens: MAX_TOKENS,
+        messages: oaiMessages,
+        tools: tools.length ? (tools as never) : undefined,
+        tool_choice: tools.length ? "auto" : undefined,
+        stream: true,
+        ...(modelInfo?.supportsThinking ? ({ reasoning_effort: REASONING_EFFORT } as never) : {}),
+      })) as never;
+    } catch (e) {
+      const errMsg = (e as Error).message || String(e);
+      console.error("[agent] OpenRouter create() failed:", errMsg, e);
+      send("error", { message: `OpenRouter ${modelId}: ${errMsg}` });
+      appendMessage({
+        conversation_id,
+        role: "assistant",
+        content_json: JSON.stringify([{ type: "text", text: `⚠ OpenRouter (${modelId}): ${errMsg}` }]),
+        interrupted: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        cost_estimate: 0,
+      });
+      return;
+    }
 
     // 8. Accumulate streaming chunks
     let accumText = "";
