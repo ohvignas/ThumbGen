@@ -122,7 +122,7 @@ export default function AgentActivity({
             letterSpacing: "0.22em",
           }}
         >
-          Claude
+          Assistant
         </span>
         {toolName && (
           <span

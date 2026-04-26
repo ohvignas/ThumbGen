@@ -126,7 +126,7 @@ export default function PendingUiAction({
             lineHeight: 1.4,
           }}
         >
-          {request.input.reason || "Claude demande une image."}
+          {request.input.reason || "L'assistant demande une image."}
         </p>
         <div className="flex gap-2 flex-wrap">
           <label
@@ -207,7 +207,7 @@ export default function PendingUiAction({
             lineHeight: 1.4,
           }}
         >
-          {request.input.reason || "Claude veut que tu dessines un croquis."}
+          {request.input.reason || "L'assistant veut que tu dessines un croquis."}
         </p>
         <div className="flex gap-2">
           <ActionButton onClick={openSketch} disabled={sketchOpen}>

@@ -25,7 +25,7 @@ export type DisplayMessage = {
 
 /**
  * Atelier Nocturne message.
- * No bubbles. Mono eyebrow (TOI · CLAUDE), DM Sans body. User messages get a
+ * No bubbles. Mono eyebrow (TOI · ASSISTANT), DM Sans body. User messages get a
  * soft magenta-tinted background + magenta eyebrow + brand left edge — makes
  * "yours" scannable at a glance without violating the brand-rare rule (the
  * tint is ~14% opacity magenta, no full magenta surface).
@@ -53,7 +53,7 @@ export default function Message({ msg }: { msg: DisplayMessage }) {
           letterSpacing: "0.22em",
         }}
       >
-        {isUser ? "Toi" : "Claude"}
+        {isUser ? "Toi" : "Assistant"}
       </div>
       <div className="space-y-1.5">
         {msg.blocks.map((b, i) => {
