@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useChatStore } from "@/store/chat-store";
 
 const FRIENDLY_NAMES: Record<string, string> = {
   web_search: "recherche web",
@@ -50,6 +51,7 @@ export default function ToolCallCard({ name, status, summary, input, images }: T
   const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
   const projectId = useCanvasStore((s) => s.currentProjectId);
   const loadProject = useCanvasStore((s) => s.loadProject);
+  const openAnnotate = useChatStore((s) => s.openAnnotate);
 
   const applySketchToCanvas = async (sketchId: string, idx: number) => {
     if (appliedIdx.has(idx) || applyingIdx === idx) return;
@@ -139,14 +141,17 @@ export default function ToolCallCard({ name, status, summary, input, images }: T
               const isApplying = applyingIdx === i;
               return (
                 <div key={`${url}-${i}`} className="thumb-wrapper">
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openAnnotate(url)}
                     className="thumb-cell"
                     onMouseEnter={() => setHoveredIdx(i)}
                     onMouseLeave={() => setHoveredIdx(null)}
                     style={{
+                      cursor: "zoom-in",
+                      padding: 0,
+                      border: "none",
+                      background: "transparent",
                       transform: hoveredIdx === i ? "translateY(-2px) scale(1.04)" : "none",
                       zIndex: hoveredIdx === i ? 2 : 1,
                       boxShadow:
@@ -158,7 +163,7 @@ export default function ToolCallCard({ name, status, summary, input, images }: T
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={url} alt="thumbnail" loading="lazy" />
                     <span className="thumb-overlay" />
-                  </a>
+                  </button>
                   {isSketch && (
                     <button
                       type="button"

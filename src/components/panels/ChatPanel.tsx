@@ -8,6 +8,7 @@ import MessageList from "./chat/MessageList";
 import Composer from "./chat/Composer";
 import PendingUiAction, { UiToolRequest } from "./chat/PendingUiAction";
 import AgentActivity from "./chat/AgentActivity";
+import ImageAnnotateModal from "./chat/ImageAnnotateModal";
 import type { DisplayMessage, MessageBlock } from "./chat/Message";
 import type { ChatEvent } from "@/hooks/useChat";
 import UsageBadge from "./chat/UsageBadge";
@@ -34,6 +35,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const { send, stop, streaming, events, reset, respondToUiTool } = useChat();
 
   const bumpConversationListVersion = useChatStore((s) => s.bumpConversationListVersion);
+  const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
+  const closeAnnotate = useChatStore((s) => s.closeAnnotate);
 
   const [history, setHistory] = useState<DisplayMessage[]>([]);
 
@@ -246,6 +249,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       <AgentActivity events={events} streaming={streaming} />
 
       <Composer onSend={onSend} streaming={streaming} onStop={stop} />
+
+      {annotateImageUrl && (
+        <ImageAnnotateModal imageUrl={annotateImageUrl} onClose={closeAnnotate} />
+      )}
     </aside>
   );
 }

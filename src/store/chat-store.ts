@@ -9,6 +9,8 @@ type ChatState = {
   attachments: ChatAttachment[];
   /** Bump to signal that the conversation list should refetch (e.g. after auto-rename). */
   conversationListVersion: number;
+  /** When set, the image-annotate modal is open with this image. */
+  annotateImageUrl: string | null;
 
   open: () => void;
   close: () => void;
@@ -19,6 +21,8 @@ type ChatState = {
   removeAttachment: (source: string) => void;
   clearAttachments: () => void;
   bumpConversationListVersion: () => void;
+  openAnnotate: (url: string) => void;
+  closeAnnotate: () => void;
   reset: () => void;
 };
 
@@ -30,6 +34,7 @@ export const useChatStore = create<ChatState>((set) => ({
   draft: "",
   attachments: [],
   conversationListVersion: 0,
+  annotateImageUrl: null,
 
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false }),
@@ -50,6 +55,9 @@ export const useChatStore = create<ChatState>((set) => ({
 
   bumpConversationListVersion: () => set((s) => ({ conversationListVersion: s.conversationListVersion + 1 })),
 
+  openAnnotate: (url) => set({ annotateImageUrl: url }),
+  closeAnnotate: () => set({ annotateImageUrl: null }),
+
   reset: () =>
-    set({ isOpen: true, activeConversationId: null, draft: "", attachments: [], conversationListVersion: 0 }),
+    set({ isOpen: true, activeConversationId: null, draft: "", attachments: [], conversationListVersion: 0, annotateImageUrl: null }),
 }));

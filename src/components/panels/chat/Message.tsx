@@ -2,6 +2,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ToolCallCard from "./ToolCallCard";
+import { useChatStore } from "@/store/chat-store";
 
 export type MessageBlock =
   | { type: "text"; text: string }
@@ -31,6 +32,7 @@ export type DisplayMessage = {
  */
 export default function Message({ msg }: { msg: DisplayMessage }) {
   const isUser = msg.role === "user";
+  const openAnnotate = useChatStore((s) => s.openAnnotate);
   return (
     <div
       className="px-4 py-3"
@@ -97,6 +99,22 @@ export default function Message({ msg }: { msg: DisplayMessage }) {
                         </code>
                       );
                     },
+                    img: ({ src, alt }) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={typeof src === "string" ? src : ""}
+                        alt={alt ?? ""}
+                        onClick={() => typeof src === "string" && openAnnotate(src)}
+                        loading="lazy"
+                        style={{
+                          maxWidth: "100%",
+                          borderRadius: 8,
+                          margin: "8px 0",
+                          cursor: "zoom-in",
+                          border: "1px solid var(--line-faint)",
+                        }}
+                      />
+                    ),
                   }}
                 >
                   {b.text}
@@ -111,8 +129,9 @@ export default function Message({ msg }: { msg: DisplayMessage }) {
                 key={i}
                 src={b.preview_url}
                 alt={b.alt ?? "image"}
+                onClick={() => openAnnotate(b.preview_url)}
                 className="max-w-[240px] rounded my-1"
-                style={{ border: "1px solid var(--line)" }}
+                style={{ border: "1px solid var(--line)", cursor: "zoom-in" }}
               />
             );
           }
