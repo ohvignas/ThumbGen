@@ -14,6 +14,9 @@ export type AppSettings = {
   currentProjectId?: string;
   mcpApiKey?: string;
   anthropicApiKey?: string;
+  openrouterApiKey?: string;
+  agentModel?: string;
+  agentWebSearch?: string;
 };
 
 const KEYS: (keyof AppSettings)[] = [
@@ -29,6 +32,9 @@ const KEYS: (keyof AppSettings)[] = [
   "currentProjectId",
   "mcpApiKey",
   "anthropicApiKey",
+  "openrouterApiKey",
+  "agentModel",
+  "agentWebSearch",
 ];
 
 const ENV_MAP: Record<keyof AppSettings, string> = {
@@ -44,6 +50,9 @@ const ENV_MAP: Record<keyof AppSettings, string> = {
   currentProjectId: "CURRENT_PROJECT_ID",
   mcpApiKey: "MCP_API_KEY",
   anthropicApiKey: "ANTHROPIC_API_KEY",
+  openrouterApiKey: "OPENROUTER_API_KEY",
+  agentModel: "AGENT_MODEL",
+  agentWebSearch: "AGENT_WEB_SEARCH",
 };
 
 export function getSettings(): AppSettings {
