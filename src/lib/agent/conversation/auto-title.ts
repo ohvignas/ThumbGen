@@ -1,8 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { getSetting } from "@/lib/settings";
+import { getOpenRouterClient } from "@/lib/agent/llm-client";
 import { updateConversationTitle } from "./store";
 
-const TITLE_MODEL = "claude-haiku-4-5-20251001";
+// A small fast model for one-shot titling. anthropic/claude-haiku-4.5 via
+// OpenRouter is essentially free per call and very good at constraint-followed
+// short outputs. We pin a non-thinking variant — no reasoning needed for a
+// 4-word title and we don't want the latency hit.
+const TITLE_MODEL = "anthropic/claude-haiku-4.5";
 
 const SYSTEM = `Tu génères des titres TRÈS courts pour une conversation de design de miniatures YouTube.
 
@@ -26,23 +29,23 @@ export async function generateAndPersistTitle(
   firstUserText: string,
   send: (event: string, data: unknown) => void,
 ): Promise<void> {
-  const apiKey = getSetting("anthropicApiKey") || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || !firstUserText.trim()) return;
+  const client = getOpenRouterClient();
+  if (!client || !firstUserText.trim()) return;
 
   try {
-    const anthropic = new Anthropic({ apiKey });
-    const res = await anthropic.messages.create({
+    const res = await client.chat.completions.create({
       model: TITLE_MODEL,
       max_tokens: 40,
-      system: SYSTEM,
-      messages: [{ role: "user", content: firstUserText.slice(0, 1000) }],
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: firstUserText.slice(0, 1000) },
+      ],
     });
 
-    const block = res.content.find((b) => b.type === "text");
-    if (!block || block.type !== "text") return;
+    const raw = res.choices[0]?.message?.content;
+    if (!raw || typeof raw !== "string") return;
 
-    // Sanitize: trim, strip surrounding quotes / trailing punctuation, cap length
-    let title = block.text.trim().replace(/^["'«»"]+|["'«»"]+$/g, "");
+    let title = raw.trim().replace(/^["'«»"]+|["'«»"]+$/g, "");
     title = title.replace(/[.!?…]+$/g, "").trim();
     if (!title) return;
     if (title.length > 80) title = title.slice(0, 77).trimEnd() + "…";
