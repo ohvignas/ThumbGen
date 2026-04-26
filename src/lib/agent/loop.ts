@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { getInMemoryMcpClient } from "@/lib/agent/mcp/in-memory-client";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
 import { appendMessage, listMessages } from "@/lib/agent/conversation/store";
@@ -8,24 +7,26 @@ import { BROWSER_TOOL_DEFS, BROWSER_TOOL_NAMES } from "@/lib/agent/browser-tools
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
 import { getSetting } from "@/lib/settings";
 import { startGcLoop } from "./gc";
+import { getOpenRouterClient } from "@/lib/agent/llm-client";
+import {
+  toolsToOpenAI,
+  persistedMessagesToOpenAI,
+  type AnthropicBlock,
+} from "@/lib/agent/translate";
+import { getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
+import { v4 as uuid } from "uuid";
 
 if (typeof window === "undefined") {
   startGcLoop();
 }
 
-const MODEL = "claude-sonnet-4-6";
 const MAX_ITER = 25;
-// Extended thinking budget — gives Claude space to plan tool calls, weigh
-// angle options, match faces to emotions, write better prompts. Per docs:
-// budget_tokens >= 1024, max_tokens must be larger than budget. Sonnet 4.6
-// supports thinking with most tools (web_search included).
-const THINKING_BUDGET = 6000;
 const MAX_TOKENS = 16000;
-
-// Approximate Sonnet 4.6 pricing per million tokens — refresh from current docs.
-// Used only for cost display; actual billing is on Anthropic's side.
-const PRICE_INPUT_PER_M = 3.0;
-const PRICE_OUTPUT_PER_M = 15.0;
+// Reasoning effort the agent gets when the chosen model supports thinking.
+// "medium" is the OpenRouter knob roughly equivalent to ~6K thinking budget on
+// Claude or Gemini's medium thinking — enough to plan tool calls without
+// blowing latency or cost.
+const REASONING_EFFORT = "medium" as const;
 
 export type SendFn = (event: string, data: unknown) => void;
 
@@ -41,11 +42,7 @@ export type AgentLoopOptions = {
   send: SendFn;
 };
 
-type ContentBlock =
-  | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; tool_use_id: string; content: unknown };
+type ContentBlock = AnthropicBlock;
 
 export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
   const { conversation_id, project_id, message, canvas_snapshot, abort, send } = opts;
@@ -70,8 +67,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     }
   }
 
-  // 2. Persist the user message. Capture the prior message count BEFORE
-  // appending so we can detect "this is the first user turn" → auto-title.
+  // 2. Persist the user message + auto-title on first turn
   const isFirstTurn = listMessages(conversation_id).length === 0;
   appendMessage({
     conversation_id,
@@ -82,76 +78,44 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     total_output_tokens: 0,
     cost_estimate: 0,
   });
-  // Auto-title on first turn — fire-and-forget so it doesn't block the agent.
-  // The SSE `conversation_renamed` event lets the UI refresh the conv list.
   if (isFirstTurn && message.text?.trim()) {
     void generateAndPersistTitle(conversation_id, message.text, send);
   }
 
-  // 3. Build the message history (full conversation thread).
-  // We strip tool_use / tool_result blocks from persisted messages — Anthropic
-  // requires every tool_use to be immediately followed by a matching tool_result,
-  // and our DB stores them as one accumulated assistant message per turn so the
-  // pairing breaks across turns. Each turn restarts fresh tool-wise; Claude
-  // still has its own text recap (e.g. "j'ai généré 3 croquis") to remember.
-  type AnthropicMsg = { role: "user" | "assistant"; content: unknown };
-  const history: AnthropicMsg[] = listMessages(conversation_id).map((m) => {
-    const raw = JSON.parse(m.content_json);
-    const filtered = Array.isArray(raw)
-      ? raw.filter((b: { type?: string }) => b.type !== "tool_use" && b.type !== "tool_result")
-      : raw;
-    return { role: m.role, content: filtered };
-  }).filter((m) => Array.isArray(m.content) ? m.content.length > 0 : true);
+  // 3. Build the message history. Strip cross-turn tool blocks (each turn
+  // restarts fresh tool-wise — Anthropic required strict pairing; for
+  // OpenAI the same constraint applies because tool_call ids only exist
+  // within their own turn) then translate to OpenAI shape.
+  const persisted = listMessages(conversation_id).map((m) => ({
+    role: m.role as "user" | "assistant",
+    content: (() => {
+      const raw = JSON.parse(m.content_json) as ContentBlock[];
+      return raw.filter((b) => b.type !== "tool_use" && b.type !== "tool_result");
+    })(),
+  })).filter((m) => m.content.length > 0);
+  const oaiHistory = persistedMessagesToOpenAI(persisted);
 
   // 4. Connect MCP and assemble tools list
   const mcp = await getInMemoryMcpClient();
   const { tools: mcpTools } = await mcp.listTools();
 
-  // Zod v4 has a native toJSONSchema() on ZodObject — use it directly instead of
-  // a hand-rolled converter. Strip the $schema field Anthropic doesn't accept.
   const browserToolSpecs = BROWSER_TOOL_DEFS.map((def) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { $schema, ...input_schema } = def.inputSchema.toJSONSchema() as Record<string, unknown> & { $schema?: string };
-    return {
-      name: def.name,
-      description: def.description,
-      input_schema,
-    };
+    return { name: def.name, description: def.description, input_schema };
   });
-
   const mcpToolSpecs = mcpTools.map((t) => ({
     name: t.name,
     description: t.description ?? "",
     input_schema: t.inputSchema as Record<string, unknown>,
   }));
+  const tools = toolsToOpenAI([...mcpToolSpecs, ...browserToolSpecs]);
 
-  // Tools list — attach cache_control to the LAST tool to mark a cache breakpoint.
-  // Anthropic prompt caching: every block up to and including the marked block is
-  // cached. After the first request, subsequent turns hit the cache for the
-  // entire tools array (~3-4K tokens) at ~10% of the input price.
-  //
-  // IMPORTANT: cache_control is documented on CUSTOM tools (the example in
-  // the official docs uses a get_time custom tool). Server tools like
-  // web_search_20250305 have a different shape and the doc doesn't confirm
-  // they accept cache_control. To be safe, server tools come FIRST and the
-  // breakpoint goes on the last CUSTOM tool — the breakpoint still caches
-  // the entire prefix (server + mcp + browser tools).
-  const lastBrowserIdx = browserToolSpecs.length - 1;
-  const browserToolSpecsWithCache = browserToolSpecs.map((spec, i) =>
-    i === lastBrowserIdx ? { ...spec, cache_control: { type: "ephemeral" as const } } : spec,
-  );
-  const tools = [
-    { type: "web_search_20250305", name: "web_search", max_uses: 5 },
-    ...mcpToolSpecs,
-    ...browserToolSpecsWithCache,
-  ];
-
-  // 5. Resolve API key
-  const apiKey = getSetting("anthropicApiKey") || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    const msg = "Clé Anthropic non configurée. Ajoute ANTHROPIC_API_KEY dans Settings.";
+  // 5. Resolve client + model
+  const client = getOpenRouterClient();
+  if (!client) {
+    const msg = "Clé OpenRouter non configurée. Ajoute OPENROUTER_API_KEY dans Settings.";
     send("error", { message: msg });
-    // Persist a minimal assistant message so the user sees the error after refetch.
     appendMessage({
       conversation_id,
       role: "assistant",
@@ -164,89 +128,144 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     return;
   }
 
-  const anthropic = new Anthropic({ apiKey });
-  const systemBlocks = buildSystemMessages(canvas_snapshot, project_id);
+  const userModelId = getSetting("agentModel") || DEFAULT_AGENT_MODEL;
+  const webSearchOn = getSetting("agentWebSearch") !== "0";
+  const modelId = webSearchOn ? `${userModelId}:online` : userModelId;
+  const modelInfo = getModelById(userModelId);
 
-  // 6. Loop
-  let iter = 0;
+  // 6. Build the OpenAI messages: system + history + new user turn
+  const systemBlocks = buildSystemMessages(canvas_snapshot, project_id);
+  const systemText = systemBlocks.map((b) => b.text).join("\n\n");
+
+  type ChatMessage = Parameters<typeof client.chat.completions.create>[0]["messages"][number];
+  const newUserContent: ChatMessage["content"] =
+    userBlocks.length === 1 && userBlocks[0].type === "text"
+      ? userBlocks[0].text
+      : (userBlocks.map((b) =>
+          b.type === "text"
+            ? { type: "text" as const, text: b.text }
+            : {
+                type: "image_url" as const,
+                image_url: {
+                  url: `data:${(b as Extract<ContentBlock, { type: "image" }>).source.media_type};base64,${(b as Extract<ContentBlock, { type: "image" }>).source.data}`,
+                },
+              },
+        ) as ChatMessage["content"]);
+
+  const oaiMessages: ChatMessage[] = [
+    { role: "system", content: systemText },
+    ...(oaiHistory as ChatMessage[]),
+    { role: "user", content: newUserContent } as ChatMessage,
+  ];
+
+  // 7. Iterate up to MAX_ITER tool-use rounds
   let totalInput = 0;
   let totalOutput = 0;
-  let assistantBlocks: ContentBlock[] = [];
-  // Sidecar map: tool_use id → { images, summary } extracted from tool_result.
-  // Merged onto the persisted blocks at save time without mutating the in-memory
-  // history (Anthropic 400s if it sees unknown fields on tool_use blocks).
-  const toolMetaById = new Map<string, { images: string[]; summary: string }>();
+  const accumulatedAssistantBlocks: ContentBlock[] = [];
+  const pendingToolResults: ContentBlock[] = [];
 
-  while (iter++ < MAX_ITER) {
+  for (let iter = 0; iter < MAX_ITER; iter++) {
     if (abort.aborted) break;
 
-    // Stream the response so each text token reaches the browser immediately.
-    // We accumulate the final content blocks via the SDK's message-end event.
-    let finalMessage: Awaited<ReturnType<typeof anthropic.messages.create>>;
-    try {
-      const stream = anthropic.messages.stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: systemBlocks as never,
-        tools: tools as never,
-        messages: history as never,
-        thinking: { type: "enabled", budget_tokens: THINKING_BUDGET },
-      } as never);
+    const stream = await client.chat.completions.create({
+      model: modelId,
+      max_tokens: MAX_TOKENS,
+      messages: oaiMessages,
+      tools: tools.length ? (tools as never) : undefined,
+      tool_choice: tools.length ? "auto" : undefined,
+      stream: true,
+      ...(modelInfo?.supportsThinking ? ({ reasoning_effort: REASONING_EFFORT } as never) : {}),
+    });
 
-      stream.on("text", (textDelta: string) => {
-        // Forward each token to the browser as it arrives.
-        if (textDelta) send("text_delta", { content: textDelta });
-      });
+    // 8. Accumulate streaming chunks
+    let accumText = "";
+    const toolCallAccum = new Map<number, { id?: string; name?: string; args: string }>();
+    let usage: { prompt_tokens?: number; completion_tokens?: number } | undefined;
 
-      finalMessage = await stream.finalMessage();
-    } catch (e) {
-      const msg = `Claude API error: ${(e as Error).message}`;
-      send("error", { message: msg });
-      // Persist the error so it survives refetch and the user actually sees it.
-      appendMessage({
-        conversation_id,
-        role: "assistant",
-        content_json: JSON.stringify([{ type: "text", text: `⚠ ${msg}` }]),
-        interrupted: 0,
-        total_input_tokens: totalInput,
-        total_output_tokens: totalOutput,
-        cost_estimate: (totalInput * PRICE_INPUT_PER_M) / 1_000_000 + (totalOutput * PRICE_OUTPUT_PER_M) / 1_000_000,
-      });
-      return;
+    for await (const chunk of stream) {
+      if (abort.aborted) break;
+      const choice = chunk.choices?.[0];
+      const delta = choice?.delta as
+        | {
+            content?: string;
+            tool_calls?: Array<{
+              index: number;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }>;
+          }
+        | undefined;
+      if (delta?.content) {
+        accumText += delta.content;
+        send("text_delta", { content: delta.content });
+      }
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const cur = toolCallAccum.get(tc.index) ?? { args: "" };
+          if (tc.id) cur.id = tc.id;
+          if (tc.function?.name) cur.name = tc.function.name;
+          if (tc.function?.arguments) cur.args += tc.function.arguments;
+          toolCallAccum.set(tc.index, cur);
+        }
+      }
+      if (chunk.usage) usage = chunk.usage;
     }
 
-    if ("usage" in finalMessage && finalMessage.usage) {
-      totalInput += finalMessage.usage.input_tokens ?? 0;
-      totalOutput += finalMessage.usage.output_tokens ?? 0;
+    if (accumText) accumulatedAssistantBlocks.push({ type: "text", text: accumText });
+    if (usage?.prompt_tokens) totalInput += usage.prompt_tokens;
+    if (usage?.completion_tokens) totalOutput += usage.completion_tokens;
+
+    const toolCalls = Array.from(toolCallAccum.values()).filter((c) => c.id && c.name);
+    if (toolCalls.length === 0) {
+      // No more tools — assistant turn complete.
+      break;
     }
 
-    // Tokens were already streamed as text_delta events; here we just collect
-    // the final blocks so we have tool_use, text (assembled), etc. for the
-    // tool dispatch and persistence steps.
-    const respBlocks = (finalMessage.content ?? []) as ContentBlock[];
-    assistantBlocks = [...assistantBlocks, ...respBlocks];
-    const resp = finalMessage; // alias so the existing logic below still reads "resp.stop_reason"
+    // 9. Persist the assistant turn (text + tool_calls) into the OAI conversation
+    // for the next iteration AND record tool_use blocks in the DB shape.
+    oaiMessages.push({
+      role: "assistant",
+      content: accumText || null,
+      tool_calls: toolCalls.map((c) => ({
+        id: c.id!,
+        type: "function" as const,
+        function: { name: c.name!, arguments: c.args || "{}" },
+      })),
+    } as ChatMessage);
+    for (const c of toolCalls) {
+      let parsed: unknown = {};
+      try { parsed = JSON.parse(c.args || "{}"); } catch {}
+      const block: ContentBlock = { type: "tool_use", id: c.id!, name: c.name!, input: parsed };
+      accumulatedAssistantBlocks.push(block);
+      send("tool_call", {
+        id: c.id,
+        name: c.name,
+        input: parsed,
+        scope: BROWSER_TOOL_NAMES.has(c.name!) ? "ui" : "server",
+      });
+    }
 
-    if (resp.stop_reason === "tool_use") {
-      const toolResults: ContentBlock[] = [];
-      for (const block of respBlocks) {
-        if (block.type !== "tool_use") continue;
-        const tu = block as { id: string; name: string; input: unknown };
-        send("tool_call", {
-          id: tu.id,
-          name: tu.name,
-          input: tu.input,
-          scope: BROWSER_TOOL_NAMES.has(tu.name) ? "ui" : "server",
-        });
-
-        if (BROWSER_TOOL_NAMES.has(tu.name)) {
-          // UI tool — emit request, await browser response (or abort)
-          send("ui_tool_request", { id: tu.id, name: tu.name, input: tu.input });
-          let result: unknown;
+    // 10. Dispatch each tool
+    for (const c of toolCalls) {
+      let resultText = "";
+      let resultBlocks: AnthropicBlock[] | string = "";
+      try {
+        if (BROWSER_TOOL_NAMES.has(c.name!)) {
+          // UI tool — emit request, await browser response (or abort).
+          // We use a separate requestId (UUID) so the pending registry key
+          // is decoupled from the LLM's tool_call id.
+          const requestId = uuid();
+          send("ui_tool_request", {
+            id: c.id,
+            request_id: requestId,
+            name: c.name,
+            input: JSON.parse(c.args || "{}"),
+          });
+          let browserResult: unknown;
           let wasAborted = false;
           try {
-            result = await Promise.race([
-              registerPending(tu.id),
+            browserResult = await Promise.race([
+              registerPending(requestId),
               new Promise<{ aborted: true }>((resolve) => {
                 abort.addEventListener(
                   "abort",
@@ -259,158 +278,112 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
               }),
             ]);
           } finally {
-            // If we aborted before the browser responded, drop the pending entry
-            // (otherwise it would leak — the browser POST would still resolve it
-            // into nothing, which is harmless, but the Map entry stays).
-            if (wasAborted) abandonPending(tu.id);
+            if (wasAborted) abandonPending(requestId);
           }
-          send("ui_tool_response_ack", { id: tu.id });
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: tu.id,
-            // UI tool results are small objects ({source_ids: [...]} | {skipped: true})
-            // — JSON-stringify is fine.
-            content: JSON.stringify(result),
-          });
+          send("ui_tool_response_ack", { id: c.id });
+          resultBlocks = typeof browserResult === "string" ? browserResult : JSON.stringify(browserResult);
+          resultText = typeof resultBlocks === "string" ? resultBlocks : "";
         } else {
-          // MCP tool — pass content blocks through directly so image-returning
-          // tools (generate_sketch, remix_image, edit_image) make their images
-          // visible to Claude on the next turn instead of degrading to JSON text.
-          try {
-            const r = await mcp.callTool({
-              name: tu.name,
-              arguments: (tu.input ?? {}) as Record<string, unknown>,
-            });
-            const summary = summarizeToolResult(r as { content: unknown });
-            const images = extractImageUrls(r as { content: unknown });
-            send("tool_result", { id: tu.id, name: tu.name, summary, images });
-            // Stash images+summary in the sidecar map; we'll merge them onto
-            // the persisted tool_use block at save time. Don't mutate the
-            // in-memory tool_use block — Anthropic rejects unknown fields.
-            toolMetaById.set(tu.id, { images, summary });
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: tu.id,
-              // Convert our internal image block shape ({type, mimeType, data})
-              // to Anthropic's expected format ({type, source: {type:"base64",
-              // media_type, data}}). Otherwise the API rejects with 400 on the
-              // next turn (image-returning tools like generate_sketch).
-              content: toAnthropicContent(r.content) as never,
-            });
-          } catch (e) {
-            const errText = (e as Error).message;
-            send("tool_result", { id: tu.id, name: tu.name, summary: `Error: ${errText}` });
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: tu.id,
-              content: errText,
-            });
+          const r = await mcp.callTool({ name: c.name!, arguments: JSON.parse(c.args || "{}") });
+          const blocks: AnthropicBlock[] = [];
+          for (const part of (r.content as Array<{ type: string; text?: string; mimeType?: string; data?: string }>) ?? []) {
+            if (part.type === "text" && part.text) {
+              blocks.push({ type: "text", text: part.text });
+            } else if (part.type === "image" && part.data && part.mimeType) {
+              blocks.push({
+                type: "image",
+                source: { type: "base64", media_type: part.mimeType, data: part.data },
+              });
+            }
           }
+          resultBlocks = blocks;
+          resultText = blocks
+            .filter((b): b is Extract<AnthropicBlock, { type: "text" }> => b.type === "text")
+            .map((b) => b.text)
+            .join("\n");
         }
+      } catch (e) {
+        const errMsg = (e as Error).message;
+        resultBlocks = `ERROR: ${errMsg}`;
+        resultText = errMsg;
       }
 
-      history.push({ role: "assistant", content: respBlocks });
-      history.push({ role: "user", content: toolResults });
-      continue;
-    }
+      pendingToolResults.push({
+        type: "tool_result",
+        tool_use_id: c.id!,
+        content: resultBlocks,
+      });
 
-    if (resp.stop_reason === "pause_turn") {
-      // Server-side tools (web_search) need another iteration
-      history.push({ role: "assistant", content: respBlocks });
-      continue;
-    }
+      oaiMessages.push({
+        role: "tool",
+        tool_call_id: c.id!,
+        content:
+          typeof resultBlocks === "string"
+            ? resultBlocks
+            : (resultBlocks.map((b) =>
+                b.type === "text"
+                  ? { type: "text" as const, text: b.text }
+                  : b.type === "image"
+                    ? {
+                        type: "image_url" as const,
+                        image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` },
+                      }
+                    : { type: "text" as const, text: "" },
+              ) as never),
+      } as ChatMessage);
 
-    // end_turn / stop_sequence / max_tokens
-    break;
+      const summaryImages = (typeof resultBlocks === "string" ? [] : resultBlocks)
+        .filter((b): b is Extract<AnthropicBlock, { type: "image" }> => b.type === "image")
+        .map((b) => `data:${b.source.media_type};base64,${b.source.data}`);
+      send("tool_result", {
+        id: c.id,
+        name: c.name,
+        summary: resultText.slice(0, 500),
+        images: summaryImages.length ? summaryImages : undefined,
+      });
+    }
   }
 
-  // 7. Persist the assistant message
-  const cost =
-    (totalInput * PRICE_INPUT_PER_M) / 1_000_000 +
-    (totalOutput * PRICE_OUTPUT_PER_M) / 1_000_000;
-
-  // Merge sidecar tool metadata onto the tool_use blocks we persist (so the
-  // chat UI can re-render galleries on refetch). The merged shape is only ever
-  // read by our display layer — it never goes back to Anthropic because the
-  // history-build step strips tool_use blocks entirely.
-  const persistedBlocks = assistantBlocks.map((b) => {
-    const block = b as { type?: string; id?: string };
-    if (block.type === "tool_use" && block.id && toolMetaById.has(block.id)) {
-      const meta = toolMetaById.get(block.id)!;
-      return { ...b, _images: meta.images, _summary: meta.summary };
-    }
-    return b;
-  });
-
+  // 11. Persist the assistant turn (text + tool_use) and the user turn
+  // carrying the tool_results, mirroring the prior Anthropic-shape on disk.
+  const finalAssistantBlocks: ContentBlock[] = accumulatedAssistantBlocks.length
+    ? accumulatedAssistantBlocks
+    : [{ type: "text", text: "" }];
   appendMessage({
     conversation_id,
     role: "assistant",
-    content_json: JSON.stringify(persistedBlocks),
+    content_json: JSON.stringify(finalAssistantBlocks),
     interrupted: abort.aborted ? 1 : 0,
     total_input_tokens: totalInput,
     total_output_tokens: totalOutput,
-    cost_estimate: cost,
+    cost_estimate: estimateCost(modelInfo, totalInput, totalOutput),
   });
-
-  send("done", { usage: { input: totalInput, output: totalOutput }, cost });
-}
-
-function summarizeToolResult(r: { content: unknown }): string {
-  if (!Array.isArray(r.content)) return "";
-  const first = r.content.find(
-    (c: { type?: string; text?: string }) => c.type === "text" && c.text,
-  ) as { text?: string } | undefined;
-  return (first?.text ?? "").slice(0, 200);
-}
-
-/**
- * Translates our MCP tool's content blocks into Anthropic's expected format.
- *
- * Our internal `image` block: `{ type: "image", mimeType: string, data: string }`
- * Anthropic's tool_result `image`: `{ type: "image", source: { type: "base64", media_type: string, data: string } }`
- *
- * Text blocks pass through unchanged. Already-Anthropic-shaped image blocks
- * (with `source`) also pass through unchanged.
- */
-function toAnthropicContent(content: unknown): unknown[] {
-  if (!Array.isArray(content)) return [];
-  return content.map((c) => {
-    const block = c as { type?: string; mimeType?: string; media_type?: string; data?: string; source?: unknown };
-    if (block.type === "image" && !block.source && block.data) {
-      return {
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: block.mimeType || block.media_type || "image/png",
-          data: block.data,
-        },
-      };
-    }
-    return c;
-  });
-}
-
-/**
- * Extracts image URLs from a tool result so the chat UI can preview them
- * inline (e.g. YouTube thumbnails from search_youtube). Looks for HTTPS
- * image-like URLs in any text block.
- */
-function extractImageUrls(r: { content: unknown }): string[] {
-  if (!Array.isArray(r.content)) return [];
-  const urls = new Set<string>();
-  for (const c of r.content as Array<{ type?: string; text?: string }>) {
-    if (c.type !== "text" || !c.text) continue;
-    // External image URLs (YouTube thumbnails, generic image extensions)
-    const httpsRe = /https?:\/\/[^\s)\]"<>]+?(?:\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s)\]"<>]*)?|i\.ytimg\.com\/[^\s)\]"<>]+|i9\.ytimg\.com\/[^\s)\]"<>]+)/gi;
-    const httpsMatches = c.text.match(httpsRe);
-    if (httpsMatches) for (const m of httpsMatches) urls.add(m);
-    // Internal sketch references — generate_sketch returns "generated:sk_<hex>"
-    // strings that the chat UI needs as servable URLs.
-    const sketchRe = /generated:(sk_[a-z0-9]+)/g;
-    let m: RegExpExecArray | null;
-    while ((m = sketchRe.exec(c.text)) !== null) {
-      urls.add(`/api/generated-sketches/${m[1]}`);
-    }
+  if (pendingToolResults.length) {
+    appendMessage({
+      conversation_id,
+      role: "user",
+      content_json: JSON.stringify(pendingToolResults),
+      interrupted: 0,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      cost_estimate: 0,
+    });
   }
-  return Array.from(urls).slice(0, 12); // cap for sanity
+
+  send("done", {
+    usage: { input: totalInput, output: totalOutput },
+    cost: estimateCost(modelInfo, totalInput, totalOutput),
+  });
+}
+
+function estimateCost(
+  m: ReturnType<typeof getModelById>,
+  inTok: number,
+  outTok: number,
+): number {
+  if (!m) return 0;
+  return (
+    (inTok / 1_000_000) * m.pricing.inputPerM +
+    (outTok / 1_000_000) * m.pricing.outputPerM
+  );
 }
