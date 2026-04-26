@@ -1530,3 +1530,23 @@ git push origin main
 2. `:online` variant cost: web search adds a per-request fee (~$5/1000 requests at the time of writing) on top of the model's token cost. Worth mentioning to the user once they see the bill.
 3. Tool result content with images: OpenAI added array content for `role: "tool"` messages relatively recently. Some OpenRouter-hosted models may not handle it gracefully. If a specific model breaks, the workaround is to send images as a follow-up `role: "user"` message — but ship the cleaner shape first and patch only if needed.
 4. The migration is unidirectional: existing chat history persisted with Anthropic-shape blocks (`tool_use` with `toolu_xxx` ids) keeps loading fine because the chat UI reads from DB; the new agent generates calls with whatever ids OpenRouter returns (`call_xxx` for OpenAI, model-specific elsewhere). No incompatibility — IDs are opaque to us.
+
+---
+
+## Post-Implementation Notes (2026-04-26 evening)
+
+The 11 tasks shipped via subagent-driven execution. Smoke test surfaced 2 production bugs that needed in-place patches:
+
+- `ff00736` — added try/catch around `client.chat.completions.create()` so OpenRouter errors surface in the chat UI instead of failing silently
+- `a4f1bb6` — replaced the broken `:online` model suffix with the modern `plugins:[{id:"web"}]` parameter (the `:online` variant 404s on `google/gemini-3-pro-preview` and many other recent models)
+- `676b3d0` — corrected the Gemini model ID from `google/gemini-3-pro-preview` to `google/gemini-3.1-pro-preview` (the real ID per OpenRouter's `/models` endpoint). All 4 hardcoded references updated + DB row migrated inline.
+- `92c0631` — renamed hardcoded "Claude" labels in the chat UI ("Claude" eyebrow, request-image/sketch reasons) to "Assistant" since the agent is now provider-agnostic.
+
+### Open follow-ups (deliberately deferred)
+
+1. **Web plugin streaming buffer**: when `plugins:[{id:"web"}]` is enabled, OpenRouter executes the search synchronously before streaming the completion. With Gemini specifically, the user perceives no per-token streaming — chunks may arrive in larger blocks. Workaround for now: toggle web search off in Settings to verify the streaming path itself works, or switch to Sonnet 4.6 (Anthropic streams reliably per-token through OpenRouter).
+2. **Anthropic legacy UI**: the Anthropic API key block in `SettingsPanel.tsx` is intentionally kept for one release as a legacy migration aid. Remove once the user confirms no value in keeping it visible.
+3. **YT thumbnail import dedup**: `import_youtube_thumbnail` creates a new `swipe_files` row on each call for the same `video_id`. Add a dedup-by-video-id check if the user starts seeing duplicate references.
+4. **Pricing snapshot date**: `src/lib/agent/models.ts` lacks a `pricingAsOf` field. Add when next refreshing prices.
+5. **Model registry tests**: add a `unique IDs` invariant test (`expect(new Set(AGENT_MODELS.map(m => m.id)).size).toBe(AGENT_MODELS.length)`) to prevent accidental duplicates.
+6. **Sonnet vs Gemini quality A/B**: the user's original motivation for the migration. They'll compare side by side over the next few sessions and decide which to keep as default.
