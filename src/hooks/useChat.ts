@@ -7,6 +7,7 @@ export type ChatEvent =
   | { type: "tool_result"; id: string; name: string; summary: string; images?: string[] }
   | { type: "ui_tool_request"; id: string; name: string; input: unknown }
   | { type: "ui_tool_response_ack"; id: string }
+  | { type: "conversation_renamed"; conversation_id: string; title: string }
   | { type: "done"; usage?: { input: number; output: number }; cost?: number }
   | { type: "error"; message: string };
 

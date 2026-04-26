@@ -10,6 +10,7 @@ export default function ConversationList({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActive = useChatStore((s) => s.setActive);
+  const conversationListVersion = useChatStore((s) => s.conversationListVersion);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -30,7 +31,7 @@ export default function ConversationList({ projectId }: { projectId: string }) {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, conversationListVersion]);
 
   const create = useCallback(async () => {
     const res = await fetch("/api/agent/conversations", {

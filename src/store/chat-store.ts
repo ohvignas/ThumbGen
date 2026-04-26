@@ -7,6 +7,8 @@ type ChatState = {
   activeConversationId: string | null;
   draft: string;
   attachments: ChatAttachment[];
+  /** Bump to signal that the conversation list should refetch (e.g. after auto-rename). */
+  conversationListVersion: number;
 
   open: () => void;
   close: () => void;
@@ -16,6 +18,7 @@ type ChatState = {
   addAttachment: (a: ChatAttachment) => void;
   removeAttachment: (source: string) => void;
   clearAttachments: () => void;
+  bumpConversationListVersion: () => void;
   reset: () => void;
 };
 
@@ -26,6 +29,7 @@ export const useChatStore = create<ChatState>((set) => ({
   activeConversationId: null,
   draft: "",
   attachments: [],
+  conversationListVersion: 0,
 
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false }),
@@ -44,6 +48,8 @@ export const useChatStore = create<ChatState>((set) => ({
 
   clearAttachments: () => set({ attachments: [] }),
 
+  bumpConversationListVersion: () => set((s) => ({ conversationListVersion: s.conversationListVersion + 1 })),
+
   reset: () =>
-    set({ isOpen: true, activeConversationId: null, draft: "", attachments: [] }),
+    set({ isOpen: true, activeConversationId: null, draft: "", attachments: [], conversationListVersion: 0 }),
 }));

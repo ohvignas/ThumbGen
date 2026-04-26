@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useChatStore } from "@/store/chat-store";
 import { useChat } from "@/hooks/useChat";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -33,7 +33,23 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   const { send, stop, streaming, events, reset, respondToUiTool } = useChat();
 
+  const bumpConversationListVersion = useChatStore((s) => s.bumpConversationListVersion);
+
   const [history, setHistory] = useState<DisplayMessage[]>([]);
+
+  // When the agent emits `conversation_renamed` (auto-titled first turn), nudge
+  // the conversation list to refetch so the user sees the new title without a
+  // manual reload. We use a ref to track the seen ones since events accumulates.
+  const seenRenameRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const e of events) {
+      if (e.type !== "conversation_renamed") continue;
+      const key = `${e.conversation_id}:${e.title}`;
+      if (seenRenameRef.current.has(key)) continue;
+      seenRenameRef.current.add(key);
+      bumpConversationListVersion();
+    }
+  }, [events, bumpConversationListVersion]);
 
   // When project changes, clear active conv so ConversationList picks the new
   // project's first conv (or stays empty if none). Without this, the previous

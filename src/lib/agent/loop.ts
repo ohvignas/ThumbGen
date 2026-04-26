@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getInMemoryMcpClient } from "@/lib/agent/mcp/in-memory-client";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
 import { appendMessage, listMessages } from "@/lib/agent/conversation/store";
+import { generateAndPersistTitle } from "@/lib/agent/conversation/auto-title";
 import { registerPending, abandonPending } from "@/lib/agent/pending-actions";
 import { BROWSER_TOOL_DEFS, BROWSER_TOOL_NAMES } from "@/lib/agent/browser-tools";
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
@@ -69,7 +70,9 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     }
   }
 
-  // 2. Persist the user message
+  // 2. Persist the user message. Capture the prior message count BEFORE
+  // appending so we can detect "this is the first user turn" → auto-title.
+  const isFirstTurn = listMessages(conversation_id).length === 0;
   appendMessage({
     conversation_id,
     role: "user",
@@ -79,6 +82,11 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
     total_output_tokens: 0,
     cost_estimate: 0,
   });
+  // Auto-title on first turn — fire-and-forget so it doesn't block the agent.
+  // The SSE `conversation_renamed` event lets the UI refresh the conv list.
+  if (isFirstTurn && message.text?.trim()) {
+    void generateAndPersistTitle(conversation_id, message.text, send);
+  }
 
   // 3. Build the message history (full conversation thread).
   // We strip tool_use / tool_result blocks from persisted messages — Anthropic
