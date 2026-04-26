@@ -130,8 +130,13 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
 
   const userModelId = getSetting("agentModel") || DEFAULT_AGENT_MODEL;
   const webSearchOn = getSetting("agentWebSearch") !== "0";
-  const modelId = webSearchOn ? `${userModelId}:online` : userModelId;
+  // OpenRouter's `web` plugin works with any model and is the modern API for
+  // augmenting completions with search results. The legacy `:online` suffix
+  // 404s on a lot of models (incl. google/gemini-3-pro-preview), so prefer
+  // the plugins array.
+  const modelId = userModelId;
   const modelInfo = getModelById(userModelId);
+  const webPlugin = webSearchOn ? [{ id: "web" }] : undefined;
 
   // 6. Build the OpenAI messages: system + history + new user turn
   const systemBlocks = buildSystemMessages(canvas_snapshot, project_id);
@@ -180,6 +185,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<void> {
         tool_choice: tools.length ? "auto" : undefined,
         stream: true,
         ...(modelInfo?.supportsThinking ? ({ reasoning_effort: REASONING_EFFORT } as never) : {}),
+        ...(webPlugin ? ({ plugins: webPlugin } as never) : {}),
       })) as never;
     } catch (e) {
       const errMsg = (e as Error).message || String(e);
