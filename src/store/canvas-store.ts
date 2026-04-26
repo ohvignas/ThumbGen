@@ -278,7 +278,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
       const data = await res.json();
       const initialNodes = data.nodes || [];
-      const initialEdges = data.edges || [];
+      // Lazy migration: legacy projects stored edges with targetHandle "image-in"
+      // before the generator handle was renamed to "ref-in". Rewrite on load so
+      // React Flow stops complaining and references actually attach visually.
+      const initialEdges = (data.edges || []).map((e: Edge) =>
+        e.targetHandle === "image-in" ? { ...e, targetHandle: "ref-in" } : e,
+      );
       const initialSnapshot: Snapshot = {
         nodes: JSON.parse(JSON.stringify(initialNodes)),
         edges: JSON.parse(JSON.stringify(initialEdges)),
