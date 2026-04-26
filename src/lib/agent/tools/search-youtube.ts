@@ -32,6 +32,7 @@ async function fetchSearch(opts: {
   limit: number;
   duration: string;
   region: string | null;
+  language: string | null;
 }): Promise<YtVideoItem[]> {
   const params = new URLSearchParams({
     part: "snippet",
@@ -42,10 +43,8 @@ async function fetchSearch(opts: {
     videoDuration: opts.duration,        // "any" | "medium" | "long" (excludes <4min shorts when not "any")
     key: opts.apiKey,
   });
-  if (opts.region) {
-    params.set("regionCode", opts.region);
-    params.set("relevanceLanguage", opts.region.toLowerCase());
-  }
+  if (opts.region) params.set("regionCode", opts.region);
+  if (opts.language) params.set("relevanceLanguage", opts.language);
   const res = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
   if (!res.ok) throw new Error(`YouTube search failed: ${res.status}`);
   const data = await res.json();
@@ -55,7 +54,7 @@ async function fetchSearch(opts: {
 export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "search_youtube",
   description:
-    "Searches YouTube for videos on a topic. ALWAYS USE limit=8 (the default) — fewer results means less material to analyze and weaker pattern recognition. Defaults: region=FR + relevanceLanguage=fr (the user is French) + duration=medium (excludes <4min shorts — we want long-form videos for thumbnail analysis). If the French query returns fewer than 4 results, the tool auto-retries with region=any so you still get inspiration. By default fetches the top thumbnails as images so you can VISUALLY analyze them (composition, color contrast, focal point, text legibility, face placement). Use sort='viewCount' to surface what's most clicked, 'relevance' (default) for topical match. Pass region='US' or 'any' to broaden search; pass duration='long' for >20min content only. Be precise with the query — include exact product names and brands. QUOTA: 100 units per call.",
+    "Searches YouTube for videos on a topic. ALWAYS USE limit=8 (the default) — fewer results means less material to analyze and weaker pattern recognition. Defaults: region=FR + relevanceLanguage=fr (the user is French) + duration=medium (excludes <4min shorts — we want long-form videos for thumbnail analysis). FORMULATE THE QUERY IN FRENCH (e.g. \"Claude Design avis\", \"Cursor 2.0 test\", \"meilleur logiciel design 2026\") — querying in English forces the FR fallback ladder and you end up with US thumbnails. If FR returns <4 hits the tool auto-falls back: first to FR-language only (any country), then global as a last resort. By default fetches the top thumbnails as images so you can VISUALLY analyze them (composition, color contrast, focal point, text legibility, face placement). Use sort='viewCount' to surface what's most clicked, 'relevance' (default) for topical match. Pass region='US' or 'any' to broaden geography; pass duration='long' for >20min content only. Be precise with the query — include exact product names and brands. QUOTA: 100 units per call.",
   inputSchema: InputSchema,
   handler: async ({ query, sort, limit, include_thumbnails, region, duration }) => {
     const apiKey = getSetting("youtubeApiKey");
@@ -76,6 +75,7 @@ export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     let fallbackUsed = false;
 
     try {
+      // First pass: full FR localization (region + language) for the user's market.
       items = await fetchSearch({
         apiKey,
         query,
@@ -83,21 +83,43 @@ export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         limit: wantedLimit,
         duration: wantedDuration,
         region: wantedRegion === "any" ? null : wantedRegion,
+        language: wantedRegion === "any" ? null : wantedRegion.toLowerCase(),
       });
-      // Auto-fallback to global search if FR returned too few results.
+      // Fallback ladder when FR is too sparse (typical for niche / new topics):
+      //   1. drop region but keep relevanceLanguage=fr → French content from any country
+      //   2. drop language too → global content (last resort, only if step 1 still empty)
+      // This way we still return French-language thumbnails when possible instead
+      // of dumping random English ones the moment FR has fewer than 4 hits.
       if (wantedRegion === "FR" && items.length < FALLBACK_THRESHOLD) {
-        const fallback = await fetchSearch({
+        const langOnly = await fetchSearch({
           apiKey,
           query,
           sort: wantedSort,
           limit: wantedLimit,
           duration: wantedDuration,
           region: null,
+          language: "fr",
         });
-        if (fallback.length > items.length) {
-          items = fallback;
-          regionUsed = "any";
+        if (langOnly.length > items.length) {
+          items = langOnly;
+          regionUsed = "fr (langue, toutes régions)";
           fallbackUsed = true;
+        }
+        if (items.length < FALLBACK_THRESHOLD) {
+          const global = await fetchSearch({
+            apiKey,
+            query,
+            sort: wantedSort,
+            limit: wantedLimit,
+            duration: wantedDuration,
+            region: null,
+            language: null,
+          });
+          if (global.length > items.length) {
+            items = global;
+            regionUsed = "any (aucun match FR)";
+            fallbackUsed = true;
+          }
         }
       }
     } catch (e) {
