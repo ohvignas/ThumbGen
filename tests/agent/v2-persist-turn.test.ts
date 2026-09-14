@@ -41,16 +41,38 @@ describe("persistAssistantTurn", () => {
     expect(rows[0].interrupted).toBe(0);
   });
 
-  it("marks interrupted=1 when finishReason is 'aborted'", () => {
+  it("marks interrupted=1 when the explicit `interrupted` flag is set (the onAbort path)", () => {
+    // Real ai@7.0.99 has no "aborted" FinishReason — streamText's onAbort
+    // callback doesn't even receive a finishReason (see GenerateTextAbortEvent).
+    // persistAssistantTurn must rely on the explicit `interrupted` flag, not
+    // on any particular finishReason string.
     const conv = createConversation(`test-v2-persist-${uuid()}`);
     persistAssistantTurn({
       conversationId: conv.id,
       responseMessages: [],
       totalUsage: {},
       finishReason: "aborted",
+      interrupted: true,
       modelInfo: undefined,
     });
     expect(listMessages(conv.id)[0].interrupted).toBe(1);
     expect(listMessages(conv.id)[0].cost_estimate).toBe(0);
+  });
+
+  it("does NOT mark interrupted=1 from finishReason alone", () => {
+    // Regression guard: the real ai SDK FinishReason union
+    // ('stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other')
+    // never contains "aborted", so a finishReason string can never be a
+    // reliable signal for "this turn was interrupted" — only the explicit
+    // `interrupted` flag may set it.
+    const conv = createConversation(`test-v2-persist-${uuid()}`);
+    persistAssistantTurn({
+      conversationId: conv.id,
+      responseMessages: [{ role: "assistant", content: "hi" }],
+      totalUsage: { inputTokens: 10, outputTokens: 5 },
+      finishReason: "stop",
+      modelInfo: undefined,
+    });
+    expect(listMessages(conv.id)[0].interrupted).toBe(0);
   });
 });

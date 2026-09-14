@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { streamText, isStepCount } from "ai";
+import { streamText, isStepCount, type ModelMessage } from "ai";
 import { getOpenRouterProvider } from "./openrouter-provider";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
@@ -39,43 +39,76 @@ export async function postV2(req: NextRequest): Promise<Response> {
   const modelInfo = getModelById(modelId);
   const conversationId = body.conversation_id;
 
-  const userParts: Array<
+  // Everything below is pre-stream setup: attachment resolution and prior-
+  // history reconstruction, both of which read data supplied by (or on
+  // behalf of) the client and can throw on bad input — a stale/invalid
+  // attachment reference (resolveImageSource) or a conversation row that
+  // doesn't parse as JSON. Left unguarded, either escapes as an unhandled
+  // 500 with a stack trace exposed to the client, unlike v1's call site
+  // (the v1 branch of POST in src/app/api/agent/chat/route.ts), which wraps
+  // its whole loop in try/catch and degrades to an SSE `error` event.
+  let priorMessages: unknown[];
+  let systemText: string;
+  let userParts: Array<
     { type: "text"; text: string } | { type: "file"; mediaType: string; data: string }
-  > = [];
-  if (body.message?.text) userParts.push({ type: "text", text: body.message.text });
-  for (const a of body.message?.attachments ?? []) {
-    if (a.type !== "image") continue;
-    const img = await resolveImageSource(a.source);
-    userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });
+  >;
+  try {
+    userParts = [];
+    if (body.message?.text) userParts.push({ type: "text", text: body.message.text });
+    for (const a of body.message?.attachments ?? []) {
+      if (a.type !== "image") continue;
+      const img = await resolveImageSource(a.source);
+      userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });
+    }
+
+    appendMessage({
+      conversation_id: conversationId,
+      role: "user",
+      content_json: JSON.stringify([{ role: "user", content: userParts }]),
+      interrupted: 0,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      cost_estimate: 0,
+    });
+
+    // Every prior row is assumed to already be ModelMessage-shaped — true
+    // once scripts/migrate-chat-messages-to-uimessage.ts has run for real
+    // (Plan 2's cutover sequencing: migrate, THEN flip THUMBGEN_AGENT_V2,
+    // THEN swap the frontend). That assumption doesn't hold for a
+    // conversation that still carries old v1 Anthropic-block-shaped rows
+    // (see persist-turn.ts's header comment — the two JSON shapes are NOT
+    // interchangeable), so guard it explicitly rather than silently feeding
+    // malformed history into streamText and letting it fail with an opaque
+    // provider error: a ModelMessage always carries a `role` key, an
+    // Anthropic content block never does.
+    const priorRows = listMessages(conversationId).slice(0, -1);
+    priorMessages = [];
+    for (const row of priorRows) {
+      const parsed: unknown = JSON.parse(row.content_json);
+      const looksMigrated =
+        Array.isArray(parsed) &&
+        parsed.every((m) => typeof m === "object" && m !== null && "role" in (m as Record<string, unknown>));
+      if (!looksMigrated) {
+        return new Response(
+          "This conversation has messages in the old (pre-migration) format and can't " +
+            "be continued on the new agent backend. Run scripts/migrate-chat-messages-to-uimessage.ts " +
+            "first, then retry.",
+          { status: 400 },
+        );
+      }
+      priorMessages.push(...(parsed as unknown[]));
+    }
+
+    const systemBlocks = buildSystemMessages(body.canvas_snapshot, body.project_id);
+    systemText = systemBlocks.map((b) => b.text).join("\n\n");
+  } catch (e) {
+    return new Response(`Failed to prepare the conversation: ${(e as Error).message}`, { status: 400 });
   }
-
-  appendMessage({
-    conversation_id: conversationId,
-    role: "user",
-    content_json: JSON.stringify([{ role: "user", content: userParts }]),
-    interrupted: 0,
-    total_input_tokens: 0,
-    total_output_tokens: 0,
-    cost_estimate: 0,
-  });
-
-  // Every prior row is assumed to already be ModelMessage-shaped — true once
-  // scripts/migrate-chat-messages-to-uimessage.ts has run for real (Plan 2's
-  // cutover sequencing: migrate, THEN flip THUMBGEN_AGENT_V2, THEN swap the
-  // frontend — never true for a conversation continued under v2 before that
-  // migration runs, which the cutover sequencing exists specifically to
-  // prevent).
-  const priorMessages = listMessages(conversationId)
-    .slice(0, -1)
-    .flatMap((m) => JSON.parse(m.content_json));
-
-  const systemBlocks = buildSystemMessages(body.canvas_snapshot, body.project_id);
-  const systemText = systemBlocks.map((b) => b.text).join("\n\n");
 
   const result = streamText({
     model: provider(modelId),
     system: systemText,
-    messages: [...priorMessages, { role: "user", content: userParts }],
+    messages: [...priorMessages, { role: "user", content: userParts }] as ModelMessage[],
     tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
     stopWhen: isStepCount(MAX_STEPS),
     // v1 checks abort only at the outer-iteration and token-streaming
@@ -92,14 +125,63 @@ export async function postV2(req: NextRequest): Promise<Response> {
         ...webSearchProviderOptions(),
       },
     },
-    onFinish: async ({ response, totalUsage, finishReason }) => {
+    // `onFinish` is deprecated in ai@7.0.99 in favor of `onEnd` (identical
+    // callback shape — `onFinish` is now a literal alias typed as
+    // `StreamTextOnEndCallback`, not a separate event type). Read
+    // `responseMessages` off the event directly rather than the deprecated
+    // `response.messages` field: `response` there is itself a deprecated
+    // alias for `finalStep.response`, so on a multi-step tool-calling turn
+    // it would only carry the LAST step's messages. `responseMessages` is
+    // the actual aggregate across every step of the turn. Same reasoning for
+    // `usage` over the deprecated `totalUsage` alias (both carry the same
+    // aggregated-across-all-steps numbers; `usage` is simply the current
+    // name — see persist-turn.ts's FinishInfo.totalUsage for why aggregation
+    // across steps is required in the first place).
+    onEnd: async ({ responseMessages, usage, finishReason }) => {
       persistAssistantTurn({
         conversationId,
-        responseMessages: response.messages,
-        totalUsage,
+        responseMessages,
+        totalUsage: usage,
         finishReason,
         modelInfo,
       });
+    },
+    // Fires instead of onEnd when the stream is aborted (e.g. a Stop click)
+    // — onEnd does NOT fire on abort. Without this, a Stop click during a v2
+    // turn persisted nothing at all, unlike v1 (loop.ts:378-386), which
+    // always writes a partial assistant row with interrupted:1. The abort
+    // event (GenerateTextAbortEvent) carries no finishReason/usage/
+    // responseMessages the way onEnd's event does — only `steps`, the
+    // per-step results finished before the abort — so they're reconstructed
+    // here by aggregating across those steps.
+    onAbort: ({ steps }) => {
+      const totalUsage = steps.reduce(
+        (acc, s) => ({
+          inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
+          outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
+        }),
+        { inputTokens: 0, outputTokens: 0 },
+      );
+      persistAssistantTurn({
+        conversationId,
+        responseMessages: steps.flatMap((s) => s.response.messages),
+        totalUsage,
+        finishReason: "aborted",
+        interrupted: true,
+        modelInfo,
+      });
+    },
+  });
+
+  // Force the underlying generation to keep running to completion — and
+  // onEnd/onAbort to fire — even if the HTTP client disconnects (tab closed,
+  // navigation away) mid-stream. Without this, toUIMessageStreamResponse()'s
+  // stream gets cancelled on disconnect and neither callback runs, so
+  // nothing is ever persisted for that turn. Not awaited: this runs
+  // alongside the response stream, not before it.
+  void result.consumeStream({
+    onError: (error) => {
+      console.error("[agent v2] consumeStream error:", error);
     },
   });
 
