@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { runAgentLoop } from "@/lib/agent/loop";
+import { postV2 } from "@/lib/agent/v2/route-handler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,10 @@ function sseFormat(event: string, data: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.THUMBGEN_AGENT_V2 === "1") {
+    return postV2(req);
+  }
+
   const body = (await req.json().catch(() => null)) as
     | {
         conversation_id?: string;
