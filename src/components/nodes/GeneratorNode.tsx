@@ -7,8 +7,9 @@ import NodeShell from "./NodeShell";
 import { MODEL_COSTS, INPUT_TYPE_COLORS } from "@/lib/model-costs";
 
 const GEMINI_MODELS = [
-  { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro", provider: "gemini" },
-  { id: "gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash", provider: "gemini" },
+  { id: "gemini-3-pro-image", label: "Gemini 3 Pro", provider: "gemini" },
+  { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash", provider: "gemini" },
+  { id: "gemini-3.1-flash-lite-image", label: "Gemini 3.1 Flash Lite", provider: "gemini" },
   { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", provider: "gemini" },
 ];
 
@@ -17,6 +18,8 @@ const IDEOGRAM_MODELS = [
 ];
 
 const OPENAI_MODELS = [
+  { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst (précis)", provider: "openai" },
+  { id: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare (rapide)", provider: "openai" },
   { id: "gpt-image-2", label: "GPT Image 2 (4K)", provider: "openai" },
   { id: "gpt-image-1.5", label: "GPT Image 1.5", provider: "openai" },
   { id: "gpt-image-1", label: "GPT Image 1", provider: "openai" },
@@ -63,7 +66,7 @@ export default function GeneratorNode({
       .catch(() => {});
   }, []);
 
-  const model = data.model || "gemini-3-pro-image-preview";
+  const model = data.model || "gemini-3-pro-image";
   const aspectRatio = data.aspectRatio || "16x9";
   const renderingSpeed = data.renderingSpeed || "DEFAULT";
   const numImages = data.numImages || 1;
@@ -156,6 +159,7 @@ export default function GeneratorNode({
         logos: inputs.logoEntries,
         sketchImages: inputs.sketchImages,
         aspectRatio,
+        imageSize: data.imageSize || "2K",
         model: targetModel,
       };
     } else if (targetProvider === "ideogram") {
@@ -224,7 +228,7 @@ export default function GeneratorNode({
       images: result.images || [],
       stats: result.stats || null,
     };
-  }, [aspectRatio, renderingSpeed, ideogramMode, data.imageWeight, data.maskDataUrl, data.styleType]);
+  }, [aspectRatio, renderingSpeed, ideogramMode, data.imageWeight, data.maskDataUrl, data.styleType, data.imageSize]);
 
   // Single model generation — progressive
   const handleGenerate = useCallback(async () => {
@@ -544,6 +548,27 @@ export default function GeneratorNode({
             <option value="9x16">9:16 (Vertical)</option>
           </select>
         </div>
+
+        {provider === "gemini" && (
+          <div>
+            <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Résolution</label>
+            <div className="flex gap-1">
+              {(["2K", "4K"] as const).map((size) => (
+                <button
+                  key={size}
+                  onClick={() => updateNodeData(id, { imageSize: size })}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
+                  style={{
+                    background: (data.imageSize || "2K") === size ? "var(--accent)" : "var(--surface)",
+                    color: (data.imageSize || "2K") === size ? "var(--canvas-bg)" : "var(--text-muted)",
+                  }}
+                >
+                  {size}{size === "4K" ? " (Pro)" : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Images par modèle</label>

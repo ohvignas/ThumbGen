@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 :root {
+  /* Single-font system: Arial everywhere. */
+  --font-dm-sans: Arial, Helvetica, sans-serif;
+  --font-display: Arial, Helvetica, sans-serif;
+  --font-mono: Arial, Helvetica, sans-serif;
+
   /* — Atelier Nocturne design system — */
   /* Layered dark grounds, warm ivory text, magenta brand accent */
   --ink-0: #08080C;
@@ -41,7 +46,7 @@
 body {
   background: var(--canvas-bg);
   color: var(--text-primary);
-  font-family: 'DM Sans', system-ui, -apple-system, Arial, sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   overflow: hidden;
 }
 

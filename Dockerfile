@@ -1,10 +1,13 @@
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 
 # --- Dependencies ---
 FROM base AS deps
 WORKDIR /app
-# better-sqlite3 ships musl prebuilds; build tools fall back if unavailable
-RUN apk add --no-cache python3 make g++
+# Debian/glibc base — better-sqlite3's prebuilt binaries target glibc, so they
+# actually load here (Alpine/musl made them fail at runtime with "Exec format
+# error" / ERR_DLOPEN_FAILED even when the arch matched). Build tools stay as
+# a fallback for any package without a matching prebuild.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -37,8 +40,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nextjs
 
 # Copy built app
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public

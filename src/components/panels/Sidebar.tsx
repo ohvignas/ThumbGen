@@ -725,10 +725,13 @@ export default function Sidebar() {
                 </p>
                 <div className="space-y-1">
                   {[
-                    { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro", color: PROVIDER_COLORS.gemini },
-                    { id: "gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash", color: PROVIDER_COLORS.gemini },
+                    { id: "gemini-3-pro-image", label: "Gemini 3 Pro", color: PROVIDER_COLORS.gemini },
+                    { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash", color: PROVIDER_COLORS.gemini },
+                    { id: "gemini-3.1-flash-lite-image", label: "Gemini 3.1 Flash Lite", color: PROVIDER_COLORS.gemini },
                     { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", color: PROVIDER_COLORS.gemini },
                     { id: "ideogram", label: "Ideogram v3", color: PROVIDER_COLORS.ideogram },
+                    { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst (précis)", color: PROVIDER_COLORS.openai },
+                    { id: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare (rapide)", color: PROVIDER_COLORS.openai },
                     { id: "gpt-image-2", label: "GPT Image 2 (4K)", color: PROVIDER_COLORS.openai },
                     { id: "gpt-image-1.5", label: "GPT Image 1.5", color: PROVIDER_COLORS.openai },
                     { id: "gpt-image-1", label: "GPT Image 1", color: PROVIDER_COLORS.openai },

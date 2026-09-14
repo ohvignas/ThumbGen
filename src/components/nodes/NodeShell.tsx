@@ -63,7 +63,7 @@ export default function NodeShell({
       style={{
         width,
         background: "var(--node-bg)",
-        fontFamily: "'DM Sans', system-ui, sans-serif",
+        fontFamily: "Arial, Helvetica, sans-serif",
         borderColor: accentColor ? accentColor + "40" : "var(--line-faint)",
       }}
     >

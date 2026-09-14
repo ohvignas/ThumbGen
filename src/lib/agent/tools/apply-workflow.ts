@@ -19,9 +19,9 @@ const InputSchema = z.object({
 // recommendation for thumbnail generation per the user).
 const MODEL_ID_MAP: Record<string, string> = {
   ideogram: "ideogram",
-  "nano-banana": "gemini-3.1-flash-image-preview",
+  "nano-banana": "gemini-3.1-flash-image",
   grok: "grok-imagine-image",
-  openai: "gpt-image-2",
+  openai: "gpt-image-2.5-sunburst",
 };
 
 type CanvasData = Record<string, unknown>;

@@ -26,15 +26,15 @@ export function buildMcpServer(): McpServer {
     server.registerTool(
       tool.name,
       { description: tool.description, inputSchema },
-      async (args) => {
+      async (args: unknown) => {
         // Re-validate against our own full schema to catch coercion issues
         const parsed = tool.inputSchema.safeParse(args ?? {});
         if (!parsed.success) {
           return {
             content: [
               {
-                type: "text",
-                text: `Invalid arguments: ${JSON.stringify((parsed as z.SafeParseError<unknown>).error.format())}`,
+                type: "text" as const,
+                text: `Invalid arguments: ${JSON.stringify((parsed as z.ZodSafeParseError<unknown>).error.format())}`,
               },
             ],
             isError: true,

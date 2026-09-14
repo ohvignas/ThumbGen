@@ -61,7 +61,7 @@ function loginPage() {
     body {
       background: #0E0E13;
       color: #fff;
-      font-family: 'DM Sans', system-ui, sans-serif;
+      font-family: Arial, Helvetica, sans-serif;
       display: flex;
       align-items: center;
       justify-content: center;

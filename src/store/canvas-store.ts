@@ -20,6 +20,7 @@ export type NodeData = {
   model?: string;
   ideogramMode?: "generate" | "remix" | "edit";
   aspectRatio?: string;
+  imageSize?: "2K" | "4K"; // Gemini output resolution
   imageWeight?: number;
   styleType?: string;
   renderingSpeed?: string;
@@ -31,6 +32,12 @@ export type NodeData = {
   favoriteModel?: string; // User's favorite model for quick access
   sketchElements?: string; // JSON string of Excalidraw elements
   sketchFiles?: string; // JSON string of Excalidraw files
+  // Text overlay node
+  overlayText?: string;
+  overlayColor?: string;
+  overlayStrokeColor?: string;
+  overlayPosition?: "top" | "center" | "bottom";
+  overlayFontScale?: number;
   // Preview stats
   genStatus?: "loading" | "done" | "error";
   genError?: string;
@@ -234,7 +241,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       logos: sourceNodes.filter((n) => logoSourceIds.has(n.id)),
       sketches: sourceNodes.filter((n) => sketchSourceIds.has(n.id) || n.type === "sketch"),
       images: sourceNodes.filter(
-        (n) => n.type === "preview" || n.type === "swipeFile" || n.type === "faceReference"
+        (n) => n.type === "preview" || n.type === "swipeFile" || n.type === "faceReference" || n.type === "textOverlay"
       ),
     };
   },

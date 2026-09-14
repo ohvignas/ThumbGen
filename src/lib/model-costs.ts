@@ -5,11 +5,14 @@
 export const MODEL_COSTS: Record<string, number> = {
   // Google Gemini
   "gemini-2.5-flash-image": 0.02,
-  "gemini-3.1-flash-image-preview": 0.02,
-  "gemini-3-pro-image-preview": 0.04,
+  "gemini-3.1-flash-image": 0.02,
+  "gemini-3.1-flash-lite-image": 0.01,
+  "gemini-3-pro-image": 0.04,
   // Ideogram
   "ideogram": 0.08,
   // OpenAI
+  "gpt-image-2.5-sunburst": 0.05,
+  "gpt-image-2.5-flare": 0.03,
   "gpt-image-2": 0.04,
   "gpt-image-1.5": 0.02,
   "gpt-image-1": 0.02,

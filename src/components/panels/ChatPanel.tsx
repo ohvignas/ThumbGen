@@ -311,7 +311,7 @@ function rowToDisplay(row: {
   return { id: row.id, role: row.role, blocks: display };
 }
 
-function snapshotCanvas(nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }>, edges: Array<{ source: string; target: string; targetHandle?: string }>): unknown {
+function snapshotCanvas(nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }>, edges: Array<{ source: string; target: string; targetHandle?: string | null }>): unknown {
   return {
     nodes: nodes.map((n) => ({
       id: n.id,
