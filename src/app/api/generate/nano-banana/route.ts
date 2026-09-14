@@ -3,12 +3,33 @@ import { getSetting } from "@/lib/settings";
 import { saveGeneratedImage } from "@/lib/generated-images";
 import { logGeneration } from "@/lib/generations-log";
 
-const DEFAULT_MODEL = "gemini-3-pro-image-preview";
+const DEFAULT_MODEL = "gemini-3-pro-image";
 const ALLOWED_MODELS = [
   "gemini-2.5-flash-image",
-  "gemini-3.1-flash-image-preview",
-  "gemini-3-pro-image-preview",
+  "gemini-3.1-flash-lite-image",
+  "gemini-3.1-flash-image",
+  "gemini-3-pro-image",
 ];
+
+// Per-model reference-image caps, from Google's docs + DeepMind model cards
+// (Sept 2026). Pro/Flash break the 14-image ceiling into sub-quotas by role;
+// exceeding a sub-quota degrades fidelity rather than erroring, so we trim
+// instead of rejecting. "objects" covers our logo + sketch inputs, "characters"
+// covers face refs, "style" covers the reference-thumbnail (style/composition) input.
+// gemini-2.5-flash-image (older, non-Gemini-3 model) isn't documented for this —
+// kept conservative.
+const REFERENCE_CAPS: Record<string, { objects: number; characters: number; style: number }> = {
+  "gemini-3-pro-image": { objects: 6, characters: 5, style: 3 },
+  "gemini-3.1-flash-image": { objects: 10, characters: 4, style: 3 },
+  "gemini-3.1-flash-lite-image": { objects: 14, characters: 0, style: 0 },
+  "gemini-2.5-flash-image": { objects: 6, characters: 3, style: 2 },
+};
+
+function capImages<T>(images: T[], max: number, label: string): T[] {
+  if (images.length <= max) return images;
+  console.warn(`[generate] trimming ${label}: ${images.length} → ${max} (model cap)`);
+  return images.slice(0, max);
+}
 
 function stripDataUrl(dataUrl: string): { mimeType: string; data: string } {
   const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
@@ -30,7 +51,7 @@ function mapAspectRatio(ratio: string): string {
 
 export async function POST(request: NextRequest) {
   const start = Date.now();
-  let modelUsed = "gemini-3-pro-image-preview";
+  let modelUsed = "gemini-3-pro-image";
   let promptForLog: string | null = null;
   try {
     const GEMINI_API_KEY = getSetting("geminiApiKey");
@@ -42,11 +63,12 @@ export async function POST(request: NextRequest) {
     const {
       prompt,
       negativePrompt,
-      faceImages = [],
-      referenceImages = [],
-      logos = [],
-      sketchImages = [],
+      faceImages: rawFaceImages = [],
+      referenceImages: rawReferenceImages = [],
+      logos: rawLogos = [],
+      sketchImages: rawSketchImages = [],
       aspectRatio = "16x9",
+      imageSize = "2K",
       model: requestedModel,
     } = body;
 
@@ -55,12 +77,23 @@ export async function POST(request: NextRequest) {
     promptForLog = prompt || null;
     const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-    if (!prompt && faceImages.length === 0 && referenceImages.length === 0 && sketchImages.length === 0) {
+    if (!prompt && rawFaceImages.length === 0 && rawReferenceImages.length === 0 && rawSketchImages.length === 0) {
       return NextResponse.json({ error: "Connect a prompt, face reference, or reference thumbnail" }, { status: 400 });
     }
 
-    // Build the parts array: text first, then face images, then reference images
-    // Gemini processes them in order, so labeling matters
+    // Trim to the model's per-role reference caps (see REFERENCE_CAPS above) —
+    // degrades gracefully instead of overloading the model with more refs than
+    // it can reliably hold identity/style for.
+    const caps = REFERENCE_CAPS[model] ?? REFERENCE_CAPS["gemini-3-pro-image"];
+    const faceImages: string[] = capImages(rawFaceImages, caps.characters, "faceImages");
+    const referenceImages: string[] = capImages(rawReferenceImages, caps.style, "referenceImages");
+    const logos: { image: string; label: string }[] = capImages(rawLogos, caps.objects, "logos");
+    const sketchImages: string[] = capImages(rawSketchImages, 1, "sketchImages");
+
+    // Build the parts array: text first, then reference images ordered
+    // objects → characters → style → layout guide, per Google's multi-reference
+    // prompting guidance (references should be ordered logically so the model
+    // weighs identity-critical inputs correctly).
     const parts: Array<Record<string, unknown>> = [];
 
     const hasFace = faceImages.length > 0;
@@ -104,7 +137,16 @@ export async function POST(request: NextRequest) {
     console.log(`[generate] model=${model} | faces=${faceImages.length} refs=${referenceImages.length} logos=${logos.length} sketches=${sketchImages.length}`);
     console.log(`[generate] prompt: ${fullPrompt.substring(0, 300)}...`);
 
-    // Add face reference images (labeled so Gemini knows which is which)
+    // Add logo images with their labels ("object" refs — go first)
+    if (hasLogo) {
+      for (const logo of logos) {
+        parts.push({ text: `LOGO TO INCLUDE — "${logo.label}":` });
+        const { mimeType, data } = stripDataUrl(logo.image);
+        parts.push({ inline_data: { mime_type: mimeType, data } });
+      }
+    }
+
+    // Add face reference images ("character" refs — identity-critical, go next)
     if (hasFace) {
       parts.push({ text: "FACE REFERENCE:" });
       for (const img of faceImages) {
@@ -113,7 +155,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Add reference thumbnails
+    // Add reference thumbnails ("style" refs — go after characters)
     if (hasRef) {
       parts.push({ text: "REFERENCE THUMBNAIL:" });
       for (const img of referenceImages) {
@@ -122,16 +164,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Add logo images with their labels
-    if (hasLogo) {
-      for (const logo of logos as { image: string; label: string }[]) {
-        parts.push({ text: `LOGO TO INCLUDE — "${logo.label}":` });
-        const { mimeType, data } = stripDataUrl(logo.image);
-        parts.push({ inline_data: { mime_type: mimeType, data } });
-      }
-    }
-
-    // Add sketch images (composition guide)
+    // Add sketch images (layout guide — not an identity/style ref, goes last)
     if (hasSketch) {
       parts.push({ text: "COMPOSITION SKETCH (use as layout guide, NOT style reference):" });
       for (const img of sketchImages) {
@@ -146,7 +179,7 @@ export async function POST(request: NextRequest) {
         responseModalities: ["TEXT", "IMAGE"],
         imageConfig: {
           aspectRatio: mapAspectRatio(aspectRatio),
-          imageSize: "2K",
+          imageSize: imageSize === "4K" ? "4K" : "2K",
         },
       },
     };

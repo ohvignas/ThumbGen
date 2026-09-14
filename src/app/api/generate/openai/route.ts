@@ -6,12 +6,12 @@ import { logGeneration } from "@/lib/generations-log";
 const EDITS_ENDPOINT = "https://api.openai.com/v1/images/edits";
 const GENERATIONS_ENDPOINT = "https://api.openai.com/v1/images/generations";
 
-const ALLOWED_MODELS = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"];
+const ALLOWED_MODELS = ["gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2", "gpt-image-1.5", "gpt-image-1"];
 
 // Map our aspect ratios to OpenAI sizes
-// gpt-image-2 supports up to 3840px, custom sizes (multiples of 16)
+// gpt-image-2 / 2.5 support up to 3840px, custom sizes (multiples of 16)
 function mapSize(ratio: string, model: string): string {
-  if (model === "gpt-image-2") {
+  if (model === "gpt-image-2" || model === "gpt-image-2.5-flare" || model === "gpt-image-2.5-sunburst") {
     const map: Record<string, string> = {
       "16x9": "1920x1088",  // ~16:9, multiples of 16, within limits
       "1x1": "1024x1024",
