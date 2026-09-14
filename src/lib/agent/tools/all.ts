@@ -3,6 +3,7 @@
 // Import this from anywhere that needs the full registry populated (MCP server, tests).
 import "./list-logos";
 import "./list-face-reactions";
+import "./list-personas";
 import "./list-swipe-files";
 import "./list-projects";
 import "./list-past-generations";

@@ -67,6 +67,7 @@ function init(database: Database.Database) {
       mime_type   TEXT NOT NULL,
       size        INTEGER NOT NULL,
       data        BLOB NOT NULL,
+      tags        TEXT,
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -113,6 +114,15 @@ function init(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_generations_log_provider   ON generations_log(provider);
   `);
   database.exec(AGENT_TABLES_DDL);
+
+  // `CREATE TABLE IF NOT EXISTS` never alters a table that already exists —
+  // a face_reactions table created before the `tags` column was added above
+  // stays without it forever, and every query touching that column then
+  // fails with "no such column: tags". Defensive one-off column add.
+  const faceReactionsColumns = database.prepare("PRAGMA table_info(face_reactions)").all() as { name: string }[];
+  if (!faceReactionsColumns.some((c) => c.name === "tags")) {
+    database.exec("ALTER TABLE face_reactions ADD COLUMN tags TEXT");
+  }
 }
 
 function open(): Database.Database {

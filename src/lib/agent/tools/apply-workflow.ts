@@ -13,15 +13,16 @@ const InputSchema = z.object({
   blueprint: z.unknown(),  // validated via BlueprintSchema below for better error formatting
 });
 
-// Maps the blueprint's coarse model name (ideogram/grok/nano-banana/openai)
-// onto the actual canvas model ID expected by GeneratorNode.
+// Maps the blueprint's coarse model name (ideogram/grok/nano-banana/openai/
+// seedream) onto the actual canvas model ID expected by GeneratorNode.
 // nano-banana → Gemini 3.1 Flash (fast, cheap, great with faces — the default
 // recommendation for thumbnail generation per the user).
 const MODEL_ID_MAP: Record<string, string> = {
   ideogram: "ideogram",
   "nano-banana": "gemini-3.1-flash-image",
-  grok: "grok-imagine-image",
+  grok: "grok-imagine-image-2.0",
   openai: "gpt-image-2.5-sunburst",
+  seedream: "bytedance-seed/seedream-4.5",
 };
 
 type CanvasData = Record<string, unknown>;
@@ -31,6 +32,30 @@ async function blueprintToCanvasData(
   data: Record<string, unknown>,
 ): Promise<CanvasData> {
   const imageSource = typeof data.image_source === "string" ? data.image_source : undefined;
+
+  // A Personnage ref resolves to up to 3 angle images (front/left/right),
+  // not one — handled separately from the generic single-image resolver
+  // below, which only ever returns one image.
+  const personaMatch = type === "faceReference" ? imageSource?.match(/^stored:persona_(.+)$/) : null;
+  if (personaMatch) {
+    const personaId = personaMatch[1];
+    const photos = getDb()
+      .prepare("SELECT angle, mime_type, data FROM persona_photos WHERE persona_id = ?")
+      .all(personaId) as { angle: "front" | "left" | "right"; mime_type: string; data: Buffer }[];
+    const personaAngles: Record<string, string> = {};
+    for (const p of photos) {
+      personaAngles[p.angle] = `data:${p.mime_type};base64,${p.data.toString("base64")}`;
+    }
+    const personaRow = getDb().prepare("SELECT label FROM personas WHERE id = ?").get(personaId) as
+      | { label: string }
+      | undefined;
+    return {
+      personaId,
+      personaAngles,
+      label: (data.label as string) || personaRow?.label || "Personnage",
+    };
+  }
+
   let imageBase64: string | undefined;
   if (imageSource) {
     const resolved = await resolveImageSource(imageSource);
