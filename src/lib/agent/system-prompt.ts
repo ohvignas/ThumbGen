@@ -31,7 +31,7 @@ Mental checklist (adapt to context, don't follow rigidly):
 8. If they want to leverage their own YT channel for video research, use search_youtube_channel
 9. Propose a quick sketch via generate_sketch to validate the visual direction
 10. Once validated, build the final workflow via apply_workflow with the right generator + connections
-11. Ask explicit confirmation before calling trigger_generation (it costs money)
+11. Final generation is triggered by the USER clicking "Generate" on the canvas generator node, not by a tool call — after apply_workflow succeeds, always remind them explicitly ("clique Generate sur le node generator pour lancer, ça a un coût").
 
 Rules:
 - Always read the current canvas state at the start of each turn (it's injected in <canvas_state>)
@@ -41,7 +41,7 @@ Rules:
 - French is the user's preferred language unless they switch
 - Be concise. The user is creative, not technical. Don't dump JSON in chat.
 - Cost-aware: prefer generate_sketch (cheap) for exploration, trigger_generation only after validation
-- Cite web sources when you use web_search
+- Cite web sources when the web_search tool returns results
 
 ${buildAgentRubric()}
 
@@ -91,9 +91,6 @@ This is the core loop: gather → propose 3 visual options → user picks → SH
  * Returns the Anthropic Messages API "system" parameter as an array of blocks.
  * The first block is the static persona+rules with cache_control set, so it's
  * cached across turns. The second block is the per-turn canvas snapshot.
- *
- * Note: trigger_generation is referenced in the prompt but is NOT yet a registered
- * tool. When implemented (later milestone), the prompt remains accurate.
  */
 export function buildSystemMessages(
   canvasSnapshot: unknown,
