@@ -51,11 +51,15 @@ export type FinishInfo = {
  * on `priorMessages`, which rejects that case at request time with a clear
  * 400 instead of failing silently deep inside the provider call.
  *
- * totalUsage (aggregated across the whole multi-step tool loop) is used
- * instead of onEnd's step-level `usage`, matching v1's totalInput/
- * totalOutput accumulation across up to 25 iterations (loop.ts:241-242) —
- * using step-level usage here would silently under-report cost on any turn
- * that called more than one tool.
+ * `info.totalUsage` is populated from onEnd's `usage` field, which — despite
+ * the name overlap with the deprecated `totalUsage` field on the same event
+ * — IS the whole-turn aggregate (ai@7.0.99's onEnd event literally sets
+ * `usage: totalUsage, totalUsage,` as two keys carrying the same value; see
+ * node_modules/ai/src/generate-text/stream-text.ts). The PER-STEP figure
+ * lives only at `steps[n].usage` / `finalStep.usage`, which nothing here
+ * reads. This matches v1's totalInput/totalOutput accumulation across up to
+ * 25 iterations (loop.ts:241-242) — using the per-step figure here would
+ * silently under-report cost on any turn that called more than one tool.
  */
 export function persistAssistantTurn(info: FinishInfo): void {
   const cost = estimateCost(info.modelInfo, info.totalUsage.inputTokens ?? 0, info.totalUsage.outputTokens ?? 0);
