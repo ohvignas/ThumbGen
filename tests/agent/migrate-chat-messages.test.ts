@@ -75,7 +75,7 @@ describe("migrateAllMessages", () => {
     };
     expect(toolResultPart.toolCallId).toBe("call_1");
     expect(toolResultPart.output.value).toContainEqual({
-      type: "file", mediaType: "image/jpeg", data: { type: "data", data: "AAA=" },
+      type: "file", mediaType: "image/jpeg", data: "AAA=",
     });
 
     // The now-redundant tool_result-only row becomes a no-op, not deleted

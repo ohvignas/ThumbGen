@@ -29,9 +29,9 @@ function convertToolResultOutput(content: AnthropicBlock[] | string) {
       } else if (c.type === "image") {
         return {
           type: "file" as const,
-          data: { type: "data" as const, data: c.source.data },
           mediaType: c.source.media_type,
-        };
+          data: c.source.data,
+        } as any;
       } else {
         return { type: "text" as const, text: "" };
       }
