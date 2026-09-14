@@ -6,6 +6,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useReactFlow } from "@xyflow/react";
 import SettingsPanel from "./SettingsPanel";
 import SidebarRail, { RailIcon, RailIcons } from "./SidebarRail";
+import WebcamCaptureModal from "./WebcamCaptureModal";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
 
 /* eslint-disable @next/next/no-img-element */
@@ -37,6 +38,12 @@ type FaceReaction = {
   size: number;
 };
 
+type Persona = {
+  id: string;
+  label: string;
+  angles: ("front" | "left" | "right")[];
+};
+
 export default function Sidebar() {
   const [activeTab, setActiveTab] = useState<SidebarTab>(null);
   const [swipeEntries, setSwipeEntries] = useState<SwipeEntry[]>([]);
@@ -45,6 +52,9 @@ export default function Sidebar() {
   const [swipeSearch, setSwipeSearch] = useState("");
   const [faceReactions, setFaceReactions] = useState<FaceReaction[]>([]);
   const [faceUploading, setFaceUploading] = useState(false);
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [showWebcamCapture, setShowWebcamCapture] = useState(false);
+  const [savingPersona, setSavingPersona] = useState(false);
   const [uploadedSwipes, setUploadedSwipes] = useState<SwipeEntry[]>([]);
   const [swipeUploading, setSwipeUploading] = useState(false);
   const [logos, setLogos] = useState<LogoEntry[]>([]);
@@ -65,6 +75,50 @@ export default function Sidebar() {
       .catch(() => {});
   };
 
+  const loadPersonas = () => {
+    fetch("/api/personas")
+      .then((r) => r.json())
+      .then(setPersonas)
+      .catch(() => {});
+  };
+
+  const handlePersonaCaptured = async (photos: Record<"front" | "left" | "right", string>) => {
+    setSavingPersona(true);
+    try {
+      const res = await fetch("/api/personas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: `Personnage ${personas.length + 1}`, photos }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        // Keep the modal open with the captured shots still in it — closing
+        // here would silently throw away all 3 photos on a failed save.
+        window.alert(body.error || "Échec de l'enregistrement du personnage — réessaie.");
+        return;
+      }
+      loadPersonas();
+      setShowWebcamCapture(false);
+    } catch {
+      window.alert("Échec de l'enregistrement du personnage — vérifie ta connexion et réessaie.");
+    } finally {
+      setSavingPersona(false);
+    }
+  };
+
+  const handleDeletePersona = async (id: string, label: string) => {
+    // Unlike a single reaction-face image, this removes 3 photos of the user
+    // and breaks every canvas node still referencing them — worth a confirm.
+    if (!window.confirm(`Supprimer "${label}" ? Les nœuds du canvas qui l'utilisent ne fonctionneront plus.`)) return;
+    try {
+      const res = await fetch(`/api/personas/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      loadPersonas();
+    } catch {
+      window.alert("Échec de la suppression — réessaie.");
+    }
+  };
+
   const loadUploadedSwipes = () => {
     fetch("/api/swipe-files")
       .then((r) => r.json())
@@ -83,6 +137,11 @@ export default function Sidebar() {
   // Load face reactions from API
   useEffect(() => {
     loadFaces();
+  }, []);
+
+  // Load personas from API
+  useEffect(() => {
+    loadPersonas();
   }, []);
 
   // Load uploaded swipe files from API
@@ -303,7 +362,7 @@ export default function Sidebar() {
           </>
         }
       >
-        <RailIcon active={activeTab === "faces"} onClick={() => toggleTab("faces")} title="Visages">{RailIcons.faces}</RailIcon>
+        <RailIcon active={activeTab === "faces"} onClick={() => toggleTab("faces")} title="Personnages">{RailIcons.faces}</RailIcon>
         <RailIcon active={activeTab === "models"} onClick={() => toggleTab("models")} title="Modèles d'image">{RailIcons.models}</RailIcon>
         <RailIcon active={activeTab === "swipe"} onClick={() => toggleTab("swipe")} title="Inspirations">{RailIcons.swipe}</RailIcon>
         <RailIcon active={activeTab === "logos"} onClick={() => toggleTab("logos")} title="Logos">{RailIcons.logos}</RailIcon>
@@ -350,9 +409,102 @@ export default function Sidebar() {
 
             {activeTab === "faces" && (
               <>
+                {/* Personas — multi-angle face reference (face + 2 profils) */}
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    Visages
+                    Personnages
+                  </h3>
+                  <button
+                    onClick={() => setShowWebcamCapture(true)}
+                    disabled={savingPersona}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all"
+                    style={{
+                      background: "var(--bone)",
+                      color: "var(--canvas-bg)",
+                      opacity: savingPersona ? 0.5 : 1,
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    {savingPersona ? "Enregistrement…" : "Nouveau"}
+                  </button>
+                </div>
+                <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+                  Face + 2 profils webcam, pour une identité cohérente sur toutes tes miniatures ({personas.length})
+                </p>
+
+                {personas.length === 0 && (
+                  <div
+                    className="flex flex-col items-center justify-center py-8 rounded-xl cursor-pointer transition-all mb-5"
+                    style={{ border: "2px dashed rgba(255,255,255,0.1)" }}
+                    onClick={() => setShowWebcamCapture(true)}
+                  >
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ color: "var(--text-muted)", marginBottom: 8 }}>
+                      <circle cx="12" cy="8" r="5" />
+                      <path d="M20 21a8 8 0 0 0-16 0" />
+                    </svg>
+                    <p className="text-xs text-center px-4" style={{ color: "var(--text-muted)" }}>
+                      Crée ton premier personnage avec la webcam
+                    </p>
+                  </div>
+                )}
+
+                {personas.length > 0 && (
+                  <div className="grid grid-cols-2 gap-1.5 mb-5">
+                    {personas.map((persona) => (
+                      <div
+                        key={persona.id}
+                        className="group cursor-pointer rounded-lg overflow-hidden transition-all relative"
+                        style={{ border: "1px solid transparent" }}
+                        onClick={() =>
+                          addAtCenter("faceReference", {
+                            label: persona.label,
+                            personaId: persona.id,
+                            personaAngles: {
+                              front: persona.angles.includes("front") ? `/api/personas/image?id=${persona.id}&angle=front` : undefined,
+                              left: persona.angles.includes("left") ? `/api/personas/image?id=${persona.id}&angle=left` : undefined,
+                              right: persona.angles.includes("right") ? `/api/personas/image?id=${persona.id}&angle=right` : undefined,
+                            },
+                          })
+                        }
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--surface)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "transparent"; }}
+                      >
+                        <img
+                          src={`/api/personas/image?id=${persona.id}&angle=${persona.angles[0]}`}
+                          alt={persona.label}
+                          className="w-full aspect-square object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute bottom-0 inset-x-0 px-1.5 py-1 flex items-center justify-between" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7), transparent)" }}>
+                          <span className="text-[10px] truncate" style={{ color: "var(--bone)" }}>{persona.label}</span>
+                          <span className="text-[9px]" style={{ color: "var(--bone-soft)" }}>{persona.angles.length}/3</span>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePersona(persona.id, persona.label);
+                          }}
+                          className="absolute top-1 right-1 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ background: "rgba(0,0,0,0.7)" }}
+                          title="Supprimer"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="2.5" strokeLinecap="round">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mb-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+
+                {/* Legacy single-photo face references */}
+                <div className="flex items-center justify-between mb-1 mt-3">
+                  <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                    Autres visages
                   </h3>
                   <button
                     onClick={() => faceInputRef.current?.click()}
@@ -902,6 +1054,10 @@ export default function Sidebar() {
             )}
           </div>
         </div>
+      )}
+
+      {showWebcamCapture && (
+        <WebcamCaptureModal onClose={() => setShowWebcamCapture(false)} onComplete={handlePersonaCaptured} />
       )}
     </div>
   );

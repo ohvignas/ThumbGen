@@ -15,6 +15,12 @@ export type NodeData = {
   label?: string;
   imageUrl?: string;
   imageBase64?: string;
+  // Personnage: a reusable multi-angle face reference (front/left/right),
+  // captured via webcam or uploaded. Populated instead of imageUrl/imageBase64
+  // when the faceReference node represents a full persona rather than a
+  // single photo.
+  personaId?: string;
+  personaAngles?: { front?: string; left?: string; right?: string };
   prompt?: string;
   negativePrompt?: string;
   model?: string;
@@ -46,6 +52,7 @@ export type NodeData = {
   genModel?: string;
   genTokens?: number;
   genCost?: string;
+  genWarning?: string;
 };
 
 export type AppNode = Node<NodeData>;

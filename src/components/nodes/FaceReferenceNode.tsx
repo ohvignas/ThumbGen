@@ -68,12 +68,15 @@ export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
     }
   };
 
+  const angles = data.personaAngles;
+  const hasPersona = !!(angles && (angles.front || angles.left || angles.right));
+
   return (
     <NodeShell
-      title={data.label || "Visage"}
+      title={data.label || "Personnage"}
       onDelete={() => removeNode(id)}
       onRename={(newName) => updateNodeData(id, { label: newName })}
-      onRemoveBg={(data.imageBase64 || data.imageUrl) ? handleRemoveBg : undefined}
+      onRemoveBg={!hasPersona && (data.imageBase64 || data.imageUrl) ? handleRemoveBg : undefined}
       removingBg={removingBg}
       width={280}
       icon={
@@ -82,7 +85,25 @@ export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
         </svg>
       }
     >
-      {(data.imageBase64 || data.imageUrl) ? (
+      {hasPersona ? (
+        <div className="grid grid-cols-3 gap-1.5">
+          {(["front", "left", "right"] as const).map((angle) => (
+            <div key={angle} className="rounded-lg overflow-hidden" style={{ background: "var(--surface)" }}>
+              {angles![angle] ? (
+                <img
+                  src={angles![angle]}
+                  alt={angle}
+                  className="w-full aspect-square object-cover"
+                />
+              ) : (
+                <div className="w-full aspect-square flex items-center justify-center">
+                  <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>—</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (data.imageBase64 || data.imageUrl) ? (
         <div className="relative group rounded-xl overflow-hidden">
           <img
             src={data.imageBase64 || data.imageUrl}
@@ -129,16 +150,10 @@ export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
         </button>
       )}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-      {(data.imageBase64 || data.imageUrl) && (
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="w-full mt-3 text-xs transition-colors"
-          style={{ color: "var(--text-muted)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-        >
-          + Ajouter d&apos;autres images
-        </button>
+      {hasPersona && (
+        <p className="text-[10px] mt-2 text-center" style={{ color: "var(--text-muted)" }}>
+          Gère ce personnage depuis l&apos;onglet Personnages
+        </p>
       )}
       <Handle type="source" position={Position.Right} id="face" />
     </NodeShell>
