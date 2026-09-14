@@ -73,12 +73,15 @@ const PERIODS: { id: Period; label: string }[] = [
 
 const MODEL_LABELS: Record<string, string> = {
   "gemini-2.5-flash-image": "Gemini 2.5 Flash",
-  "gemini-3.1-flash-image-preview": "Gemini 3.1 Flash",
-  "gemini-3-pro-image-preview": "Gemini 3 Pro",
+  "gemini-3.1-flash-image": "Gemini 3.1 Flash",
+  "gemini-3.1-flash-lite-image": "Gemini 3.1 Flash Lite",
+  "gemini-3-pro-image": "Gemini 3 Pro",
   ideogram: "Ideogram v3",
   "gpt-image-1": "GPT Image 1",
   "gpt-image-1.5": "GPT Image 1.5",
   "gpt-image-2": "GPT Image 2",
+  "gpt-image-2.5-flare": "GPT Image 2.5 Flare",
+  "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst",
   "grok-imagine-image": "Grok Imagine",
 };
 
@@ -352,7 +355,7 @@ function UsageInner() {
           min-height: 100vh;
           background: var(--ink-1);
           color: var(--bone);
-          font-family: 'DM Sans', system-ui, sans-serif;
+          font-family: Arial, Helvetica, sans-serif;
         }
 
         .usage-main {
@@ -405,7 +408,7 @@ function UsageInner() {
           border: 0;
           padding: 8px 14px;
           color: var(--bone-muted);
-          font-family: 'DM Sans', system-ui, sans-serif;
+          font-family: Arial, Helvetica, sans-serif;
           font-size: 12px;
           letter-spacing: 0.06em;
           cursor: pointer;
