@@ -39,7 +39,7 @@ describe("list_past_generations", () => {
   });
 
   it("returns text content listing past generations", async () => {
-    const r = await listPastGenerationsTool.handler({ project_id: projectId });
+    const r = await listPastGenerationsTool.handler({ project_id: projectId, limit: 20 });
     expect(r.content[0].type).toBe("text");
     const text = (r.content[0] as { text: string }).text;
     expect(text).toContain("dall-e-3");
@@ -49,7 +49,7 @@ describe("list_past_generations", () => {
   });
 
   it("returns 'No generations' when none match project", async () => {
-    const r = await listPastGenerationsTool.handler({ project_id: "non-existent-id" });
+    const r = await listPastGenerationsTool.handler({ project_id: "non-existent-id", limit: 20 });
     expect((r.content[0] as { text: string }).text).toMatch(/No generations/);
   });
 
