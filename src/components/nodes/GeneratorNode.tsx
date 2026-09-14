@@ -89,6 +89,7 @@ export default function GeneratorNode({
       if (n.data.imageUrl) {
         try {
           const res = await fetch(n.data.imageUrl);
+          if (!res.ok) return null;
           const blob = await res.blob();
           return new Promise((resolve) => {
             const reader = new FileReader();
@@ -101,7 +102,28 @@ export default function GeneratorNode({
       return null;
     };
 
-    const faceImages = (await Promise.all(inputs.faceRefs.map(getImage))).filter(Boolean) as string[];
+    // A faceReference node holding a Personnage (front/left/right) expands
+    // into one image per captured angle instead of a single photo — this is
+    // what gives Nano Banana Pro's multi-reference identity lock its
+    // strongest signal. Grouped per source node (not flattened) so the
+    // generate routes can tell "3 angles of one person" apart from "3
+    // different people" and label/order them accordingly.
+    const faceGroups = (
+      await Promise.all(
+        inputs.faceRefs.map(async (n) => {
+          const angles = n.data.personaAngles;
+          const label = n.data.label || "Visage";
+          if (angles && (angles.front || angles.left || angles.right)) {
+            const urls = [angles.front, angles.left, angles.right].filter(Boolean) as string[];
+            const images = (await Promise.all(urls.map((url) => getImage({ data: { imageUrl: url } })))).filter(Boolean) as string[];
+            return { label, images };
+          }
+          const img = await getImage(n);
+          return { label, images: img ? [img] : [] };
+        })
+      )
+    ).filter((g) => g.images.length > 0);
+    const faceImages = faceGroups.flatMap((g) => g.images);
     const swipeImages = (await Promise.all(inputs.swipeRefs.map(getImage))).filter(Boolean) as string[];
     const logoResults = await Promise.all(
       inputs.logos.map(async (n) => {
@@ -140,7 +162,7 @@ export default function GeneratorNode({
     const allRefImages = [...swipeImages, ...previewImages];
     const sketchImages = (await Promise.all(inputs.sketches.map(getImage))).filter(Boolean) as string[];
 
-    return { faceImages, allRefImages, logoEntries, sketchImages, promptText, negativePrompt };
+    return { faceImages, faceGroups, allRefImages, logoEntries, sketchImages, promptText, negativePrompt };
   }, [id, getConnectedInputs]);
 
   // Generate with a specific model
@@ -154,7 +176,7 @@ export default function GeneratorNode({
       body = {
         prompt: inputs.promptText,
         negativePrompt: inputs.negativePrompt,
-        faceImages: inputs.faceImages,
+        faceGroups: inputs.faceGroups,
         referenceImages: inputs.allRefImages,
         logos: inputs.logoEntries,
         sketchImages: inputs.sketchImages,
@@ -170,7 +192,7 @@ export default function GeneratorNode({
           negativePrompt: inputs.negativePrompt,
           image: inputs.allRefImages[0],
           imageWeight: data.imageWeight ?? 50,
-          characterReferenceImage: inputs.faceImages[0] || null,
+          characterReferenceImages: inputs.faceImages,
           styleReferenceImages: inputs.allRefImages.slice(1),
           aspectRatio,
           renderingSpeed,
@@ -182,7 +204,7 @@ export default function GeneratorNode({
           prompt: inputs.promptText,
           image: inputs.allRefImages[0],
           mask: data.maskDataUrl || null,
-          characterReferenceImage: inputs.faceImages[0] || null,
+          characterReferenceImages: inputs.faceImages,
           renderingSpeed,
           styleType: data.styleType || "GENERAL",
         };
@@ -191,7 +213,7 @@ export default function GeneratorNode({
         body = {
           prompt: inputs.promptText,
           negativePrompt: inputs.negativePrompt,
-          characterReferenceImage: inputs.faceImages[0] || null,
+          characterReferenceImages: inputs.faceImages,
           styleReferenceImages: inputs.allRefImages,
           aspectRatio,
           renderingSpeed,
@@ -227,6 +249,7 @@ export default function GeneratorNode({
     return {
       images: result.images || [],
       stats: result.stats || null,
+      warnings: result.warnings as string[] | undefined,
     };
   }, [aspectRatio, renderingSpeed, ideogramMode, data.imageWeight, data.maskDataUrl, data.styleType, data.imageSize]);
 
@@ -270,6 +293,7 @@ export default function GeneratorNode({
             genTimeMs: elapsed,
             genTokens: result.stats?.totalTokens || 0,
             genCost: cost > 0 ? `~$${(cost).toFixed(3)}` : "",
+            genWarning: result.warnings?.join(" ") || undefined,
           });
         } catch (err) {
           updateNodeData(job.previewId, {
@@ -333,6 +357,7 @@ export default function GeneratorNode({
             genTimeMs: Date.now() - start,
             genTokens: result.stats?.totalTokens || 0,
             genCost: cost > 0 ? `~$${cost.toFixed(3)}` : "",
+            genWarning: result.warnings?.join(" ") || undefined,
           });
         } catch (err) {
           updateNodeData(job.previewId, {

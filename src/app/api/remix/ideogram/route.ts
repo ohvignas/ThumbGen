@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       negativePrompt,
       image,
       imageWeight = 50,
-      characterReferenceImage,
+      characterReferenceImages = [],
       styleReferenceImages = [],
       aspectRatio = "16x9",
       renderingSpeed = "DEFAULT",
@@ -60,10 +60,10 @@ export async function POST(request: NextRequest) {
     const { blob: imgBlob, ext: imgExt } = dataUrlToBlob(image);
     formData.append("image", imgBlob, `source.${imgExt}`);
 
-    // Character reference
-    if (characterReferenceImage) {
-      const { blob, ext } = dataUrlToBlob(characterReferenceImage);
-      formData.append("character_reference_images", blob, `face.${ext}`);
+    // Character reference(s) — up to 3 angles of the same person
+    for (let i = 0; i < characterReferenceImages.length && i < 3; i++) {
+      const { blob, ext } = dataUrlToBlob(characterReferenceImages[i]);
+      formData.append("character_reference_images", blob, `face_${i}.${ext}`);
     }
 
     // Style references

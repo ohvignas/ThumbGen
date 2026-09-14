@@ -101,6 +101,15 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
             <img src={currentImage} alt="Miniature générée" className="w-full" />
           </div>
 
+          {data.genWarning && (
+            <p
+              className="text-[10px] mt-2 px-2 py-1.5 rounded-lg"
+              style={{ background: "rgba(247, 255, 168, 0.08)", color: "var(--accent-yellow)" }}
+            >
+              ⚠ {data.genWarning}
+            </p>
+          )}
+
           {/* Stats bar */}
           <div className="flex items-center gap-2 mt-2 px-1 flex-wrap">
             {data.genTimeMs && (

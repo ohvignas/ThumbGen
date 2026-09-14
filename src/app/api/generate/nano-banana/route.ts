@@ -31,6 +31,53 @@ function capImages<T>(images: T[], max: number, label: string): T[] {
   return images.slice(0, max);
 }
 
+type FaceGroup = { label: string; images: string[] };
+type FaceGroupTrim = { label: string; kept: number; total: number };
+
+// Fit face groups (one entry per connected faceReference node — a Personnage
+// contributes one group with up to 3 angle images) into the model's total
+// character-reference budget. Larger (multi-angle) groups are tried first so
+// a persona is more likely to survive intact than get squeezed out by
+// several loose single-image face refs; "front" stays first within a group
+// since callers build group.images in [front, left, right] order. Any group
+// that ends up with fewer images than it started with — whether trimmed to
+// 1 or dropped to 0 — is reported in the returned `trims` array so the
+// caller can warn the user instead of only logging server-side.
+function fitFaceGroups(groups: FaceGroup[], maxTotal: number): { kept: FaceGroup[]; trims: FaceGroupTrim[] } {
+  const ordered = groups
+    .map((g, i) => ({ ...g, originalIndex: i }))
+    .sort((a, b) => b.images.length - a.images.length || a.originalIndex - b.originalIndex);
+
+  let remaining = maxTotal;
+  const kept: (FaceGroup & { originalIndex: number })[] = [];
+  const trims: FaceGroupTrim[] = [];
+  for (const g of ordered) {
+    const keepCount = Math.min(g.images.length, Math.max(0, remaining));
+    if (keepCount < g.images.length) {
+      trims.push({ label: g.label, kept: keepCount, total: g.images.length });
+      console.warn(`[generate] trimming face group "${g.label}": ${g.images.length} → ${keepCount} (model cap)`);
+    }
+    if (keepCount > 0) {
+      kept.push({ ...g, images: g.images.slice(0, keepCount) });
+      remaining -= keepCount;
+    }
+  }
+  // Restore original connection order for the prompt (priority sort above was
+  // only to decide what survives, not the order it's presented in).
+  kept.sort((a, b) => a.originalIndex - b.originalIndex);
+  return { kept, trims };
+}
+
+function modelLabelFor(model: string): string {
+  const labels: Record<string, string> = {
+    "gemini-3-pro-image": "Gemini 3 Pro",
+    "gemini-3.1-flash-image": "Gemini 3.1 Flash",
+    "gemini-3.1-flash-lite-image": "Gemini 3.1 Flash Lite",
+    "gemini-2.5-flash-image": "Gemini 2.5 Flash",
+  };
+  return labels[model] || model;
+}
+
 function stripDataUrl(dataUrl: string): { mimeType: string; data: string } {
   const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
   if (!match) return { mimeType: "image/jpeg", data: dataUrl };
@@ -63,7 +110,8 @@ export async function POST(request: NextRequest) {
     const {
       prompt,
       negativePrompt,
-      faceImages: rawFaceImages = [],
+      faceGroups: rawFaceGroups,
+      faceImages: legacyFaceImages = [],
       referenceImages: rawReferenceImages = [],
       logos: rawLogos = [],
       sketchImages: rawSketchImages = [],
@@ -72,12 +120,25 @@ export async function POST(request: NextRequest) {
       model: requestedModel,
     } = body;
 
+    // Prefer the grouped shape (one group per connected faceReference node,
+    // so a Personnage's 2-3 angles stay tagged as "same identity"); fall back
+    // to a flat legacy faceImages[] with each image as its OWN group — these
+    // are ungrouped single photos with no known relationship to each other,
+    // so they must not be claimed as "same person, multiple angles".
+    const faceGroupsInput: FaceGroup[] = Array.isArray(rawFaceGroups) && rawFaceGroups.length > 0
+      ? rawFaceGroups.filter(
+          (g): g is FaceGroup => !!g && typeof g.label === "string" && Array.isArray(g.images) && g.images.every((i: unknown) => typeof i === "string"),
+        )
+      : Array.isArray(legacyFaceImages)
+        ? legacyFaceImages.filter((i: unknown): i is string => typeof i === "string").map((img) => ({ label: "Visage", images: [img] }))
+        : [];
+
     const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_MODEL;
     modelUsed = model;
     promptForLog = prompt || null;
     const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-    if (!prompt && rawFaceImages.length === 0 && rawReferenceImages.length === 0 && rawSketchImages.length === 0) {
+    if (!prompt && faceGroupsInput.length === 0 && rawReferenceImages.length === 0 && rawSketchImages.length === 0) {
       return NextResponse.json({ error: "Connect a prompt, face reference, or reference thumbnail" }, { status: 400 });
     }
 
@@ -85,10 +146,32 @@ export async function POST(request: NextRequest) {
     // degrades gracefully instead of overloading the model with more refs than
     // it can reliably hold identity/style for.
     const caps = REFERENCE_CAPS[model] ?? REFERENCE_CAPS["gemini-3-pro-image"];
-    const faceImages: string[] = capImages(rawFaceImages, caps.characters, "faceImages");
+    const { kept: faceGroups, trims: faceGroupTrims } = fitFaceGroups(faceGroupsInput, caps.characters);
+    const faceImages: string[] = faceGroups.flatMap((g) => g.images);
     const referenceImages: string[] = capImages(rawReferenceImages, caps.style, "referenceImages");
     const logos: { image: string; label: string }[] = capImages(rawLogos, caps.objects, "logos");
     const sketchImages: string[] = capImages(rawSketchImages, 1, "sketchImages");
+
+    // Surfaced to the user — a Personnage silently dropped or partially
+    // trimmed (e.g. Gemini 3.1 Flash Lite has a 0 character-reference
+    // budget, or two face groups compete for a small budget) used to be
+    // only a server-side console.warn, so the user got a stranger's face
+    // with no explanation. Covers full drops (kept:0) and partial trims
+    // (0 < kept < total) alike.
+    const warnings: string[] = [];
+    if (faceGroupsInput.length > 0 && caps.characters === 0) {
+      warnings.push(
+        `${modelLabelFor(model)} ne supporte pas les références de visage — le personnage connecté a été ignoré.`,
+      );
+    } else {
+      for (const t of faceGroupTrims) {
+        warnings.push(
+          t.kept === 0
+            ? `Limite de ${caps.characters} visage(s) atteinte pour ${modelLabelFor(model)} — "${t.label}" ignoré.`
+            : `Limite de ${caps.characters} visage(s) atteinte pour ${modelLabelFor(model)} — "${t.label}" réduit à ${t.kept}/${t.total} angle(s).`,
+        );
+      }
+    }
 
     // Build the parts array: text first, then reference images ordered
     // objects → characters → style → layout guide, per Google's multi-reference
@@ -100,17 +183,26 @@ export async function POST(request: NextRequest) {
     const hasRef = referenceImages.length > 0;
     const hasLogo = logos.length > 0;
     const hasSketch = sketchImages.length > 0;
+    // True when at least one face group is a Personnage's multiple angles of
+    // one person, as opposed to several separate single-photo face refs —
+    // this is what tells the model "these N images are ONE identity" rather
+    // than N different people to blend together.
+    const multiAngleGroups = faceGroups.filter((g) => g.images.length > 1);
 
     let fullPrompt = "";
 
     const userPrompt = prompt ? ` ${prompt}` : "";
 
+    const multiAngleNote = multiAngleGroups.length > 0
+      ? `\n\nIMPORTANT: Some FACE REFERENCE images are grouped as multiple angles (front / profile views) of the SAME single person — a character sheet, not different people. Use all angles within a group together to lock in that one person's identity; do not treat them as separate individuals.`
+      : "";
+
     if (hasFace && hasRef) {
       // Both face + reference thumbnail — the main use case
-      fullPrompt = `Generate a YouTube thumbnail image. Recreate the style, composition, layout, and color scheme of the REFERENCE THUMBNAIL provided below, but replace the person in it with the face from the FACE REFERENCE image(s).${userPrompt}\n\nIMPORTANT: The person in the generated image MUST have the exact face from the FACE REFERENCE — same facial structure, eye shape, jawline, skin tone, and hair. The overall thumbnail layout, background, text placement, and visual style should closely match the REFERENCE THUMBNAIL.`;
+      fullPrompt = `Generate a YouTube thumbnail image. Recreate the style, composition, layout, and color scheme of the REFERENCE THUMBNAIL provided below, but replace the person in it with the face from the FACE REFERENCE image(s).${userPrompt}\n\nIMPORTANT: The person in the generated image MUST have the exact face from the FACE REFERENCE — same facial structure, eye shape, jawline, skin tone, and hair. The overall thumbnail layout, background, text placement, and visual style should closely match the REFERENCE THUMBNAIL.${multiAngleNote}`;
     } else if (hasFace) {
       // Face only, no reference thumbnail
-      fullPrompt = `Generate a YouTube thumbnail image featuring the person from the FACE REFERENCE image(s).${userPrompt}\n\nIMPORTANT: Preserve exact facial structure, eye shape, jawline, and skin texture from the FACE REFERENCE image(s).`;
+      fullPrompt = `Generate a YouTube thumbnail image featuring the person from the FACE REFERENCE image(s).${userPrompt}\n\nIMPORTANT: Preserve exact facial structure, eye shape, jawline, and skin texture from the FACE REFERENCE image(s).${multiAngleNote}`;
     } else if (hasRef) {
       // Reference thumbnail only, no face
       fullPrompt = `Generate a YouTube thumbnail image. Use the REFERENCE THUMBNAIL below as a style and composition guide — match its layout, colors, and visual feel.${userPrompt}`;
@@ -146,10 +238,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Add face reference images ("character" refs — identity-critical, go next)
-    if (hasFace) {
-      parts.push({ text: "FACE REFERENCE:" });
-      for (const img of faceImages) {
+    // Add face reference images ("character" refs — identity-critical, go
+    // next), one labeled block per group so multi-angle Personnage groups
+    // are legible as a single identity rather than dumped as one flat list.
+    for (const group of faceGroups) {
+      const label = group.images.length > 1
+        ? `FACE REFERENCE — "${group.label}", ${group.images.length} angles of the SAME person:`
+        : `FACE REFERENCE — "${group.label}":`;
+      parts.push({ text: label });
+      for (const img of group.images) {
         const { mimeType, data } = stripDataUrl(img);
         parts.push({ inline_data: { mime_type: mimeType, data } });
       }
@@ -240,7 +337,7 @@ export async function POST(request: NextRequest) {
       prompt: promptForLog, generatedImageIds: imageIds,
     });
 
-    return NextResponse.json({ images, stats });
+    return NextResponse.json({ images, stats, warnings: warnings.length > 0 ? warnings : undefined });
   } catch (err) {
     console.error("Nano Banana generation error:", err);
     logGeneration({

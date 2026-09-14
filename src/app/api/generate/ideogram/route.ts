@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const {
       prompt,
       negativePrompt,
-      characterReferenceImage,
+      characterReferenceImages = [],
       styleReferenceImages = [],
       aspectRatio = "16x9",
       renderingSpeed = "DEFAULT",
@@ -53,10 +53,11 @@ export async function POST(request: NextRequest) {
     formData.append("magic_prompt", "AUTO");
     formData.append("num_images", "1");
 
-    // Add character reference image
-    if (characterReferenceImage) {
-      const { blob, ext } = dataUrlToBlob(characterReferenceImage);
-      formData.append("character_reference_images", blob, `face.${ext}`);
+    // Add character reference image(s) — a Personnage sends up to 3 angles of
+    // the same person here; Ideogram's API field is already plural/repeatable.
+    for (let i = 0; i < characterReferenceImages.length && i < 3; i++) {
+      const { blob, ext } = dataUrlToBlob(characterReferenceImages[i]);
+      formData.append("character_reference_images", blob, `face_${i}.${ext}`);
     }
 
     // Add style reference images

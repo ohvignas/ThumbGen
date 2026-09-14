@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       prompt,
       image,
       mask,
-      characterReferenceImage,
+      characterReferenceImages = [],
       renderingSpeed = "DEFAULT",
       styleType = "GENERAL",
     } = body;
@@ -55,10 +55,10 @@ export async function POST(request: NextRequest) {
       formData.append("mask", maskBlob, `mask.${maskExt}`);
     }
 
-    // Character reference
-    if (characterReferenceImage) {
-      const { blob, ext } = dataUrlToBlob(characterReferenceImage);
-      formData.append("character_reference_images", blob, `face.${ext}`);
+    // Character reference(s) — up to 3 angles of the same person
+    for (let i = 0; i < characterReferenceImages.length && i < 3; i++) {
+      const { blob, ext } = dataUrlToBlob(characterReferenceImages[i]);
+      formData.append("character_reference_images", blob, `face_${i}.${ext}`);
     }
 
     const res = await fetch(ENDPOINT, {
