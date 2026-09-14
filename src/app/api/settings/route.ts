@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings, saveSettings, AppSettings } from "@/lib/settings";
+import { DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
 
 export async function GET() {
   const settings = getSettings();
@@ -27,8 +28,8 @@ export async function GET() {
     hasOpenrouter: !!(settings.openrouterApiKey || process.env.OPENROUTER_API_KEY),
     hasYoutube: !!(settings.youtubeApiKey || process.env.YOUTUBE_API_KEY),
     language: settings.language || "fr",
-    favoriteModel: settings.favoriteModel || "gemini-3.1-flash-image-preview",
-    agentModel: settings.agentModel || "google/gemini-3.1-pro-preview",
+    favoriteModel: settings.favoriteModel || "gemini-3.1-flash-image",
+    agentModel: settings.agentModel || DEFAULT_AGENT_MODEL,
     agentWebSearch: settings.agentWebSearch ?? "1",
     currentProjectId: settings.currentProjectId || "default",
   });

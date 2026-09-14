@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import McpSettingsSection from "./settings/McpSettingsSection";
-import { AGENT_MODELS } from "@/lib/agent/models";
+import { AGENT_MODELS, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
 
 type SettingsData = {
   geminiApiKey: string;
@@ -297,7 +297,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           Modèle de l&apos;agent
         </label>
         <select
-          value={agentModel || settings?.agentModel || "google/gemini-3.1-pro-preview"}
+          value={agentModel || settings?.agentModel || DEFAULT_AGENT_MODEL}
           onChange={(e) => setAgentModel(e.target.value)}
           className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
           style={{
