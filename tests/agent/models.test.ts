@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { AGENT_MODELS, getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
 
 describe("AGENT_MODELS", () => {
-  it("has gemini 3 pro as the default", () => {
-    expect(DEFAULT_AGENT_MODEL).toBe("google/gemini-3.1-pro-preview");
+  it("has gemini 3.8 flash as the default", () => {
+    expect(DEFAULT_AGENT_MODEL).toBe("google/gemini-3.8-flash");
     expect(getModelById(DEFAULT_AGENT_MODEL)).toBeDefined();
   });
 

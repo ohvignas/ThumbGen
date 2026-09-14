@@ -92,7 +92,7 @@ describe("apply_workflow", () => {
     await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
     const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
     const nodes = JSON.parse(row.nodes) as Array<{ data: Record<string, unknown> }>;
-    expect(nodes[0].data.model).toBe("gemini-3-pro-image-preview");
+    expect(nodes[0].data.model).toBe("gemini-3.1-flash-image");
     expect(nodes[0].data.numImages).toBe(3);
   });
 

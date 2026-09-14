@@ -24,6 +24,6 @@ describe("list_face_reactions", () => {
   it("returns 'No face' when empty", async () => {
     getDb().prepare("DELETE FROM face_reactions").run();
     const r = await listFaceReactionsTool.handler({});
-    expect((r.content[0] as { text: string }).text).toMatch(/No face/);
+    expect((r.content[0] as { text: string }).text).toMatch(/Aucun visage/);
   });
 });

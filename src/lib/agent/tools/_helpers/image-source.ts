@@ -67,6 +67,11 @@ export async function resolveImageSource(source: string): Promise<ResolvedImage>
 export function imageExists(source: string): boolean {
   if (source.startsWith("data:image/")) return true;
 
+  if (source.startsWith("stored:persona_")) {
+    const id = source.slice("stored:persona_".length);
+    return Boolean(getDb().prepare("SELECT 1 FROM personas WHERE id = ?").get(id));
+  }
+
   if (source.startsWith("stored:")) {
     const m = source.match(/^stored:(lg|sf|fr|gi)_(.+)$/);
     if (!m) return false;

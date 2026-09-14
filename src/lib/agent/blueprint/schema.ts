@@ -1,11 +1,12 @@
 import { z } from "zod";
 
 // Stored prefixes map 1:1 to DB tables :
-//   lg_ → logos, sf_ → swipe_files, fr_ → face_reactions, gi_ → generated_images
-// (no fc_/face_references — face_reactions is the single source of truth for face images)
+//   lg_ → logos, sf_ → swipe_files, fr_ → face_reactions, gi_ → generated_images,
+//   persona_ → personas (resolves to up to 3 angle images, not one — see
+//   blueprintToCanvasData's special-case handling in apply-workflow.ts)
 export const ImageSourceSchema = z.string().refine(
   (s) =>
-    /^stored:(lg|sf|fr|gi)_[\w-]+$/.test(s) ||
+    /^stored:(lg|sf|fr|gi|persona)_[\w-]+$/.test(s) ||
     /^generated:[\w-]+$/.test(s) ||
     /^uploaded:[\w-]+$/.test(s) ||
     /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]{4,}$/.test(s),
@@ -35,7 +36,7 @@ const NodeDataByType = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("generator"),
-    model: z.enum(["ideogram", "grok", "nano-banana", "openai"]),
+    model: z.enum(["ideogram", "grok", "nano-banana", "openai", "seedream"]),
     aspectRatio: z.enum(["16x9", "9x16", "1x1"]),
     count: z.number().int().min(1).max(10).optional(),
   }),
