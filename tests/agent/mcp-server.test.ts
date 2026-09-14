@@ -23,13 +23,14 @@ describe("MCP server (in-memory)", () => {
     return { server, client };
   }
 
-  it("lists all 11 tools from the registry", async () => {
+  it("lists all 13 tools from the registry", async () => {
     const { client } = await connectPair();
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name);
     [
       "list_logos",
       "list_face_reactions",
+      "list_personas",
       "list_swipe_files",
       "list_projects",
       "list_past_generations",
@@ -39,6 +40,7 @@ describe("MCP server (in-memory)", () => {
       "extract_youtube_script",
       "search_youtube_channel",
       "get_channel_videos",
+      "import_youtube_thumbnail",
     ].forEach((n) => expect(names).toContain(n));
   });
 

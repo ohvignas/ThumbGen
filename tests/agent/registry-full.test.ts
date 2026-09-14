@@ -17,6 +17,7 @@ describe("full registry", () => {
     const expected = [
       "list_logos",
       "list_face_reactions",
+      "list_personas",
       "list_swipe_files",
       "list_projects",
       "list_past_generations",
@@ -27,6 +28,7 @@ describe("full registry", () => {
       "search_youtube",
       "search_youtube_channel",
       "get_channel_videos",
+      "import_youtube_thumbnail",
     ];
     for (const name of expected) {
       expect(names, `tool "${name}" should be registered`).toContain(name);
