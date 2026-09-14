@@ -16,6 +16,7 @@ import PromptNode from "./nodes/PromptNode";
 import GeneratorNode from "./nodes/GeneratorNode";
 import PreviewNode from "./nodes/PreviewNode";
 import SketchNode from "./nodes/SketchNode";
+import TextOverlayNode from "./nodes/TextOverlayNode";
 import CustomEdge from "./edges/CustomEdge";
 import Sidebar from "./panels/Sidebar";
 import ZoomBar from "./panels/ZoomBar";
@@ -35,6 +36,7 @@ const nodeTypes = {
   generator: GeneratorNode,
   preview: PreviewNode,
   sketch: SketchNode,
+  textOverlay: TextOverlayNode,
 };
 
 const edgeTypes = {
@@ -57,7 +59,7 @@ function CanvasInner() {
     useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
   const [providers, setProviders] = useState<Record<string, boolean>>({ gemini: true });
-  const [favoriteModel, setFavoriteModel] = useState("gemini-3.1-flash-image-preview");
+  const [favoriteModel, setFavoriteModel] = useState("gemini-3.1-flash-image");
 
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then((s) => {
@@ -237,6 +239,15 @@ function CanvasInner() {
           title: "",
           items: [
             { label: "Générateur", icon: STAR_ICON("var(--accent-yellow)", true), onClick: () => addNode("generator", contextMenu.flowPos, { model: favoriteModel }) },
+            {
+              label: "Texte overlay",
+              icon: (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-yellow)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 7V5h16v2M9 20h6M12 5v15" />
+                </svg>
+              ),
+              onClick: () => addNode("textOverlay", contextMenu.flowPos),
+            },
           ],
         },
       ]
