@@ -19,6 +19,27 @@ function isToolResultRow(blocks: AnthropicBlock[]): boolean {
   return blocks.length > 0 && blocks.every((b) => b.type === "tool_result");
 }
 
+/**
+ * True when `parsed` already looks like the TARGET (ModelMessage[]) shape
+ * rather than the source (AnthropicBlock[]) shape — i.e. this row has
+ * already been migrated. No `AnthropicBlock` variant ever carries a `role`
+ * key (they all use `type`), while every `ModelMessage` does, so this is a
+ * cheap and reliable discriminator. An empty array trivially counts as
+ * "already migrated" (vacuous truth) — that matches the no-op rows this
+ * script itself writes for folded-in tool-result carriers.
+ *
+ * Without this guard, running the migration twice is destructive: an
+ * already-migrated row gets parsed, matches no AnthropicBlock.type branch in
+ * convertRow, and is silently rewritten to empty content — data loss with no
+ * error reported.
+ */
+function looksAlreadyMigrated(parsed: unknown): boolean {
+  return (
+    Array.isArray(parsed) &&
+    parsed.every((m) => typeof m === "object" && m !== null && "role" in (m as Record<string, unknown>))
+  );
+}
+
 function convertToolResultOutput(content: AnthropicBlock[] | string) {
   if (typeof content === "string") return { type: "text" as const, value: content };
   return {
@@ -90,7 +111,7 @@ export function convertRow(row: Row, toolResultBlocks: AnthropicBlock[] | undefi
   return [{ role: "user", content } as ModelMessage];
 }
 
-export function migrateAllMessages(): { converted: number; errors: number } {
+export function migrateAllMessages(): { converted: number; errors: number; skipped: number } {
   const db = getDb();
   const rows = db
     .prepare(
@@ -100,21 +121,45 @@ export function migrateAllMessages(): { converted: number; errors: number } {
 
   let converted = 0;
   let errors = 0;
+  let skipped = 0;
   const update = db.prepare("UPDATE messages SET content_json = ? WHERE id = ?");
 
   const tx = db.transaction(() => {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const blocks = JSON.parse(row.content_json) as AnthropicBlock[];
 
-      if (row.role === "user" && isToolResultRow(blocks)) {
-        // Data folded into the preceding assistant row — this row becomes a no-op.
-        update.run("[]", row.id);
-        converted++;
-        continue;
-      }
-
+      // Everything for this row — including the initial JSON.parse — lives
+      // inside this try/catch. better-sqlite3's db.transaction() wraps the
+      // whole callback in BEGIN/COMMIT and rolls back the ENTIRE transaction
+      // on any uncaught throw (see node_modules/better-sqlite3/lib/methods/
+      // transaction.js: the wrapper's own try/catch calls ROLLBACK then
+      // re-throws). Previously the first JSON.parse — used for the
+      // isToolResultRow check — sat OUTSIDE this try/catch, so one row with
+      // malformed JSON threw out of the whole transaction, undoing every
+      // row already converted in this run, and that row was never counted
+      // in `errors`. Catching here, before anything can escape to the
+      // transaction boundary, fixes both.
       try {
+        const parsed: unknown = JSON.parse(row.content_json);
+
+        // Idempotency guard: skip a row that's already ModelMessage-shaped
+        // instead of reprocessing it (see looksAlreadyMigrated's doc comment
+        // for why re-running this unguarded silently empties already-
+        // migrated rows).
+        if (looksAlreadyMigrated(parsed)) {
+          skipped++;
+          continue;
+        }
+
+        const blocks = parsed as AnthropicBlock[];
+
+        if (row.role === "user" && isToolResultRow(blocks)) {
+          // Data folded into the preceding assistant row — this row becomes a no-op.
+          update.run("[]", row.id);
+          converted++;
+          continue;
+        }
+
         const next = rows[i + 1];
         const nextIsToolResult =
           next &&
@@ -134,10 +179,12 @@ export function migrateAllMessages(): { converted: number; errors: number } {
     }
   });
   tx();
-  return { converted, errors };
+  return { converted, errors, skipped };
 }
 
 if (require.main === module) {
   const result = migrateAllMessages();
-  console.log(`Migrated ${result.converted} rows, ${result.errors} errors.`);
+  console.log(
+    `Migrated ${result.converted} rows, ${result.skipped} already-migrated rows skipped, ${result.errors} errors.`,
+  );
 }
