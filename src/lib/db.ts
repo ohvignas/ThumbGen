@@ -70,6 +70,25 @@ function init(database: Database.Database) {
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS personas (
+      id          TEXT PRIMARY KEY,
+      label       TEXT NOT NULL DEFAULT 'Personnage',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS persona_photos (
+      id          TEXT PRIMARY KEY,
+      persona_id  TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+      angle       TEXT NOT NULL CHECK (angle IN ('front','left','right')),
+      mime_type   TEXT NOT NULL,
+      size        INTEGER NOT NULL,
+      data        BLOB NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(persona_id, angle)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_persona_photos_persona_id ON persona_photos(persona_id);
+
     CREATE TABLE IF NOT EXISTS generations_log (
       id                  TEXT PRIMARY KEY,
       created_at          TEXT NOT NULL DEFAULT (datetime('now')),
