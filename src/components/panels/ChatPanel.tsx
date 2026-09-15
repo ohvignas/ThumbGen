@@ -16,7 +16,7 @@ import Composer from "./chat/Composer";
 import PendingUiAction, { UiToolRequest } from "./chat/PendingUiAction";
 import AgentActivity from "./chat/AgentActivity";
 import ImageAnnotateModal from "./chat/ImageAnnotateModal";
-import type { DisplayMessage, MessageBlock } from "./chat/Message";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import type { ChatEvent } from "@/hooks/useChat";
 import UsageBadge from "./chat/UsageBadge";
 import { rowsToUIMessages } from "./chat/history-to-ui-messages";
@@ -76,15 +76,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
 
-  // TODO(Task 5-11): remove this whole adapter block once MessageList/
-  // Composer/AgentActivity/PendingUiAction are rewritten to consume
-  // useChat's UIMessage[]/ChatStatus directly. It maps this-session live
-  // messages (chatMessages) back into the OLD DisplayMessage[]/ChatEvent[]
-  // shapes those (still unmodified) children expect.
-  const legacyLiveMessages: DisplayMessage[] = useMemo(
-    () => chatMessages.filter((m) => m.role !== "system").map(uiMessageToLegacyDisplayMessage),
-    [chatMessages],
-  );
+  // TODO(Task 7/11): remove once Composer/PendingUiAction are rewritten to
+  // consume useChat's UIMessage[]/ChatStatus directly. It maps this-session
+  // live messages (chatMessages) back into the OLD ChatEvent[] shape those
+  // (still unmodified) children expect. MessageList/AgentActivity were
+  // rewired to consume chatMessages/status directly in Task 5/6.
   const legacyEvents: ChatEvent[] = useMemo(
     () => chatMessages.flatMap(uiMessageToLegacyEvents),
     [chatMessages],
@@ -144,24 +140,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       cancelled = true;
     };
   }, [activeConversationId, setMessages]);
-
-  // TODO(Task 5-11): remove — adapts this-session live messages (now
-  // including seeded persisted history, since chatMessages/legacyLiveMessages
-  // derive from useChat's own `messages`, which the effects above seed via
-  // setMessages(rowsToUIMessages(rows))) plus a synthetic error bubble
-  // (useChat's `error` used to be an `error` ChatEvent consumed by the old
-  // liveMessage builder).
-  const messages: DisplayMessage[] = useMemo(() => {
-    const combined: DisplayMessage[] = [...legacyLiveMessages];
-    if (error) {
-      combined.push({
-        id: "live-error",
-        role: "assistant",
-        blocks: [{ type: "text", text: `⚠ ${error.message}` }],
-      });
-    }
-    return combined;
-  }, [legacyLiveMessages, error]);
 
   const pendingUiRequest = useMemo<UiToolRequest | null>(() => {
     const requests = legacyEvents.filter((e) => e.type === "ui_tool_request");
@@ -281,7 +259,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
       <ConversationList projectId={projectId} />
 
-      <MessageList messages={messages} />
+      <MessageList messages={chatMessages} />
 
       {pendingUiRequest && (
         <PendingUiAction
@@ -291,6 +269,13 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       )}
 
       <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
+
+      {error && (
+        <Alert variant="destructive" className="mx-3 my-2">
+          <AlertTitle>Erreur</AlertTitle>
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      )}
 
       <Composer onSend={onSend} streaming={legacyStreaming} onStop={stop} />
 
@@ -333,46 +318,14 @@ function summarizeNode(type: string, data: Record<string, unknown>): Record<stri
   }
 }
 
-// TODO(Task 5-11): remove everything below — temporary UIMessage ->
-// legacy DisplayMessage[]/ChatEvent[] adapter kept only so the untouched
-// child components (MessageList/AgentActivity/PendingUiAction) keep working
-// against @ai-sdk/react's useChat output until they're rewritten.
+// TODO(Task 7/11): remove everything below — temporary UIMessage -> legacy
+// ChatEvent[] adapter kept only so the untouched Composer (`streaming` prop)
+// and PendingUiAction child components keep working against @ai-sdk/react's
+// useChat output until they're rewritten.
 
 /** Client tools resolved via addToolOutput from the browser (Plan 2's UI-tool
  * mechanism), matching PendingUiAction's UiToolRequest["name"] union. */
 const CLIENT_UI_TOOL_NAMES = new Set(["request_user_image", "request_user_sketch"]);
-
-function uiMessageToLegacyDisplayMessage(m: UIMessage): DisplayMessage {
-  const blocks: MessageBlock[] = [];
-  for (const part of m.parts) {
-    if (part.type === "text") {
-      if (part.text) blocks.push({ type: "text", text: part.text });
-    } else if (part.type === "file") {
-      if (part.mediaType.startsWith("image")) {
-        blocks.push({ type: "image", preview_url: part.url });
-      }
-    } else if (isToolUIPart(part)) {
-      const name = getToolName(part);
-      const status: "pending" | "done" | "error" =
-        part.state === "output-available"
-          ? "done"
-          : part.state === "output-error" || part.state === "output-denied"
-            ? "error"
-            : "pending";
-      const output = part.state === "output-available" ? (part.output as Record<string, unknown> | undefined) : undefined;
-      blocks.push({
-        type: "tool_call",
-        id: part.toolCallId,
-        name,
-        input: part.input,
-        status,
-        summary: typeof output?.summary === "string" ? output.summary : undefined,
-        images: Array.isArray(output?.images) ? (output.images as string[]) : undefined,
-      });
-    }
-  }
-  return { id: m.id, role: m.role === "user" ? "user" : "assistant", blocks };
-}
 
 function uiMessageToLegacyEvents(m: UIMessage): ChatEvent[] {
   const out: ChatEvent[] = [];
