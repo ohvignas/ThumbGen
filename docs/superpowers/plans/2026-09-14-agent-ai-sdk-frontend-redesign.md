@@ -450,11 +450,27 @@ git commit -m "feat(chat): convert persisted ModelMessage rows to UIMessage for 
 ### Task 5: `MessageList.tsx` → shadcn `MessageScroller` + `Empty`
 
 **Files:**
-- Modify: `src/components/panels/chat/MessageList.tsx`
+- Modify: `src/components/panels/chat/MessageList.tsx`, `src/components/panels/ChatPanel.tsx`
 
 **Interfaces:**
 - Consumes: `MessageScrollerProvider`/`MessageScroller`/`MessageScrollerViewport`/`MessageScrollerContent`/`MessageScrollerItem` (`@/components/ui/message-scroller`), `Empty`/`EmptyHeader`/`EmptyMedia`/`EmptyTitle`/`EmptyDescription` (`@/components/ui/empty`) — both Task 1 — `messages: UIMessage[]` (Task 3's `useChat`, no longer the legacy adapter — this task removes that specific piece of Task 3's temporary scaffolding).
 - Produces: renders `<Message>` (Task 6) per `UIMessage`, each wrapped in `MessageScrollerItem`.
+
+**Scope addition, found during this plan's own execution (a real gap, not originally called out by any task): nothing anywhere in this plan ever wires up `error` display.** Task 1 installs `Alert`/`AlertTitle`/`AlertDescription` and lists them as "consumed by Tasks 5–12," but no task's text actually uses them. The OLD code's error handling (a synthetic `DisplayMessage` pushed into the combined message array — `ChatPanel.tsx`'s now-deleted `messages: DisplayMessage[]` `useMemo`, removed by Task 6 taking away `DisplayMessage`/`MessageBlock`) has nothing replacing it. This task is the correct owner: it's the one deleting `legacyLiveMessages`/the old combine and rewiring `MessageList`'s call site, so it's the one that must decide what shows `useChat`'s real `error: Error | undefined` state. Fix, matching the reference chatbot's own pattern (`chat.tsx`'s error display, read during this plan's exploration):
+
+```tsx
+// In ChatPanel.tsx, near where <MessageList .../> and <Composer .../> render:
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+// ...
+{error && (
+  <Alert variant="destructive" className="mx-3 my-2">
+    <AlertTitle>Erreur</AlertTitle>
+    <AlertDescription>{error.message}</AlertDescription>
+  </Alert>
+)}
+```
+
+Place it between `MessageList` and `Composer` (matching the reference's layout — the error sits above the input, not inside the scrolling message list). `error` is already destructured from `useChat()` in `ChatPanel.tsx` (Task 3) and currently unused for this purpose (the old code fed it into the now-deleted synthetic-bubble mechanism) — just render it directly, no new state needed.
 
 **Why `MessageScroller` instead of AI Elements' own `Conversation`:** both do the same job (auto-scroll-to-bottom container); `MessageScroller` (confirmed reading its real source, `src/components/ui/message-scroller.tsx`) is the richer of the two — `MessageScrollerItem` takes a `scrollAnchor` prop that settles the viewport near a SPECIFIC turn instead of always snapping to the document bottom, matching the "no jarring jump on a new message" behavior described in shadcn's own AI-SDK-helper docs page. Anchor the user's own message on send (`scrollAnchor={m.role === "user"}`), the same pattern shown there.
 
@@ -526,7 +542,7 @@ Note: `MessageScroller` handles auto-scroll internally — do not port the old m
 
 `EmptyMedia`/`EmptyContent` (also exported by `empty.tsx`) aren't used here — this empty state has no icon and no action buttons, matching the CURRENT app's minimal look exactly; don't add them just because they exist, that would be new UI the app doesn't have today.
 
-- [ ] **Step 2: Update `ChatPanel.tsx`'s call site** to pass `messages` (the real `UIMessage[]` from `useChat`) instead of the legacy-adapted array.
+- [ ] **Step 2: Update `ChatPanel.tsx`'s call site** — pass `messages` (i.e. `chatMessages`, the real `UIMessage[]` from `useChat`) to `MessageList` instead of the legacy-adapted array. Delete `legacyLiveMessages`, `uiMessageToLegacyDisplayMessage`, the `messages: DisplayMessage[]` combine `useMemo`, and the now-dangling `import type { DisplayMessage, MessageBlock } from "./chat/Message"` (Task 6 removed those exports) — all now-dead code once `MessageList` consumes `chatMessages` directly. **Do NOT touch** `legacyEvents`/`uiMessageToLegacyEvents`/`legacyStreaming`/the `conversation_renamed` effect/`pendingUiRequest` — those are still consumed by the untouched `Composer` (`streaming` prop, Task 7's job) and `PendingUiAction` (Task 11's job) call sites and must survive until those tasks land. Add the `error`-`Alert` wiring from this task's header note here.
 
 - [ ] **Step 3: Typecheck, then verify in browser**
 
@@ -534,13 +550,15 @@ Note: `MessageScroller` handles auto-scroll internally — do not port the old m
 npx tsc --noEmit
 ```
 
-Start the dev server (`THUMBGEN_AGENT_V2=1`), open the chat panel with an empty conversation: confirm the French empty-state copy renders identically to before, centered, same fonts, no stray icon/border box around it (the `border-none` override above matters — `Empty`'s default has a dashed border, which doesn't match this app's existing borderless empty state). This won't fully render real messages correctly yet (Task 6 rewrites `Message.tsx` itself) — a broken/plain look for actual message content at this point is expected and will be fixed by Task 6, not a regression to chase down now.
+Since Task 6 already landed (dispatched before this task in the plan's actual dependency order — see Global Constraints), this should bring the repo to a FULLY clean typecheck (0 errors) — confirm this explicitly, don't just confirm "no new errors."
+
+Start the dev server (`THUMBGEN_AGENT_V2=1`), open the chat panel with an empty conversation: confirm the French empty-state copy renders identically to before, centered, same fonts, no stray icon/border box around it (the `border-none` override above matters — `Empty`'s default has a dashed border, which doesn't match this app's existing borderless empty state). Then open a conversation with real history and confirm messages now render correctly through the real `Message`/`Bubble` components (Task 6's work, now finally exercised live). Also verify the error path: trigger a real error (e.g. temporarily clear the OpenRouter API key setting, send a message, confirm the `Alert` appears with a sensible message instead of the turn silently failing), then restore the setting.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add src/components/panels/chat/MessageList.tsx src/components/panels/ChatPanel.tsx
-git commit -m "feat(chat): MessageList on shadcn MessageScroller + Empty"
+git commit -m "feat(chat): MessageList on shadcn MessageScroller + Empty, wire real UIMessage[] + error Alert into ChatPanel"
 ```
 
 ---
