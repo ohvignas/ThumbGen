@@ -1,6 +1,7 @@
 "use client";
 import { MessageScrollerProvider, MessageScroller, MessageScrollerViewport, MessageScrollerContent, MessageScrollerItem, MessageScrollerButton } from "@/components/ui/message-scroller";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import { Sparkles } from "lucide-react";
 import Message from "./Message";
 import type { ChatStatus, UIMessage } from "ai";
 
@@ -9,6 +10,18 @@ export default function MessageList({ messages, status }: { messages: UIMessage[
     return (
       <Empty className="flex-1 border-none">
         <EmptyHeader>
+          <EmptyMedia
+            variant="icon"
+            style={{
+              background: "var(--brand-tint)",
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <Sparkles size={18} style={{ color: "var(--brand)" }} strokeWidth={1.75} />
+          </EmptyMedia>
           <EmptyTitle
             className="italic"
             style={{
