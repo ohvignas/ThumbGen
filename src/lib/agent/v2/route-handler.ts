@@ -67,6 +67,77 @@ function normalizeStaleToolResultFileData(messages: unknown[]): unknown[] {
   });
 }
 
+const CLIENT_TOOL_NAMES = new Set(["request_user_image", "request_user_sketch"]);
+
+/** Every `toolCallId` that already has a persisted `role:"tool"` result somewhere
+ * in this conversation's rows — shared by the abandoned-request scan below and
+ * the tool-continuation dedup further down (both need the same "has this
+ * already been resolved, anywhere in this conversation" answer). */
+function collectResolvedToolCallIds(rows: { content_json: string }[]): Set<string> {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const parsed: unknown = JSON.parse(row.content_json);
+    if (!Array.isArray(parsed)) continue;
+    for (const m of parsed) {
+      if (typeof m !== "object" || m === null || (m as { role?: unknown }).role !== "tool") continue;
+      const content = (m as { content?: unknown }).content;
+      if (!Array.isArray(content)) continue;
+      for (const c of content) {
+        const toolCallId = (c as { toolCallId?: unknown } | null)?.toolCallId;
+        if (typeof toolCallId === "string") ids.add(toolCallId);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Finds any `request_user_image`/`request_user_sketch` tool-call in the
+ * conversation's LAST row that has no matching tool-result yet — i.e. a
+ * pending human-in-the-loop request the user ignored and is about to send a
+ * new message past instead of resolving/skipping via PendingUiAction.tsx.
+ *
+ * Without this, that tool-call row stays dangling forever: every future
+ * `priorMessages` reconstruction (below) includes an assistant tool-call
+ * with no matching tool-result, which both Anthropic and OpenAI reject —
+ * permanently bricking the conversation the same way an unresolved
+ * duplicate resolution did before Task 11's dedup fix (see
+ * `alreadyPersistedToolCallIds` below), just via the opposite path (a
+ * missing result instead of a duplicate one).
+ *
+ * Only the LAST row is checked — an unresolved call in an OLDER row would
+ * mean a later row already moved the conversation past it (e.g. a
+ * subsequent successful turn), which isn't the abandonment scenario this
+ * guards against and isn't expected to occur given how rows are persisted.
+ */
+function findAbandonedClientToolCalls(rows: { role: string; content_json: string }[]): Array<{ toolCallId: string; toolName: string }> {
+  const lastRow = rows.at(-1);
+  if (!lastRow || lastRow.role !== "assistant") return [];
+  const parsed: unknown = JSON.parse(lastRow.content_json);
+  if (!Array.isArray(parsed)) return [];
+  const resolved = collectResolvedToolCallIds(rows);
+  const out: Array<{ toolCallId: string; toolName: string }> = [];
+  for (const m of parsed) {
+    if (typeof m !== "object" || m === null || (m as { role?: unknown }).role !== "assistant") continue;
+    const content = (m as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (const c of content) {
+      if (typeof c !== "object" || c === null) continue;
+      const part = c as { type?: unknown; toolCallId?: unknown; toolName?: unknown };
+      if (
+        part.type === "tool-call" &&
+        typeof part.toolCallId === "string" &&
+        typeof part.toolName === "string" &&
+        CLIENT_TOOL_NAMES.has(part.toolName) &&
+        !resolved.has(part.toolCallId)
+      ) {
+        out.push({ toolCallId: part.toolCallId, toolName: part.toolName });
+      }
+    }
+  }
+  return out;
+}
+
 export async function postV2(req: NextRequest): Promise<Response> {
   // `messages` here is the wire shape @ai-sdk/react's useChat/DefaultChatTransport
   // actually sends (the full UIMessage[] the client holds) — there is no
@@ -170,7 +241,38 @@ export async function postV2(req: NextRequest): Promise<Response> {
       // exactly one auto-title attempt, on its first turn. Fire-and-forget:
       // does not block the model call below (see auto-title.ts's own header
       // comment on why this doesn't need to be awaited).
-      const isFirstTurn = listMessages(conversationId).length === 0;
+      const priorRowsForThisTurn = listMessages(conversationId);
+      const isFirstTurn = priorRowsForThisTurn.length === 0;
+
+      // Auto-resolve any pending request_user_image/request_user_sketch the
+      // user is about to send a new message past instead of answering — see
+      // findAbandonedClientToolCalls's own doc comment for why this is
+      // required, not just tidy. Persisted BEFORE the new user row so the
+      // conversation's turn structure (tool-call always immediately followed
+      // by a tool-result) stays valid the moment this request completes, not
+      // just eventually.
+      const abandoned = findAbandonedClientToolCalls(priorRowsForThisTurn);
+      if (abandoned.length > 0) {
+        appendMessage({
+          conversation_id: conversationId,
+          role: "assistant",
+          content_json: JSON.stringify([
+            {
+              role: "tool",
+              content: abandoned.map((a) => ({
+                type: "tool-result" as const,
+                toolCallId: a.toolCallId,
+                toolName: a.toolName,
+                output: { type: "json" as const, value: { skipped: true, reason: "abandoned" } },
+              })),
+            },
+          ]),
+          interrupted: 0,
+          total_input_tokens: 0,
+          total_output_tokens: 0,
+          cost_estimate: 0,
+        });
+      }
 
       appendMessage({
         conversation_id: conversationId,
@@ -231,20 +333,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
       // not the client — is the authoritative dedup boundary: exclude any
       // resolved part whose toolCallId already has a persisted tool-result
       // somewhere in this conversation's rows.
-      const alreadyPersistedToolCallIds = new Set<string>();
-      for (const row of listMessages(conversationId)) {
-        const parsed: unknown = JSON.parse(row.content_json);
-        if (!Array.isArray(parsed)) continue;
-        for (const m of parsed) {
-          if (typeof m !== "object" || m === null || (m as { role?: unknown }).role !== "tool") continue;
-          const content = (m as { content?: unknown }).content;
-          if (!Array.isArray(content)) continue;
-          for (const c of content) {
-            const toolCallId = (c as { toolCallId?: unknown } | null)?.toolCallId;
-            if (typeof toolCallId === "string") alreadyPersistedToolCallIds.add(toolCallId);
-          }
-        }
-      }
+      const alreadyPersistedToolCallIds = collectResolvedToolCallIds(listMessages(conversationId));
 
       const resolvedClientToolParts = (lastMessage?.parts ?? []).filter(
         (p): p is { type: string; toolCallId: string; state: string; output?: unknown; errorText?: string } =>

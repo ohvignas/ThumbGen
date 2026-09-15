@@ -283,6 +283,116 @@ describe("postV2", () => {
     expect(callArgs.messages.length).toBe(3);
   });
 
+  it("auto-resolves an abandoned pending request_user_image before persisting a new user turn", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    listMessagesMock.mockReturnValue([
+      fakeRow({ id: "u1", role: "user", content_json: JSON.stringify([{ role: "user", content: [{ type: "text", text: "fais-moi une image" }] }]) }),
+      fakeRow({
+        id: "a1",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "abandoned-1", toolName: "request_user_image", input: {} }] },
+        ]),
+      }),
+    ]);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: "c-abandoned",
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "en fait fais autre chose" }] }],
+        }),
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    // First call: the synthetic skip-result, persisted BEFORE the new user
+    // row so the conversation's tool-call/tool-result pairing stays valid.
+    expect(appendMessageMock).toHaveBeenCalledTimes(2);
+    const firstCallArg = appendMessageMock.mock.calls[0][0] as { role: string; content_json: string };
+    expect(firstCallArg.role).toBe("assistant");
+    const persisted = JSON.parse(firstCallArg.content_json);
+    expect(persisted).toEqual([
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "abandoned-1",
+            toolName: "request_user_image",
+            output: { type: "json", value: { skipped: true, reason: "abandoned" } },
+          },
+        ],
+      },
+    ]);
+    const secondCallArg = appendMessageMock.mock.calls[1][0] as { role: string };
+    expect(secondCallArg.role).toBe("user");
+  });
+
+  it("does NOT synthesize a skip-result when the last row's client-tool call is already resolved", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    listMessagesMock.mockReturnValue([
+      fakeRow({
+        id: "a1",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "resolved-1", toolName: "request_user_image", input: {} }] },
+        ]),
+      }),
+      fakeRow({
+        id: "a1-result",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "tool", content: [{ type: "tool-result", toolCallId: "resolved-1", toolName: "request_user_image", output: { type: "json", value: { skipped: true } } }] },
+        ]),
+      }),
+    ]);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: "c-already-resolved",
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
+        }),
+      }) as never,
+    );
+    // Only the new user row — no synthetic skip-result for an already-resolved call.
+    expect(appendMessageMock).toHaveBeenCalledTimes(1);
+    expect((appendMessageMock.mock.calls[0][0] as { role: string }).role).toBe("user");
+  });
+
+  it("does NOT synthesize a skip-result for a pending SERVER tool call (only request_user_image/sketch qualify)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    listMessagesMock.mockReturnValue([
+      fakeRow({
+        id: "a1",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "server-1", toolName: "list_logos", input: {} }] },
+        ]),
+      }),
+    ]);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: "c-server-tool-pending",
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
+        }),
+      }) as never,
+    );
+    expect(appendMessageMock).toHaveBeenCalledTimes(1);
+    expect((appendMessageMock.mock.calls[0][0] as { role: string }).role).toBe("user");
+  });
+
   // Coverage for the stream-level onError/onEnd persistence path added
   // alongside Task 14's Bug 2 fixes — previously nothing exercised this at
   // all (the mock ignored toUIMessageStreamResponse's options argument
