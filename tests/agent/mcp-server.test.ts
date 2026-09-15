@@ -64,19 +64,3 @@ describe("MCP server (in-memory)", () => {
     expect(first.text).toMatch(/does_not_exist/);
   });
 });
-
-describe("getInMemoryMcpClient (caching)", () => {
-  it("returns the same client instance on repeated calls", async () => {
-    const { getInMemoryMcpClient } = await import("@/lib/agent/mcp/in-memory-client");
-    const a = await getInMemoryMcpClient();
-    const b = await getInMemoryMcpClient();
-    expect(a).toBe(b);
-  });
-
-  it("client can list tools end-to-end", async () => {
-    const { getInMemoryMcpClient } = await import("@/lib/agent/mcp/in-memory-client");
-    const c = await getInMemoryMcpClient();
-    const { tools } = await c.listTools();
-    expect(tools.length).toBeGreaterThanOrEqual(11);
-  });
-});

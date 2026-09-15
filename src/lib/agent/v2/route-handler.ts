@@ -10,6 +10,9 @@ import { appendMessage, listMessages } from "@/lib/agent/conversation/store";
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
 import { getSetting } from "@/lib/settings";
 import { getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
+import { startGcLoop } from "@/lib/agent/gc";
+
+if (typeof window === "undefined") startGcLoop();
 
 const MAX_STEPS = 25;
 
@@ -215,8 +218,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
 
     // Every prior row is assumed to already be ModelMessage-shaped — true
     // once scripts/migrate-chat-messages-to-uimessage.ts has run for real
-    // (Plan 2's cutover sequencing: migrate, THEN flip THUMBGEN_AGENT_V2,
-    // THEN swap the frontend). That assumption doesn't hold for a
+    // (Plan 2's cutover sequencing: migrate, THEN flip to v2, THEN swap
+    // the frontend — v2 is now the only backend). That assumption doesn't hold for a
     // conversation that still carries old v1 Anthropic-block-shaped rows
     // (see persist-turn.ts's header comment — the two JSON shapes are NOT
     // interchangeable), so guard it explicitly rather than silently feeding

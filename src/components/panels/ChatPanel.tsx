@@ -24,7 +24,7 @@ import { rowsToUIMessages } from "./chat/history-to-ui-messages";
  *   - On open + active conversation change: fetch persisted messages
  *   - On send: @ai-sdk/react's useChat optimistically pushes the user
  *     message and opens the UI-message stream against postV2
- *     (src/lib/agent/v2/route-handler.ts, gated by THUMBGEN_AGENT_V2)
+ *     (src/lib/agent/v2/route-handler.ts, the only agent backend)
  *   - The assistant message streams in as part of useChat's own `messages`
  *     until `status` returns to "ready"
  *   - On done: refetch messages from DB to canonicalize
