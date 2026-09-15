@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 type Angle = "front" | "left" | "right";
 
@@ -159,34 +160,16 @@ export default function WebcamCaptureModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(8,8,12,0.85)" }}
-      onClick={onClose}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div
-        className="rounded-2xl p-5 w-full max-w-sm"
-        style={{ background: "var(--node-bg)", border: "1px solid var(--line)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-            {naming ? "Dernière étape — Nom" : `Étape ${stepIndex + 1} / ${STEPS.length} — ${step.title}`}
-          </span>
-          <button
-            onClick={onClose}
-            aria-label="Fermer"
-            title="Fermer"
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
-            style={{ color: "var(--text-muted)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+      <DialogContent className="max-w-sm" style={{ background: "var(--node-bg)", border: "1px solid var(--line)" }}>
+        <span className="text-xs font-medium mb-1 block" style={{ color: "var(--text-muted)" }}>
+          {naming ? "Dernière étape — Nom" : `Étape ${stepIndex + 1} / ${STEPS.length} — ${step.title}`}
+        </span>
 
         {naming ? (
           // Naming step (added recently, not legacy leftover — see the
@@ -324,7 +307,7 @@ export default function WebcamCaptureModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
