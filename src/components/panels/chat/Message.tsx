@@ -6,7 +6,7 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ai-elements/reasoning";
 import ToolCallCard from "./ToolCallCard";
 import { useChatStore } from "@/store/chat-store";
-import type { ChatStatus, UIMessage } from "ai";
+import type { UIMessage } from "ai";
 
 function TextMarkdown({ text, openAnnotate }: { text: string; openAnnotate: (url: string) => void }) {
   return (
@@ -47,7 +47,7 @@ function TextMarkdown({ text, openAnnotate }: { text: string; openAnnotate: (url
   );
 }
 
-export default function Message({ message, status }: { message: UIMessage; status: ChatStatus }) {
+export default function Message({ message, isStreaming }: { message: UIMessage; isStreaming: boolean }) {
   const openAnnotate = useChatStore((s) => s.openAnnotate);
   const isUser = message.role === "user";
 
@@ -85,7 +85,7 @@ export default function Message({ message, status }: { message: UIMessage; statu
           }
           if (part.type === "reasoning") {
             return (
-              <Reasoning key={i} isStreaming={status === "streaming"}>
+              <Reasoning key={i} isStreaming={isStreaming}>
                 <ReasoningTrigger getThinkingMessage={(streaming, duration) =>
                   streaming ? "réfléchit…" : duration !== undefined ? `a réfléchi ${duration}s` : "a réfléchi"
                 } />

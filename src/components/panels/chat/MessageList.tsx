@@ -43,9 +43,9 @@ export default function MessageList({ messages, status }: { messages: UIMessage[
       <MessageScroller className="flex-1" style={{ borderTop: "1px solid var(--line-faint)" }}>
         <MessageScrollerViewport>
           <MessageScrollerContent>
-            {messages.map((m) => (
+            {messages.map((m, idx) => (
               <MessageScrollerItem key={m.id} scrollAnchor={m.role === "user"}>
-                <Message message={m} status={status} />
+                <Message message={m} isStreaming={status === "streaming" && idx === messages.length - 1} />
               </MessageScrollerItem>
             ))}
           </MessageScrollerContent>
