@@ -14,11 +14,21 @@ import { getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
 const MAX_STEPS = 25;
 
 export async function postV2(req: NextRequest): Promise<Response> {
+  // `messages` here is the wire shape @ai-sdk/react's useChat/DefaultChatTransport
+  // actually sends (the full UIMessage[] the client holds) — there is no
+  // `message` (singular) field on the request; only the LAST entry (the new
+  // turn) is used below, since prior history is reconstructed from the DB a
+  // few lines down via listMessages(conversationId). `attachments` is a
+  // sibling top-level field (not part of any UIMessage) carrying this app's
+  // own `stored:<id>`-style image references — see AttachButton.tsx /
+  // resolveImageSource. Deliberately NOT using AI SDK's own file-part
+  // attachment mechanism (Plan 2's Task 7 decision).
   const body = (await req.json().catch(() => null)) as
     | {
         conversation_id?: string;
         project_id?: string;
-        message?: { text?: string; attachments?: Array<{ type: "image"; source: string }> };
+        messages?: Array<{ role: string; parts?: Array<{ type: string; text?: string }> }>;
+        attachments?: Array<{ type: "image"; source: string }>;
         canvas_snapshot?: unknown;
       }
     | null;
@@ -53,9 +63,17 @@ export async function postV2(req: NextRequest): Promise<Response> {
     { type: "text"; text: string } | { type: "file"; mediaType: string; data: string }
   >;
   try {
+    // Concatenate the new turn's text part(s) — useChat's sendMessage({text})
+    // produces a single { type: "text", text } part per call, but this stays
+    // defensive against multiple text parts rather than assuming exactly one.
+    const lastMessageText = (body.messages?.at(-1)?.parts ?? [])
+      .filter((p): p is { type: "text"; text: string } => p.type === "text" && typeof p.text === "string")
+      .map((p) => p.text)
+      .join("");
+
     userParts = [];
-    if (body.message?.text) userParts.push({ type: "text", text: body.message.text });
-    for (const a of body.message?.attachments ?? []) {
+    if (lastMessageText) userParts.push({ type: "text", text: lastMessageText });
+    for (const a of body.attachments ?? []) {
       if (a.type !== "image") continue;
       const img = await resolveImageSource(a.source);
       userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });

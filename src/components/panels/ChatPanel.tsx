@@ -7,7 +7,6 @@ import {
   isToolUIPart,
   getToolName,
   type UIMessage,
-  type FileUIPart,
 } from "ai";
 import { useChatStore } from "@/store/chat-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -206,11 +205,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     }
 
     const text = draft;
-    const attachmentFileParts: FileUIPart[] = attachments.map((a) => ({
-      type: "file",
-      mediaType: "image",
-      url: a.preview_url,
-    }));
 
     setDraft("");
     clearAttachments();
@@ -220,13 +214,19 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // in ai/dist/index.js calls state.pushMessage then awaits makeRequest), so
     // — unlike the old hook — no manual optimistic append into `history` is
     // needed here.
+    //
+    // Attachments deliberately do NOT go through AI SDK's own `files`/
+    // FileUIPart mechanism (Plan 2's Task 7 decision keeps AttachButton.tsx's
+    // existing `stored:<id>` string flow) — they're sent as a sibling
+    // top-level `attachments` field in `body`, read by route-handler.ts.
     await sendMessage(
-      { text, files: attachmentFileParts },
+      { text },
       {
         body: {
           conversation_id: convId,
           project_id: projectId,
           canvas_snapshot: snapshotCanvas(nodes, edges),
+          attachments: attachments.map((a) => ({ type: "image" as const, source: a.source })),
         },
       },
     );
