@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
 import { saveGeneratedImage } from "@/lib/generated-images";
 import { logGeneration } from "@/lib/generations-log";
+import { REFERENCE_CAPS } from "@/lib/model-costs";
 
 const DEFAULT_MODEL = "gemini-3-pro-image";
 const ALLOWED_MODELS = [
@@ -10,20 +11,6 @@ const ALLOWED_MODELS = [
   "gemini-3.1-flash-image",
   "gemini-3-pro-image",
 ];
-
-// Per-model reference-image caps, from Google's docs + DeepMind model cards
-// (Sept 2026). Pro/Flash break the 14-image ceiling into sub-quotas by role;
-// exceeding a sub-quota degrades fidelity rather than erroring, so we trim
-// instead of rejecting. "objects" covers our logo + sketch inputs, "characters"
-// covers face refs, "style" covers the reference-thumbnail (style/composition) input.
-// gemini-2.5-flash-image (older, non-Gemini-3 model) isn't documented for this —
-// kept conservative.
-const REFERENCE_CAPS: Record<string, { objects: number; characters: number; style: number }> = {
-  "gemini-3-pro-image": { objects: 6, characters: 5, style: 3 },
-  "gemini-3.1-flash-image": { objects: 10, characters: 4, style: 3 },
-  "gemini-3.1-flash-lite-image": { objects: 14, characters: 0, style: 0 },
-  "gemini-2.5-flash-image": { objects: 6, characters: 3, style: 2 },
-};
 
 function capImages<T>(images: T[], max: number, label: string): T[] {
   if (images.length <= max) return images;
