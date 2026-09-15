@@ -34,6 +34,26 @@ describe("apply_workflow", () => {
     expect(persistedNodes[0].position).toBeDefined();
   });
 
+  it("accepts a JSON-stringified blueprint (some models send it this way)", async () => {
+    const blueprint = {
+      nodes: [
+        { id: "p-1", type: "prompt", data: { prompt: "hello" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
+      ],
+      edges: [{ source: "p-1", target: "g-1", targetHandle: "prompt-in" }],
+    };
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: JSON.stringify(blueprint) });
+    expect(r.isError).toBeFalsy();
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    expect(JSON.parse(row.nodes)).toHaveLength(2);
+  });
+
+  it("rejects a blueprint string that isn't valid JSON", async () => {
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: "{not json" });
+    expect(r.isError).toBe(true);
+    expect((r.content[0] as { text: string }).text).toMatch(/not valid JSON/i);
+  });
+
   it("rejects an invalid blueprint with helpful error", async () => {
     const invalid = { nodes: [{ id: "x", type: "generator", data: {} }], edges: [] };
     const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: invalid });

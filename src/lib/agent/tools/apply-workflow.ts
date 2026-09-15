@@ -103,7 +103,23 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     "Builds or replaces the canvas workflow for a project — this is how you SHIP a chosen design. Provide a complete Blueprint with all nodes (faceReference, swipeFile for logos/refs, sketch, prompt, generator) AND all edges connecting them to the generator. The tool resolves every image_source to a data URL so nodes render correctly on the canvas, maps blueprint fields to canvas shape, and auto-layouts. Edge handles for the generator are: face-in, ref-in, logo-in, sketch-in, prompt-in. After successful apply, tell the user the workflow is ready and they can click Generate on the generator node — or you can hint them to that step.",
   inputSchema: InputSchema,
   handler: async ({ project_id, blueprint }) => {
-    const parsed = BlueprintSchema.safeParse(blueprint);
+    // Some models serialize this generically-typed (z.unknown()) argument as
+    // a JSON string instead of a nested object — reproduced live with
+    // anthropic/claude-sonnet-4.6 via OpenRouter tool-calling, 100% of
+    // attempts. Accept both rather than rejecting a syntactically-valid
+    // blueprint just because of how the model chose to encode it.
+    let candidate: unknown = blueprint;
+    if (typeof blueprint === "string") {
+      try {
+        candidate = JSON.parse(blueprint);
+      } catch {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "Invalid blueprint: received a string that is not valid JSON." }],
+        };
+      }
+    }
+    const parsed = BlueprintSchema.safeParse(candidate);
     if (!parsed.success) {
       return {
         isError: true,
