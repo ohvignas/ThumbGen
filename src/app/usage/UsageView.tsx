@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import Sidebar from "@/components/panels/Sidebar";
+import AppSidebar from "@/components/panels/AppSidebar";
+import { SidebarInset } from "@/components/ui/sidebar";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
 
 type Period = "today" | "7d" | "30d" | "all";
@@ -156,8 +157,9 @@ function UsageInner() {
 
   return (
     <div className="usage-shell">
-      <Sidebar />
+      <AppSidebar />
 
+      <SidebarInset>
       <main className="usage-main">
         {/* — Page header — */}
         <header className="head">
@@ -348,6 +350,7 @@ function UsageInner() {
           <span>Costs are estimates from per-image pricing. Real billing may differ.</span>
         </footer>
       </main>
+      </SidebarInset>
 
       <style jsx>{`
         .usage-shell {
@@ -359,7 +362,7 @@ function UsageInner() {
         }
 
         .usage-main {
-          padding: 56px 64px 80px 128px; /* extra left for the 64px sidebar rail */
+          padding: 56px 64px 80px 64px;
           max-width: 1344px;
           margin: 0 auto;
           width: 100%;
