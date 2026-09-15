@@ -37,6 +37,40 @@ describe("Blueprint", () => {
     expect(BlueprintSchema.safeParse(bp).success).toBe(true);
   });
 
+  it("accepts type-specific fields flattened on the node instead of nested under data (reproduced live with anthropic/claude-sonnet-4.6)", () => {
+    const bp = {
+      nodes: [
+        { id: "face-1", type: "faceReference", image_source: "stored:persona_abc", label: "Antoine" },
+        { id: "prompt-1", type: "prompt", prompt: "a shocked face" },
+        { id: "gen-1", type: "generator", model: "seedream", aspectRatio: "16x9", count: 1 },
+      ],
+      edges: [
+        { source: "face-1", target: "gen-1", targetHandle: "face-in" },
+        { source: "prompt-1", target: "gen-1", targetHandle: "prompt-in" },
+      ],
+    };
+    const result = BlueprintSchema.safeParse(bp);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.nodes[0].data).toMatchObject({ image_source: "stored:persona_abc", label: "Antoine" });
+      expect(result.data.nodes[1].data).toMatchObject({ prompt: "a shocked face" });
+    }
+  });
+
+  it("prefers an existing nested data object over flattened top-level fields of the same name", () => {
+    const bp = {
+      nodes: [
+        { id: "p-1", type: "prompt", prompt: "flattened version", data: { prompt: "nested version" } },
+      ],
+      edges: [],
+    };
+    const result = BlueprintSchema.safeParse(bp);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.nodes[0].data.prompt).toBe("nested version");
+    }
+  });
+
   it("rejects edges referencing missing node ids", () => {
     const bp = {
       nodes: [{ id: "p-1", type: "prompt", data: { prompt: "hi" } }],

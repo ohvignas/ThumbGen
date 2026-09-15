@@ -45,21 +45,64 @@ const NodeDataByType = z.discriminatedUnion("type", [
   }),
 ]);
 
-const NodeSchema = z
-  .object({
-    id: z.string().min(1),
-    type: z.enum(["faceReference", "swipeFile", "sketch", "prompt", "generator"]),
-    position: z.object({ x: z.number(), y: z.number() }).optional(),
-    data: z.record(z.string(), z.unknown()),
-  })
-  .superRefine((node, ctx) => {
-    const result = NodeDataByType.safeParse({ type: node.type, ...node.data });
-    if (!result.success) {
-      for (const issue of result.error.issues) {
-        ctx.addIssue({ ...issue, path: ["data", ...(issue.path ?? [])] });
+// Models calling this tool have repeatedly (reproduced live, multiple
+// providers) sent type-specific fields (image_source, prompt, model, etc.)
+// flattened directly on the node instead of nested under `data` — plausibly
+// because the system prompt's prose examples ("faceReference with
+// image_source = ...") read as a flat shape. Rather than rejecting an
+// otherwise-correct blueprint over this, fold any recognized type-specific
+// key found at the node's top level into `data` before validating. A node
+// that already has a proper `data` object is passed through untouched.
+const KNOWN_DATA_KEYS = new Set([
+  "image_source",
+  "label",
+  "kind",
+  "prompt",
+  "negativePrompt",
+  "model",
+  "aspectRatio",
+  "count",
+]);
+const RESERVED_NODE_KEYS = new Set(["id", "type", "position", "data"]);
+
+function normalizeNode(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const node = raw as Record<string, unknown>;
+  const existingData = node.data;
+  const hasUsableData =
+    typeof existingData === "object" && existingData !== null && !Array.isArray(existingData);
+  const flattened: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (KNOWN_DATA_KEYS.has(key)) flattened[key] = value;
+  }
+  if (Object.keys(flattened).length === 0) return node; // nothing to fold in
+  const merged = { ...flattened, ...(hasUsableData ? (existingData as Record<string, unknown>) : {}) };
+  const rest: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (RESERVED_NODE_KEYS.has(key) || KNOWN_DATA_KEYS.has(key)) continue;
+    rest[key] = value;
+  }
+  return { ...rest, id: node.id, type: node.type, position: node.position, data: merged };
+}
+
+const NodeSchema = z.preprocess(
+  normalizeNode,
+  z
+    .object({
+      id: z.string().min(1),
+      type: z.enum(["faceReference", "swipeFile", "sketch", "prompt", "generator"]),
+      position: z.object({ x: z.number(), y: z.number() }).optional(),
+      data: z.record(z.string(), z.unknown()),
+    })
+    .superRefine((node, ctx) => {
+      const result = NodeDataByType.safeParse({ type: node.type, ...node.data });
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          ctx.addIssue({ ...issue, path: ["data", ...(issue.path ?? [])] });
+        }
       }
-    }
-  });
+    }),
+);
 
 const EdgeSchema = z.object({
   source: z.string(),
