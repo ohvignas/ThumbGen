@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LibraryPickerModal from "./LibraryPickerModal";
 import { useCanvasStore } from "@/store/canvas-store";
+import { Button } from "@/components/ui/button";
 import type { UIMessage } from "ai";
 
 /**
@@ -27,43 +28,6 @@ export type PendingToolPart = Extract<UIMessage["parts"][number], { type: `tool-
 
 const SKETCH_SENTINEL_NODE_ID = "__chat_sketch__";
 
-function ActionButton({
-  variant = "primary",
-  onClick,
-  disabled,
-  children,
-}: {
-  variant?: "primary" | "secondary";
-  onClick?: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  const isPrimary = variant === "primary";
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all disabled:opacity-40"
-      style={{
-        fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-        letterSpacing: "0.18em",
-        background: isPrimary ? "var(--bone)" : "transparent",
-        color: isPrimary ? "var(--ink-1)" : "var(--text-secondary)",
-        border: isPrimary ? "1px solid var(--bone)" : "1px solid var(--line-strong)",
-      }}
-      onMouseEnter={(e) => {
-        if (disabled) return;
-        if (!isPrimary) e.currentTarget.style.background = "var(--surface)";
-      }}
-      onMouseLeave={(e) => {
-        if (!isPrimary) e.currentTarget.style.background = "transparent";
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 export default function PendingUiAction({
   part,
   onResolve,
@@ -75,6 +39,7 @@ export default function PendingUiAction({
   const [uploading, setUploading] = useState(false);
   const [sketchOpen, setSketchOpen] = useState(false);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   // `part.input` is `unknown` at the type level (AI SDK's default UITools
   // has no entry for these tool names, so it can't narrow further) — the
@@ -115,11 +80,7 @@ export default function PendingUiAction({
   const openSketch = () => {
     window.dispatchEvent(
       new CustomEvent("open-sketch-editor", {
-        detail: {
-          nodeId: SKETCH_SENTINEL_NODE_ID,
-          aspectRatio: input?.suggested_kind || "16x9",
-          workflowAssets: [],
-        },
+        detail: { nodeId: SKETCH_SENTINEL_NODE_ID, aspectRatio: input?.suggested_kind || "16x9", workflowAssets: [] },
       }),
     );
     setSketchOpen(true);
@@ -127,80 +88,44 @@ export default function PendingUiAction({
 
   if (toolName === "request_user_image") {
     return (
-      <div
-        className="mx-3 my-2 rounded-xl p-3"
-        style={{ background: "var(--brand-tint)", border: "1px solid var(--line-strong)" }}
-      >
-        <div
-          className="text-[9px] uppercase mb-1.5"
-          style={{
-            color: "var(--bone-muted)",
-            fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-            letterSpacing: "0.22em",
-          }}
-        >
-          <span style={{ color: "var(--brand)" }}>→</span> Demande
+      <div className="mx-3 my-2 rounded-xl p-3 bg-primary/10 border border-border">
+        <div className="text-[9px] uppercase tracking-[0.22em] mb-1.5 font-mono text-muted-foreground">
+          <span className="text-primary">→</span> Demande
         </div>
-        <p
-          className="text-sm italic mb-3"
-          style={{
-            color: "var(--text-primary)",
-            fontFamily: "var(--font-display), 'Fraunces', serif",
-            fontSize: 15,
-            letterSpacing: "-0.01em",
-            lineHeight: 1.4,
-          }}
-        >
+        <p className="text-sm italic mb-3 text-[15px] tracking-[-0.01em] leading-snug text-foreground">
           {input?.reason || "L'assistant demande une image."}
         </p>
         <div className="flex gap-2 flex-wrap">
-          <label
-            className="px-3 py-1.5 rounded-lg text-[10px] uppercase transition-all cursor-pointer"
-            style={{
-              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-              letterSpacing: "0.18em",
-              background: "var(--bone)",
-              color: "var(--ink-1)",
-              opacity: uploading ? 0.5 : 1,
+          <Button size="sm" disabled={uploading} onClick={() => uploadInputRef.current?.click()}>Uploader</Button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            hidden
+            disabled={uploading}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setUploading(true);
+              try {
+                const fd = new FormData();
+                fd.append("file", f);
+                const res = await fetch("/api/chat-uploads", { method: "POST", body: fd });
+                const j = (await res.json()) as { source?: string; error?: string };
+                if (j.source) onResolve(toolCallId, { source_ids: [j.source] });
+                else onResolve(toolCallId, { skipped: true });
+              } finally {
+                setUploading(false);
+              }
             }}
-          >
-            Uploader
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              hidden
-              disabled={uploading}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setUploading(true);
-                try {
-                  const fd = new FormData();
-                  fd.append("file", f);
-                  const res = await fetch("/api/chat-uploads", { method: "POST", body: fd });
-                  const j = (await res.json()) as { source?: string; error?: string };
-                  if (j.source) onResolve(toolCallId, { source_ids: [j.source] });
-                  else onResolve(toolCallId, { skipped: true });
-                } finally {
-                  setUploading(false);
-                }
-              }}
-            />
-          </label>
-          <ActionButton variant="secondary" onClick={() => setShowLib(true)}>
-            Bibliothèque
-          </ActionButton>
-          <ActionButton variant="secondary" onClick={skip}>
-            Skip
-          </ActionButton>
+          />
+          <Button size="sm" variant="outline" onClick={() => setShowLib(true)}>Bibliothèque</Button>
+          <Button size="sm" variant="ghost" onClick={skip}>Skip</Button>
         </div>
         {showLib && (
           <LibraryPickerModal
             onClose={() => setShowLib(false)}
-            onPick={(source) => {
-              onResolve(toolCallId, { source_ids: [source] });
-              setShowLib(false);
-            }}
+            onPick={(source) => { onResolve(toolCallId, { source_ids: [source] }); setShowLib(false); }}
           />
         )}
       </div>
@@ -209,47 +134,18 @@ export default function PendingUiAction({
 
   if (toolName === "request_user_sketch") {
     return (
-      <div
-        className="mx-3 my-2 rounded-xl p-3"
-        style={{ background: "var(--brand-tint)", border: "1px solid var(--line-strong)" }}
-      >
-        <div
-          className="text-[9px] uppercase mb-1.5"
-          style={{
-            color: "var(--bone-muted)",
-            fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-            letterSpacing: "0.22em",
-          }}
-        >
-          <span style={{ color: "var(--brand)" }}>→</span> Croquis
+      <div className="mx-3 my-2 rounded-xl p-3 bg-primary/10 border border-border">
+        <div className="text-[9px] uppercase tracking-[0.22em] mb-1.5 font-mono text-muted-foreground">
+          <span className="text-primary">→</span> Croquis
         </div>
-        <p
-          className="text-sm italic mb-3"
-          style={{
-            color: "var(--text-primary)",
-            fontFamily: "var(--font-display), 'Fraunces', serif",
-            fontSize: 15,
-            lineHeight: 1.4,
-          }}
-        >
+        <p className="text-sm italic mb-3 text-[15px] leading-snug text-foreground">
           {input?.reason || "L'assistant veut que tu dessines un croquis."}
         </p>
         <div className="flex gap-2">
-          <ActionButton onClick={openSketch} disabled={sketchOpen}>
-            Dessiner
-          </ActionButton>
-          <ActionButton variant="secondary" onClick={skip}>
-            Skip
-          </ActionButton>
+          <Button size="sm" onClick={openSketch} disabled={sketchOpen}>Dessiner</Button>
+          <Button size="sm" variant="ghost" onClick={skip}>Skip</Button>
         </div>
-        {sketchOpen && (
-          <p
-            className="text-[10px] mt-2 italic"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Éditeur ouvert — sauvegarde avec Cmd+S.
-          </p>
-        )}
+        {sketchOpen && <p className="text-[10px] mt-2 italic text-muted-foreground">Éditeur ouvert — sauvegarde avec Cmd+S.</p>}
       </div>
     );
   }

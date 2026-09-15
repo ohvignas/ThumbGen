@@ -36,14 +36,12 @@ export default function AgentActivity({ status, lastMessage }: { status: ChatSta
   }
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2" style={{ borderTop: "1px solid var(--line-faint)", background: "var(--ink-3)" }}>
-      <span className="block w-1.5 h-1.5 rounded-full animate-pulse shrink-0" style={{ background: "var(--brand)" }} />
+    <div className="flex items-center gap-2 px-4 py-2 border-t border-border bg-muted">
+      <span className="block w-1.5 h-1.5 rounded-full animate-pulse shrink-0 bg-primary" />
       <div className="flex items-baseline gap-1.5 min-w-0">
-        <span className="text-[9px] uppercase shrink-0" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono), 'JetBrains Mono', monospace", letterSpacing: "0.22em" }}>Assistant</span>
-        {toolName && (
-          <span className="text-[9px] uppercase shrink-0" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono), 'JetBrains Mono', monospace", letterSpacing: "0.18em" }}>· {toolName}</span>
-        )}
-        <span className="italic truncate" style={{ color: "var(--text-secondary)", fontFamily: "var(--font-display), 'Fraunces', serif", fontSize: 13, letterSpacing: "-0.01em" }}>{label}…</span>
+        <span className="text-[9px] uppercase tracking-[0.22em] shrink-0 font-mono text-muted-foreground">Assistant</span>
+        {toolName && <span className="text-[9px] uppercase tracking-[0.18em] shrink-0 font-mono text-muted-foreground">· {toolName}</span>}
+        <span className="italic truncate text-[13px] tracking-[-0.01em] text-foreground">{label}…</span>
       </div>
     </div>
   );

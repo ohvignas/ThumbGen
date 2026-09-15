@@ -10,40 +10,13 @@ export default function MessageList({ messages, status }: { messages: UIMessage[
     return (
       <Empty className="flex-1 border-none">
         <EmptyHeader>
-          <EmptyMedia
-            variant="icon"
-            style={{
-              background: "var(--brand-tint)",
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              border: "1px solid var(--line)",
-            }}
-          >
-            <Sparkles size={18} style={{ color: "var(--brand)" }} strokeWidth={1.75} />
+          <EmptyMedia variant="icon" className="w-11 h-11 rounded-xl bg-primary/10 border border-border">
+            <Sparkles size={18} className="text-primary" strokeWidth={1.75} />
           </EmptyMedia>
-          <EmptyTitle
-            className="italic"
-            style={{
-              color: "var(--text-secondary)",
-              fontFamily: "var(--font-display), 'Fraunces', serif",
-              fontSize: 28,
-              fontWeight: 400,
-              letterSpacing: "-0.015em",
-              lineHeight: 1.15,
-            }}
-          >
+          <EmptyTitle className="italic text-[28px] font-normal tracking-[-0.015em] leading-tight text-foreground">
             on commence <br />par quoi ?
           </EmptyTitle>
-          <EmptyDescription
-            className="text-[11px] mt-1"
-            style={{
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-            }}
-          >
+          <EmptyDescription className="text-[11px] mt-1 tracking-[0.18em] uppercase font-mono text-muted-foreground">
             Texte · Image · Vocal
           </EmptyDescription>
         </EmptyHeader>
@@ -53,7 +26,7 @@ export default function MessageList({ messages, status }: { messages: UIMessage[
 
   return (
     <MessageScrollerProvider>
-      <MessageScroller className="flex-1" style={{ borderTop: "1px solid var(--line-faint)" }}>
+      <MessageScroller className="flex-1 border-t border-border">
         <MessageScrollerViewport>
           <MessageScrollerContent>
             {messages.map((m, idx) => (

@@ -23,7 +23,7 @@ export default function Message({ message, isStreaming }: { message: UIMessage; 
                   return (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img key={i} src={part.url} alt="image" onClick={() => openAnnotate(part.url)}
-                      className="max-w-[240px] rounded my-1" style={{ border: "1px solid var(--line)", cursor: "zoom-in" }} />
+                      className="max-w-[240px] rounded my-1 border border-border cursor-zoom-in" />
                   );
                 }
                 return null;

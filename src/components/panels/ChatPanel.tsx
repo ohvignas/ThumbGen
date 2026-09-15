@@ -225,28 +225,12 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   return (
     <aside className="fixed right-3 top-3 bottom-3 w-[420px] z-40">
-      <Card className="h-full flex flex-col gap-0 py-0 overflow-hidden" style={{ background: "var(--node-bg)" }}>
-        <CardHeader className="border-b py-3" style={{ borderColor: "var(--line-faint)" }}>
-          <CardTitle
-            className="italic truncate"
-            style={{
-              color: "var(--text-primary)",
-              fontFamily: "var(--font-display), 'Fraunces', serif",
-              fontSize: 18,
-              fontWeight: 400,
-              letterSpacing: "-0.015em",
-            }}
-          >
-            <span style={{ color: "var(--brand)" }}>·</span> Brainstorm
+      <Card className="h-full flex flex-col gap-0 py-0 overflow-hidden bg-card">
+        <CardHeader className="border-b py-3">
+          <CardTitle className="italic truncate text-[18px] font-normal tracking-[-0.015em] text-foreground">
+            <span className="text-primary">·</span> Brainstorm
           </CardTitle>
-          <CardDescription
-            className="text-[10px] uppercase"
-            style={{
-              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-              letterSpacing: "0.18em",
-              color: "var(--text-muted)",
-            }}
-          >
+          <CardDescription className="text-[10px] uppercase tracking-[0.18em] font-mono text-muted-foreground">
             Agent conversationnel ThumbGen
           </CardDescription>
           <CardAction>

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { useChatStore } from "@/store/chat-store";
+import { ChevronDown, Plus, X } from "lucide-react";
 
 type Conv = { id: string; title: string; updated_at: string };
 
@@ -63,148 +64,54 @@ export default function ConversationList({ projectId }: { projectId: string }) {
   const count = String(convs.length).padStart(2, "0");
 
   return (
-    <div
-      className="px-3 py-2.5 relative"
-      style={{ borderBottom: "1px solid var(--line-faint)" }}
-    >
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between gap-2 text-left transition-colors nopan nodrag"
-        style={{ color: "var(--text-secondary)" }}
-      >
+    <div className="px-3 py-2.5 relative border-b border-border">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between gap-2 text-left transition-colors nopan nodrag text-foreground">
         <div className="flex items-center gap-2 min-w-0">
-          <span
-            className="text-[9px] uppercase shrink-0"
-            style={{
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-              letterSpacing: "0.22em",
-            }}
-          >
-            <span style={{ color: "var(--brand)" }}>{count}</span> Conv.
+          <span className="text-[9px] uppercase tracking-[0.22em] shrink-0 font-mono text-muted-foreground">
+            <span className="text-primary">{count}</span> Conv.
           </span>
-          <span
-            className="italic truncate"
-            style={{
-              color: active ? "var(--text-primary)" : "var(--text-muted)",
-              fontFamily: "var(--font-display), 'Fraunces', serif",
-              fontSize: 14,
-              letterSpacing: "-0.01em",
-            }}
-          >
+          <span className={`italic truncate text-sm tracking-[-0.01em] ${active ? "text-foreground" : "text-muted-foreground"}`}>
             {active?.title ?? "—"}
           </span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {loading && (
-            <span className="text-[10px] animate-pulse" style={{ color: "var(--text-muted)" }}>
-              …
-            </span>
-          )}
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            style={{
-              color: "var(--text-tertiary)",
-              transform: open ? "rotate(180deg)" : "rotate(0)",
-              transition: "transform 0.18s ease",
-            }}
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          {loading && <span className="text-[10px] animate-pulse text-muted-foreground">…</span>}
+          <ChevronDown className={`size-2.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
         </div>
       </button>
 
       {open && (
-        <div
-          className="absolute left-0 right-0 top-full mt-1 mx-2 rounded-xl overflow-hidden z-30 shadow-2xl"
-          style={{
-            background: "var(--node-bg)",
-            border: "1px solid var(--line-strong)",
-          }}
-        >
+        <div className="absolute left-0 right-0 top-full mt-1 mx-2 rounded-xl overflow-hidden z-30 shadow-2xl bg-card border border-border">
           <button
             onClick={create}
-            className="w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-colors"
-            style={{
-              color: "var(--text-secondary)",
-              borderBottom: "1px solid var(--line-faint)",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-colors border-b border-border text-muted-foreground hover:bg-muted"
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            <span style={{ fontFamily: "var(--font-mono), monospace", letterSpacing: "0.18em", textTransform: "uppercase", fontSize: 10 }}>
-              Nouvelle
-            </span>
+            <Plus className="size-2.5" />
+            <span className="font-mono tracking-[0.18em] uppercase text-[10px]">Nouvelle</span>
           </button>
 
           <div className="max-h-64 overflow-y-auto py-1">
-            {convs.length === 0 && !loading && (
-              <p className="text-[11px] italic px-3 py-2" style={{ color: "var(--text-muted)" }}>
-                Aucune conversation.
-              </p>
-            )}
+            {convs.length === 0 && !loading && <p className="text-[11px] italic px-3 py-2 text-muted-foreground">Aucune conversation.</p>}
 
             {convs.map((c) => {
               const isActive = activeConversationId === c.id;
               return (
                 <div
                   key={c.id}
-                  className="group flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer"
-                  onClick={() => {
-                    setActive(c.id);
-                    setOpen(false);
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.background = "transparent";
-                  }}
-                  style={{
-                    background: isActive ? "var(--surface)" : "transparent",
-                  }}
+                  className={`group flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer ${isActive ? "bg-muted" : "hover:bg-muted/50"}`}
+                  onClick={() => { setActive(c.id); setOpen(false); }}
                 >
-                  {isActive ? (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: "var(--brand)" }}
-                    />
-                  ) : (
-                    <span className="w-1.5 h-1.5 shrink-0" />
-                  )}
-                  <span
-                    className="flex-1 truncate text-xs italic"
-                    style={{
-                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                      fontFamily: "var(--font-display), 'Fraunces', serif",
-                      fontSize: 13,
-                    }}
-                    title={c.title}
-                  >
+                  {isActive ? <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-primary" /> : <span className="w-1.5 h-1.5 shrink-0" />}
+                  <span className={`flex-1 truncate text-xs italic ${isActive ? "text-foreground" : "text-muted-foreground"}`} title={c.title}>
                     {c.title}
                   </span>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      remove(c.id);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
-                    style={{ color: "var(--ember)" }}
+                    onClick={(e) => { e.stopPropagation(); remove(c.id); }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-destructive"
                     aria-label="Supprimer"
                     title="Supprimer"
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
+                    <X className="size-2.5" />
                   </button>
                 </div>
               );

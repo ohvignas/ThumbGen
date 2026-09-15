@@ -94,15 +94,15 @@ export default function SearchYoutubeGallery({ part }: { part: { output?: unknow
     }
   }
 
-  if (pairs.length === 0) return <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Aucune miniature.</p>;
+  if (pairs.length === 0) return <p className="text-xs text-muted-foreground">Aucune miniature.</p>;
 
   return (
     <div className="grid grid-cols-2 gap-2">
       {pairs.map((p, i) => (
-        <button key={i} type="button" onClick={() => openAnnotate(p.url)} className="text-left rounded-md overflow-hidden" style={{ border: "1px solid var(--line)", background: "var(--ink-3)", cursor: "zoom-in" }}>
+        <button key={i} type="button" onClick={() => openAnnotate(p.url)} className="text-left rounded-md overflow-hidden border border-border bg-muted cursor-zoom-in">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={p.url} alt={p.caption} loading="lazy" className="w-full aspect-video object-cover" />
-          <p className="text-[10px] p-1.5 line-clamp-2" style={{ color: "var(--text-tertiary)" }}>{p.caption}</p>
+          <p className="text-[10px] p-1.5 line-clamp-2 text-muted-foreground">{p.caption}</p>
         </button>
       ))}
     </div>

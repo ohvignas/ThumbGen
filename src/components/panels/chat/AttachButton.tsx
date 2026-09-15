@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import LibraryPickerModal from "./LibraryPickerModal";
 import { useChatStore } from "@/store/chat-store";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -15,18 +16,23 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="p-1.5 rounded-lg transition-colors nopan nodrag"
-      style={{ color: "var(--text-tertiary)" }}
-      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
-      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-tertiary)")}
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={onClick}
+            aria-label={title}
+            className="p-1.5 rounded-lg transition-colors nopan nodrag text-muted-foreground hover:text-foreground"
+          >
+            {children}
+          </button>
+        }
+      />
+      <TooltipContent>
+        <p>{title}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -81,11 +87,7 @@ export default function AttachButton() {
         onChange={(e) => onFiles(e.target.files)}
       />
       {error && (
-        <span
-          className="text-[10px] self-center"
-          style={{ color: "var(--ember)" }}
-          title={error}
-        >
+        <span className="text-[10px] self-center text-destructive" title={error}>
           ⚠
         </span>
       )}
