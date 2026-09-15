@@ -178,8 +178,12 @@ export default function ImageAnnotateModal({ imageUrl, onClose }: { imageUrl: st
       >
         {/* Toolbar — chrome, converted; the drawing canvas below is the same
             kind of exception as the main React Flow canvas: its own pointer
-            handlers and drawing logic are untouched. */}
-        <div className="flex items-center justify-between gap-3">
+            handlers and drawing logic are untouched.
+            pr-10 reserves clearance on the right so this row's last button
+            (Télécharger) doesn't sit under DialogContent's built-in close X,
+            which is absolutely positioned at top-2 right-2 (28px square) and
+            would otherwise overlap it by ~16x16px — see task-8 fix report. */}
+        <div className="flex items-center justify-between gap-3 pr-10">
           <div className="flex items-center gap-3">
             <span className="text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono), monospace" }}>
               <span style={{ color: "var(--brand)" }}>·</span> Annoter
