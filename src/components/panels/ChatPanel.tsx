@@ -259,7 +259,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
       <ConversationList projectId={projectId} />
 
-      <MessageList messages={chatMessages} />
+      <MessageList messages={chatMessages} status={status} />
 
       {pendingUiRequest && (
         <PendingUiAction

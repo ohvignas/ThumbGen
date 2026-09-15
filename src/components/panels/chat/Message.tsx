@@ -3,9 +3,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Message as MessageRow, MessageContent } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ai-elements/reasoning";
 import ToolCallCard from "./ToolCallCard";
 import { useChatStore } from "@/store/chat-store";
-import type { UIMessage } from "ai";
+import type { ChatStatus, UIMessage } from "ai";
 
 function TextMarkdown({ text, openAnnotate }: { text: string; openAnnotate: (url: string) => void }) {
   return (
@@ -46,7 +47,7 @@ function TextMarkdown({ text, openAnnotate }: { text: string; openAnnotate: (url
   );
 }
 
-export default function Message({ message }: { message: UIMessage }) {
+export default function Message({ message, status }: { message: UIMessage; status: ChatStatus }) {
   const openAnnotate = useChatStore((s) => s.openAnnotate);
   const isUser = message.role === "user";
 
@@ -83,8 +84,14 @@ export default function Message({ message }: { message: UIMessage }) {
             return <ToolCallCard key={i} part={part as Extract<UIMessage["parts"][number], { type: `tool-${string}` }>} />;
           }
           if (part.type === "reasoning") {
-            // Task 12 replaces this branch with the real Reasoning/ReasoningTrigger/ReasoningContent wiring.
-            return null;
+            return (
+              <Reasoning key={i} isStreaming={status === "streaming"}>
+                <ReasoningTrigger getThinkingMessage={(streaming, duration) =>
+                  streaming ? "réfléchit…" : duration !== undefined ? `a réfléchi ${duration}s` : "a réfléchi"
+                } />
+                <ReasoningContent>{part.text}</ReasoningContent>
+              </Reasoning>
+            );
           }
           return null;
         })}

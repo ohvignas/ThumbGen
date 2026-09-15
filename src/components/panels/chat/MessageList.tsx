@@ -2,9 +2,9 @@
 import { MessageScrollerProvider, MessageScroller, MessageScrollerViewport, MessageScrollerContent, MessageScrollerItem, MessageScrollerButton } from "@/components/ui/message-scroller";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import Message from "./Message";
-import type { UIMessage } from "ai";
+import type { ChatStatus, UIMessage } from "ai";
 
-export default function MessageList({ messages }: { messages: UIMessage[] }) {
+export default function MessageList({ messages, status }: { messages: UIMessage[]; status: ChatStatus }) {
   if (messages.length === 0) {
     return (
       <Empty className="flex-1 border-none">
@@ -45,7 +45,7 @@ export default function MessageList({ messages }: { messages: UIMessage[] }) {
           <MessageScrollerContent>
             {messages.map((m) => (
               <MessageScrollerItem key={m.id} scrollAnchor={m.role === "user"}>
-                <Message message={m} />
+                <Message message={m} status={status} />
               </MessageScrollerItem>
             ))}
           </MessageScrollerContent>
