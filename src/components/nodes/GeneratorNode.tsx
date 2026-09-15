@@ -5,6 +5,7 @@ import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { useCallback, useState, useEffect } from "react";
 import NodeShell from "./NodeShell";
 import { MODEL_COSTS, INPUT_TYPE_COLORS, REFERENCE_CAPS } from "@/lib/model-costs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // All image generation now routes exclusively through OpenRouter's Unified
 // Image API (one key, one endpoint) — direct Gemini/OpenAI keys, Ideogram,
@@ -663,7 +664,9 @@ export default function GeneratorNode({
         </button>
 
         {error && (
-          <p className="text-xs" style={{ color: "var(--ember)" }}>{error}</p>
+          <Alert variant="destructive" className="py-1.5 px-2.5 gap-x-2">
+            <AlertDescription className="text-xs">{error}</AlertDescription>
+          </Alert>
         )}
       </div>
 
