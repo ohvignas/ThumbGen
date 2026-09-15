@@ -95,7 +95,7 @@ describe("postV2", () => {
     const res = await postV2(
       new Request("http://localhost/api/agent/chat", {
         method: "POST",
-        body: JSON.stringify({ conversation_id: "c1", project_id: "p1", message: { text: "hi" } }),
+        body: JSON.stringify({ conversation_id: "c1", project_id: "p1", messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }] }),
       }) as never,
     );
     expect(res.status).toBe(400);
@@ -112,7 +112,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: { text: "hi" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
           canvas_snapshot: { nodes: [], edges: [] },
         }),
       }) as never,
@@ -140,7 +140,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: { text: "hi" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
         }),
       }) as never,
     );
@@ -166,7 +166,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: { text: "hi" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
         }),
       }) as never,
     );
@@ -186,10 +186,8 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: {
-            text: "look at this",
-            attachments: [{ type: "image", source: "stored:fr_nonexistent" }],
-          },
+          messages: [{ role: "user", parts: [{ type: "text", text: "look at this" }] }],
+          attachments: [{ type: "image", source: "stored:fr_nonexistent" }],
         }),
       }) as never,
     );
@@ -223,7 +221,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: "c-old-format",
           project_id: "p1",
-          message: { text: "continue" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
         }),
       }) as never,
     );
@@ -256,7 +254,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: "c-migrated-format",
           project_id: "p1",
-          message: { text: "continue" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
         }),
       }) as never,
     );
