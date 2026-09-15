@@ -290,7 +290,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         />
       )}
 
-      <AgentActivity events={legacyEvents} streaming={legacyStreaming} />
+      <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
 
       <Composer onSend={onSend} streaming={legacyStreaming} onStop={stop} />
 
