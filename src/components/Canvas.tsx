@@ -4,7 +4,6 @@ import {
   ReactFlow,
   Background,
   BackgroundVariant,
-  ReactFlowProvider,
   Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -18,7 +17,6 @@ import PreviewNode from "./nodes/PreviewNode";
 import SketchNode from "./nodes/SketchNode";
 import TextOverlayNode from "./nodes/TextOverlayNode";
 import CustomEdge from "./edges/CustomEdge";
-import Sidebar from "./panels/Sidebar";
 import ZoomBar from "./panels/ZoomBar";
 import ChatPanel from "./panels/ChatPanel";
 import ContextMenu from "./panels/ContextMenu";
@@ -303,7 +301,6 @@ function CanvasInner() {
           </div>
         </Panel>
 
-        <Sidebar />
         <ZoomBar />
       </ReactFlow>
 
@@ -356,10 +353,14 @@ function CanvasInner() {
   );
 }
 
+// NOTE: this used to wrap CanvasInner in its own <ReactFlowProvider> here.
+// AppSidebar (Task 3) now mounts as a page-level sibling of <Canvas /> instead
+// of nesting inside <ReactFlow> — since it also calls useReactFlow(), it needs
+// to share the same ReactFlowProvider/store as the actual <ReactFlow> instance
+// below (a phantom, unshared provider around AppSidebar alone would either
+// crash — no provider at all — or silently desync screenToFlowPosition from
+// the canvas's real pan/zoom). The provider is therefore lifted one level up,
+// to page.tsx, wrapping both AppSidebar and Canvas together.
 export default function Canvas() {
-  return (
-    <ReactFlowProvider>
-      <CanvasInner />
-    </ReactFlowProvider>
-  );
+  return <CanvasInner />;
 }
