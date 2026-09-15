@@ -34,11 +34,12 @@ import { rowsToUIMessages } from "./chat/history-to-ui-messages";
  *   - On done: refetch messages from DB to canonicalize
  *
  * NOTE: data-fetching was swapped from the old hand-rolled SSE hook
- * (src/hooks/useChat.ts) to @ai-sdk/react's useChat. MessageList/Composer/
- * AgentActivity/PendingUiAction still expect the OLD DisplayMessage[]/
- * ChatEvent[] shapes (they're rewritten in Tasks 5-11), so everything below
- * marked TODO(Task 5-11) is a temporary adapter translating useChat's
- * UIMessage[]/ChatStatus output back into those shapes.
+ * (src/hooks/useChat.ts) to @ai-sdk/react's useChat. MessageList/AgentActivity
+ * were rewired in Tasks 5/6 and Composer in Task 7 to consume useChat's
+ * chatMessages/status directly. PendingUiAction still expects the OLD
+ * ChatEvent[] shape (it's rewritten in Task 11), so the `legacyEvents`/
+ * `uiMessageToLegacyEvents` adapter below (marked TODO(Task 11)) stays in
+ * place solely to feed `pendingUiRequest`/`respondToUiTool` until then.
  */
 export default function ChatPanel({ projectId }: { projectId: string }) {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -76,16 +77,15 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
 
-  // TODO(Task 7/11): remove once Composer/PendingUiAction are rewritten to
-  // consume useChat's UIMessage[]/ChatStatus directly. It maps this-session
-  // live messages (chatMessages) back into the OLD ChatEvent[] shape those
-  // (still unmodified) children expect. MessageList/AgentActivity were
-  // rewired to consume chatMessages/status directly in Task 5/6.
+  // TODO(Task 11): remove once PendingUiAction is rewritten to consume
+  // useChat's UIMessage[]/ChatStatus directly. It maps this-session live
+  // messages (chatMessages) back into the OLD ChatEvent[] shape that child
+  // (still unmodified) expects. MessageList/AgentActivity/Composer were
+  // rewired to consume chatMessages/status directly in Tasks 5/6/7.
   const legacyEvents: ChatEvent[] = useMemo(
     () => chatMessages.flatMap(uiMessageToLegacyEvents),
     [chatMessages],
   );
-  const legacyStreaming = status === "streaming" || status === "submitted";
 
   // When the agent emits a `conversation_renamed` event (auto-titled first
   // turn), nudge the conversation list to refetch so the user sees the new
@@ -277,7 +277,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         </Alert>
       )}
 
-      <Composer onSend={onSend} streaming={legacyStreaming} onStop={stop} />
+      <Composer onSend={onSend} status={status} onStop={stop} />
 
       {annotateImageUrl && (
         <ImageAnnotateModal imageUrl={annotateImageUrl} onClose={closeAnnotate} />
@@ -318,10 +318,10 @@ function summarizeNode(type: string, data: Record<string, unknown>): Record<stri
   }
 }
 
-// TODO(Task 7/11): remove everything below — temporary UIMessage -> legacy
-// ChatEvent[] adapter kept only so the untouched Composer (`streaming` prop)
-// and PendingUiAction child components keep working against @ai-sdk/react's
-// useChat output until they're rewritten.
+// TODO(Task 11): remove everything below — temporary UIMessage -> legacy
+// ChatEvent[] adapter kept only so the untouched PendingUiAction child
+// component keeps working against @ai-sdk/react's useChat output until it's
+// rewritten.
 
 /** Client tools resolved via addToolOutput from the browser (Plan 2's UI-tool
  * mechanism), matching PendingUiAction's UiToolRequest["name"] union. */
