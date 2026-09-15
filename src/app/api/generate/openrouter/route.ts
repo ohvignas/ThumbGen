@@ -94,7 +94,9 @@ export async function POST(request: NextRequest) {
         n: 1,
         aspect_ratio: mapAspectRatio(aspectRatio),
         resolution: "2K",
-        ...(inputReferences.length > 0 ? { input_references: inputReferences } : {}),
+        ...(inputReferences.length > 0
+          ? { input_references: inputReferences.map((url) => ({ type: "image_url", image_url: { url } })) }
+          : {}),
       }),
     });
 
