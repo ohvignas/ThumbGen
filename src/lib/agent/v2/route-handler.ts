@@ -7,6 +7,7 @@ import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
 import { appendMessage, listMessages } from "@/lib/agent/conversation/store";
+import { generateAndPersistTitle } from "@/lib/agent/conversation/auto-title";
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
 import { getSetting } from "@/lib/settings";
 import { getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
@@ -164,6 +165,13 @@ export async function postV2(req: NextRequest): Promise<Response> {
         userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });
       }
 
+      // Checked BEFORE appending the new user row below, matching v1's exact
+      // isFirstTurn logic (loop.ts, pre-cutover) — an empty conversation gets
+      // exactly one auto-title attempt, on its first turn. Fire-and-forget:
+      // does not block the model call below (see auto-title.ts's own header
+      // comment on why this doesn't need to be awaited).
+      const isFirstTurn = listMessages(conversationId).length === 0;
+
       appendMessage({
         conversation_id: conversationId,
         role: "user",
@@ -173,6 +181,10 @@ export async function postV2(req: NextRequest): Promise<Response> {
         total_output_tokens: 0,
         cost_estimate: 0,
       });
+
+      if (isFirstTurn && lastMessageText.trim()) {
+        void generateAndPersistTitle(conversationId, lastMessageText);
+      }
     } else {
       // Tool-continuation: persist the client's resolution as its own
       // `role:"tool"` ModelMessage row, separate from the assistant's

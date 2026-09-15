@@ -205,6 +205,16 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     const rows = await fetch(`/api/agent/conversations/${convId}/messages`).then((r) => r.json());
     if (useChatStore.getState().activeConversationId !== convId) return;
     setMessages(rowsToUIMessages(rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>));
+
+    // Cheap, idempotent, always safe to call — ConversationList.tsx refetches
+    // the whole list on every bump. This is how the conversation list picks
+    // up an auto-generated title (route-handler.ts's generateAndPersistTitle,
+    // fire-and-forget server-side on a conversation's first turn) — there's
+    // no more SSE `conversation_renamed` event under v2 to trigger this
+    // precisely, so bumping unconditionally after every send is the simplest
+    // correct replacement. If the title write raced past this refetch, the
+    // list just shows the old title until the next bump.
+    useChatStore.getState().bumpConversationListVersion();
   }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, sendMessage, nodes, edges, setMessages]);
 
   return (
