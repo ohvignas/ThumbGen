@@ -1160,10 +1160,14 @@ git commit -m "feat(chat): custom tool-result renderers — search gallery + ske
 ### Task 11: `PendingUiAction.tsx` → `addToolOutput` wiring
 
 **Files:**
-- Modify: `src/components/panels/chat/PendingUiAction.tsx`, `src/components/panels/ChatPanel.tsx`
+- Modify: `src/components/panels/chat/PendingUiAction.tsx`, `src/components/panels/ChatPanel.tsx`, `src/lib/agent/v2/route-handler.ts`
 
 **Interfaces:**
 - Consumes: `addToolOutput` (Task 3's `useChat`, exact name confirmed against real v4 types in Task 3 Step 1), the last message's pending tool part (a `tool-request_user_image` or `tool-request_user_sketch` part whose `state` is NOT yet `output-available`).
+
+**Two real defects verified during Task 3's review, both parked for this task specifically because it's the correct owner (not fixed as throwaway patches to scaffolding code that Task 3's own temporary adapter — deleted by this task — would have needed anyway):**
+1. `addToolOutput` triggers `sendAutomaticallyWhen`'s auto-continuation through the SAME `DefaultChatTransport` as a normal send — which means it needs the SAME `body` (`conversation_id`/`project_id`/`canvas_snapshot`) or `route-handler.ts`'s own guard (`if (!body?.conversation_id || !body?.project_id) return 400`) rejects it. Confirmed by tracing `node_modules/ai/dist/index.js`'s real `addToolOutput`→auto-continuation call path during Task 3's review — a call with no `options.body` silently 400s every time. Step 2 below has the corrected call shape; do not drop the `options` argument.
+2. Once (1) is fixed, an auto-continuation's request has `messages.at(-1)` be the ASSISTANT's own message (whose tool part just got resolved), not a new user turn — `route-handler.ts`'s text/attachment extraction (fixed in Task 3 for the NORMAL send path) must not treat this as a new user message to persist. Step 2b below guards this.
 
 The old component resolved via `onResolve(toolUseId, result) → POST /api/agent/chat/tool-result`. This whole round trip is deleted by Plan 1's Task 4 (the client-tool pattern correlates by `toolCallId` directly through `addToolOutput`, no separate endpoint). Preserve BOTH branches of the existing component — `request_user_image` (upload/library/skip) AND `request_user_sketch` (the sketch-editor-via-sentinel-canvas-node flow) — confirmed during this plan's exploration to be real, complete, working code today, even though the Plan-1 backend doesn't currently offer `request_user_sketch` to the model (excluded from `V2_CLIENT_TOOLS`, matching v1's identical exclusion) — this task modernizes the resolution mechanism without re-opening that separate, already-made decision.
 
@@ -1185,7 +1189,40 @@ const pendingToolPart = lastMessage?.role === "assistant"
 
 - [ ] **Step 2: Rewrite `PendingUiAction.tsx`'s resolution calls**
 
-Replace every `onResolve(request.id, result)` call site with `addToolOutput({ tool: <toolName>, toolCallId: <part.toolCallId>, output: result })` — verify the EXACT parameter shape `addToolOutput` expects against what Task 3 Step 1 already confirmed (don't re-derive it here, reuse that finding). Everything else in the component (the upload/library/skip UI for `request_user_image`, the sentinel-canvas-node sketch-editor flow for `request_user_sketch`) stays as-is — only the resolution call site changes.
+Replace every `onResolve(request.id, result)` call site with:
+
+```tsx
+addToolOutput({
+  tool: <toolName>,
+  toolCallId: <part.toolCallId>,
+  output: result,
+  options: {
+    body: {
+      conversation_id: activeConversationId,
+      project_id: projectId,
+      canvas_snapshot: snapshotCanvas(nodes, edges),
+    },
+  },
+});
+```
+
+The `options.body` is NOT optional — omitting it is a verified real bug (see this task's header note #1): the auto-continuation this triggers goes through the same transport as a normal send and needs the same `body` or `route-handler.ts` 400s it. `conversation_id`/`project_id`/`canvas_snapshot` come from the same sources `onSend`'s call already uses (`ChatPanel.tsx`, Task 3) — thread them down to wherever this call site actually lives (`PendingUiAction.tsx` if the call stays there, or `ChatPanel.tsx`'s `respondToUiTool`-equivalent if it's cleaner to keep it there, matching Task 3's existing pattern). Verify the exact parameter shape (`tool`/`toolCallId`/`output`/`options.body`) against what Task 3 Step 1 already confirmed — don't re-derive it, reuse that finding, but DO re-confirm `options.body` specifically since Task 3's own first attempt at this call omitted it. Everything else in the component (the upload/library/skip UI for `request_user_image`, the sentinel-canvas-node sketch-editor flow for `request_user_sketch`) stays as-is — only the resolution call site changes.
+
+- [ ] **Step 2b: Guard `route-handler.ts` against a tool-continuation's last message being non-user**
+
+Task 3 fixed `route-handler.ts` to extract the new user turn's text/attachments from `body.messages.at(-1)`, assuming that's always a fresh user message — true for a normal send, false for the auto-continuation this task wires up (there, `messages.at(-1)` is the ASSISTANT message whose tool part just got resolved; no new user turn exists). Guard the extraction:
+
+```ts
+const lastMessage = body.messages?.at(-1);
+const isNewUserTurn = lastMessage?.role === "user";
+// ...only build/append userParts and the new user DB row when isNewUserTurn.
+// When it's not (a tool-continuation), skip straight to building `priorMessages`
+// from the DB (which already includes the assistant's tool-call row and will
+// include its resolved tool-result once this task's addToolOutput path persists
+// it) and call streamText with no new user message appended.
+```
+
+Read the current state of `route-handler.ts`'s extraction block (Task 3 left it around lines 55-72) before writing this — confirm the exact variable names in place now rather than assuming they still match this snippet verbatim.
 
 - [ ] **Step 3: Update `ChatPanel.tsx`'s render** — pass `pendingToolPart` (or `null`) instead of the old `pendingUiRequest`; the component's `request.name`/`request.input`/`request.id` usages become `pendingToolPart.type` (strip the `tool-` prefix)/`pendingToolPart.input`/`pendingToolPart.toolCallId`.
 
@@ -1202,7 +1239,7 @@ There is no way to trigger `request_user_image` from a normal chat turn today (t
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/components/panels/chat/PendingUiAction.tsx src/components/panels/ChatPanel.tsx
+git add src/components/panels/chat/PendingUiAction.tsx src/components/panels/ChatPanel.tsx src/lib/agent/v2/route-handler.ts
 git commit -m "feat(chat): PendingUiAction resolves via addToolOutput, preserves both request_user_image and request_user_sketch flows"
 ```
 
