@@ -1312,20 +1312,29 @@ git commit -m "feat(chat): render reasoning parts via AI Elements Reasoning, loc
 
 **Files:**
 - Modify: `src/app/api/agent/chat/route.ts`
-- Delete: `src/lib/agent/loop.ts`, `src/lib/agent/llm-client.ts`, `src/lib/agent/translate.ts`, `src/hooks/useChat.ts`, `src/lib/agent/pending-actions.ts`, `src/app/api/agent/chat/tool-result/` (whole directory), `src/lib/agent/mcp/in-memory-client.ts`
-- Delete tests: `tests/agent/chat-sse-skeleton.test.ts` (tests the now-deleted v1 route body + tool-result endpoint), `tests/agent/pending-actions.test.ts`, `tests/agent/browser-tools.test.ts` (tests v1's `BROWSER_TOOL_DEFS`, which nothing imports anymore once `loop.ts` is gone — confirm no other consumer before deleting)
+- Delete: `src/lib/agent/loop.ts`, `src/lib/agent/translate.ts`, `src/hooks/useChat.ts`, `src/lib/agent/pending-actions.ts`, `src/app/api/agent/chat/tool-result/` (whole directory), `src/lib/agent/mcp/in-memory-client.ts`, `src/lib/agent/conversation/auto-title.ts`
+- **Do NOT delete `src/lib/agent/llm-client.ts`** (corrected from an earlier draft of this task, which missed this — see the note below).
+- Delete tests: `tests/agent/chat-sse-skeleton.test.ts` (tests the now-deleted v1 route body + tool-result endpoint), `tests/agent/pending-actions.test.ts`, `tests/agent/browser-tools.test.ts` (tests v1's `BROWSER_TOOL_DEFS`, which nothing imports anymore once `loop.ts` is gone — confirm no other consumer before deleting), `tests/agent/loop.test.ts`, `tests/agent/use-chat.test.ts`, `tests/agent/translate.test.ts`
+- Modify (not delete): `tests/agent/mcp-server.test.ts` — remove ONLY its `describe("getInMemoryMcpClient (caching)", ...)` block (tests the deleted `in-memory-client.ts`); its OTHER `describe` block (testing `buildMcpServer` from the surviving `@/lib/agent/mcp/server`) must stay.
 
 **Interfaces:** none — this task only removes code, it doesn't change any remaining file's external contract.
 
-This is the point of no return for this plan — only do this once Tasks 3–12 are all individually verified working end to end against `THUMBGEN_AGENT_V2=1`.
+**Correction found during this task's own execution (a real gap in this task's original file list, caught by a implementer who correctly stopped at Step 1 rather than forcing through):**
+- **`src/lib/agent/llm-client.ts` must NOT be deleted.** It's a small, generic `getOpenRouterClient()` factory (a raw `openai`-SDK client, unrelated to v2's own AI-SDK `openrouter-provider.ts`) with a real consumer OUTSIDE the v1 chat path entirely: `src/lib/agent/vision.ts` (the face-reactions photo-tagging feature, imported by `src/app/api/face-reactions/route.ts` and `.../analyze-untagged/route.ts` — both live, unrelated to this plan). Deleting it would break that unrelated feature's build. `tests/agent/llm-client.test.ts` correspondingly also stays (it tests this surviving file).
+- **`src/lib/agent/conversation/auto-title.ts` must be ADDED to the deletion list.** It exports `generateAndPersistTitle`, called from exactly one place: `loop.ts` (being deleted). No v2 equivalent exists anywhere in `src/lib/agent/v2/` (confirmed by grep — v2's `route-handler.ts` never generates a conversation title). This is the SAME gap already surfaced twice earlier in this plan's own execution — Task 8's review noted v2 "does not currently emit anything that maps to `conversation_renamed`," and Task 11 removed `ChatPanel.tsx`'s now-dead `conversation_renamed` refetch effect for the same reason. Conversation auto-titling was silently dropped somewhere in the v1→v2 backend migration (a Plan-1/backend-scope gap, not something this frontend plan owns or should try to port here) — `auto-title.ts` becomes fully orphaned once `loop.ts` is gone, so it's now dead code that must be deleted alongside it, not preserved.
+- The three additional test files (`loop.test.ts`, `use-chat.test.ts`, `translate.test.ts`) test modules this task ALREADY deletes (`loop.ts`, `useChat.ts`, `translate.ts`) but were missing from the original test-deletion list — a real oversight, now fixed above.
+- `tests/agent/mcp-server.test.ts` needed a PARTIAL edit, not blanket deletion, because it contains two unrelated `describe` blocks — only one tests the file being deleted.
 
 - [ ] **Step 1: Confirm nothing outside the files being deleted imports from them**
 
 ```bash
-grep -rn "from \"@/lib/agent/loop\"\|from \"@/lib/agent/llm-client\"\|from \"@/lib/agent/translate\"\|from \"@/hooks/useChat\"\|from \"@/lib/agent/pending-actions\"\|from \"@/lib/agent/mcp/in-memory-client\"" src/ tests/
+grep -rn "from \"@/lib/agent/loop\"\|from \"@/lib/agent/translate\"\|from \"@/hooks/useChat\"\|from \"@/lib/agent/pending-actions\"\|from \"@/lib/agent/mcp/in-memory-client\"\|from \"@/lib/agent/conversation/auto-title\"" src/ tests/
+grep -rn "import(\"@/lib/agent/mcp/in-memory-client\")\|import('@/lib/agent/mcp/in-memory-client')" src/ tests/
 ```
 
-Every match should be inside a file this task is about to delete. If anything OUTSIDE that set matches, stop and resolve it before deleting (either that file needs updating, not deleting, or the grep result reveals a dependency this plan's exploration missed).
+(Note: `llm-client` is deliberately excluded from this grep now — it's not being deleted. The second grep catches dynamic `import(...)` calls the first, static-only pattern would miss — this is how the missed `tests/agent/mcp-server.test.ts` dependency was found.)
+
+Every match should be inside a file this task is about to delete (or, for `mcp-server.test.ts`, inside the specific describe block being removed). If anything OUTSIDE that set matches, stop and resolve it before deleting (either that file needs updating, not deleting, or the grep result reveals a dependency this plan's exploration missed) — exactly as happened once already for this same task.
 
 - [ ] **Step 2: Simplify `route.ts`** — remove the `if (process.env.THUMBGEN_AGENT_V2 === "1")` branch and the `runAgentLoop` import; keep only what was `postV2`'s body, now the file's only `POST` implementation. Given `postV2`'s current implementation lives in `src/lib/agent/v2/route-handler.ts` and is already fully self-contained, the simplest correct change is: delete this file's OWN `POST` function entirely and re-export `postV2` directly as `POST`:
 
@@ -1340,9 +1349,14 @@ Confirm `route-handler.ts` doesn't already declare conflicting `runtime`/`dynami
 - [ ] **Step 3: Delete the files listed above**
 
 ```bash
-git rm src/lib/agent/loop.ts src/lib/agent/llm-client.ts src/lib/agent/translate.ts src/hooks/useChat.ts src/lib/agent/pending-actions.ts src/lib/agent/mcp/in-memory-client.ts
+git rm src/lib/agent/loop.ts src/lib/agent/translate.ts src/hooks/useChat.ts src/lib/agent/pending-actions.ts src/lib/agent/mcp/in-memory-client.ts src/lib/agent/conversation/auto-title.ts
 git rm -r src/app/api/agent/chat/tool-result
-git rm tests/agent/chat-sse-skeleton.test.ts tests/agent/pending-actions.test.ts tests/agent/browser-tools.test.ts
+git rm tests/agent/chat-sse-skeleton.test.ts tests/agent/pending-actions.test.ts tests/agent/browser-tools.test.ts tests/agent/loop.test.ts tests/agent/use-chat.test.ts tests/agent/translate.test.ts
+```
+
+Then edit (not delete) `tests/agent/mcp-server.test.ts` by hand: remove only its `describe("getInMemoryMcpClient (caching)", ...)` block, keeping the `describe("MCP server (in-memory)", ...)` block (which tests the surviving `buildMcpServer`) intact.
+
+```bash
 ```
 
 - [ ] **Step 4: Re-home `startGcLoop()`**
@@ -1371,17 +1385,17 @@ npx tsc --noEmit
 npm run lint
 ```
 
-Expected: clean (the 3 tests deleted in Step 3 tested exactly the code deleted in this task; nothing else should reference it).
+Expected: clean (the tests deleted/edited in Step 3 tested exactly the code deleted in this task; nothing else should reference it).
 
 - [ ] **Step 7: Full manual verification without the flag** — `npm run dev` with `THUMBGEN_AGENT_V2` UNSET (or removed from `.env.local` if it was there for Tasks 3–12's development). Confirm the chat panel works exactly as it did during Tasks 3–12's individual verifications — the flag's absence should now be irrelevant since there is no more branch to gate.
 
 - [ ] **Step 8: Commit**
 
-**Do NOT use `git add -A`/`-u`/`.`** — this repo's working tree has pre-existing, unrelated uncommitted changes (from other in-progress work) that must never be swept into this plan's commits. `git rm` (Step 3) already stages the deletions; add only the two files Step 2/4 modified on top of that:
+**Do NOT use `git add -A`/`-u`/`.`** — this repo's working tree has pre-existing, unrelated uncommitted changes (from other in-progress work) that must never be swept into this plan's commits. `git rm` (Step 3) already stages the deletions; add only the files Step 2/4/3's partial edit actually modified on top of that:
 
 ```bash
-git add src/app/api/agent/chat/route.ts src/lib/agent/v2/route-handler.ts
-git commit -m "chore: cutover — v2 backend is now the only path, delete v1 (loop.ts, llm-client.ts, translate.ts, useChat.ts, pending-actions.ts, tool-result route, in-memory MCP client)"
+git add src/app/api/agent/chat/route.ts src/lib/agent/v2/route-handler.ts tests/agent/mcp-server.test.ts
+git commit -m "chore: cutover — v2 backend is now the only path, delete v1 (loop.ts, translate.ts, useChat.ts, pending-actions.ts, tool-result route, in-memory MCP client, orphaned auto-title.ts); llm-client.ts kept (still used by vision.ts)"
 ```
 
 Before committing, run `git status --short` and confirm nothing outside {the files this task deletes/modifies} is staged.
