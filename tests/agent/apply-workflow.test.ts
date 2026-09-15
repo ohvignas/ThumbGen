@@ -20,7 +20,7 @@ describe("apply_workflow", () => {
     const blueprint = {
       nodes: [
         { id: "p-1", type: "prompt", data: { prompt: "hello" } },
-        { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [{ source: "p-1", target: "g-1", targetHandle: "prompt-in" }],
     };
@@ -58,7 +58,7 @@ describe("apply_workflow", () => {
     const bp = {
       nodes: [
         { id: "f-1", type: "swipeFile", data: { kind: "logo", image_source: `stored:lg_${logoId}` } },
-        { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [{ source: "f-1", target: "g-1", targetHandle: "logo-in" }],
     };
@@ -100,7 +100,7 @@ describe("apply_workflow", () => {
     const bp = {
       nodes: [
         { id: "p-1", type: "prompt", data: { prompt: "hi" } },
-        { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [{ source: "p-1", target: "g-1", targetHandle: "prompt-in" }],
     };
@@ -118,7 +118,7 @@ describe("apply_workflow", () => {
     getDb().prepare("UPDATE projects SET nodes = ?, edges = ? WHERE id = ?")
       .run(JSON.stringify([
         { id: "a", type: "prompt", data: { prompt: "x" } },
-        { id: "b", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "b", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ]), JSON.stringify([]), projectId);
 
     const target = {

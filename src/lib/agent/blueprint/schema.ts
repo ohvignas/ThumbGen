@@ -36,7 +36,10 @@ const NodeDataByType = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("generator"),
-    model: z.enum(["ideogram", "grok", "nano-banana", "openai", "seedream"]),
+    // "ideogram" and "grok" removed: dropped from the app's model roster when
+    // image generation migrated to OpenRouter-only (neither has an OpenRouter
+    // equivalent) — see MODEL_ID_MAP in ../tools/apply-workflow.ts.
+    model: z.enum(["nano-banana", "openai", "seedream"]),
     aspectRatio: z.enum(["16x9", "9x16", "1x1"]),
     count: z.number().int().min(1).max(10).optional(),
   }),

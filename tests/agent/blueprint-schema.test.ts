@@ -30,7 +30,7 @@ describe("Blueprint", () => {
   it("accepts a minimal generator-only blueprint", () => {
     const bp = {
       nodes: [
-        { id: "gen-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "gen-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [],
     };

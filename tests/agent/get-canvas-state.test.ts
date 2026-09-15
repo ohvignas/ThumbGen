@@ -12,7 +12,7 @@ describe("get_canvas_state", () => {
         projectId,
         JSON.stringify([
           { id: "p-1", type: "prompt", data: { prompt: "hello world", negativePrompt: "blur" } },
-          { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9", count: 4 } },
+          { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9", count: 4 } },
           { id: "f-1", type: "faceReference", data: { imageBase64: "AAAA", label: "Excited" } },
         ]),
         JSON.stringify([
@@ -52,7 +52,7 @@ describe("get_canvas_state", () => {
     const r = await getCanvasStateTool.handler({ project_id: projectId });
     const parsed = JSON.parse((r.content[0] as { text: string }).text);
     const gen = parsed.nodes.find((n: { id: string }) => n.id === "g-1");
-    expect(gen.summary).toMatchObject({ model: "ideogram", aspectRatio: "16x9", count: 4 });
+    expect(gen.summary).toMatchObject({ model: "openai", aspectRatio: "16x9", count: 4 });
   });
 
   it("returns empty blueprint for unknown project", async () => {

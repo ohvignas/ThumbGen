@@ -13,14 +13,13 @@ const InputSchema = z.object({
   blueprint: z.unknown(),  // validated via BlueprintSchema below for better error formatting
 });
 
-// Maps the blueprint's coarse model name (ideogram/grok/nano-banana/openai/
-// seedream) onto the actual canvas model ID expected by GeneratorNode.
-// nano-banana → Gemini 3.1 Flash (fast, cheap, great with faces — the default
-// recommendation for thumbnail generation per the user).
+// Maps the blueprint's coarse model name (nano-banana/openai/seedream) onto
+// the actual canvas model ID expected by GeneratorNode. nano-banana →
+// Gemini 3.1 Flash (fast, cheap, great with faces — the default
+// recommendation for thumbnail generation per the user). "ideogram"/"grok"
+// removed from the schema enum (see schema.ts) — no OpenRouter equivalent.
 const MODEL_ID_MAP: Record<string, string> = {
-  ideogram: "ideogram",
   "nano-banana": "gemini-3.1-flash-image",
-  grok: "grok-imagine-image-2.0",
   openai: "gpt-image-2.5-sunburst",
   seedream: "bytedance-seed/seedream-4.5",
 };
