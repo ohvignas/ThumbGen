@@ -23,6 +23,21 @@ export async function resolveImageSource(source: string): Promise<ResolvedImage>
     return { mimeType: m[1], bytes: Buffer.from(m[2], "base64") };
   }
 
+  // stored:persona_<id> — a Personnage resolves to up to 3 angle photos, not
+  // one. Callers here (generate_sketch's single face_source slot) only need
+  // ONE representative image, so return the front angle (falling back to
+  // whichever angle exists first) rather than erroring. apply_workflow does
+  // NOT go through this path — it has its own persona branch in
+  // blueprintToCanvasData that resolves all 3 angles for the real generation.
+  if (source.startsWith("stored:persona_")) {
+    const personaId = source.slice("stored:persona_".length);
+    const photos = getDb()
+      .prepare("SELECT angle, mime_type, data FROM persona_photos WHERE persona_id = ? ORDER BY CASE angle WHEN 'front' THEN 0 WHEN 'left' THEN 1 ELSE 2 END LIMIT 1")
+      .get(personaId) as { angle: string; mime_type: string; data: Buffer } | undefined;
+    if (!photos) throw new Error(`Persona not found or has no photos: ${source}`);
+    return { mimeType: photos.mime_type, bytes: photos.data };
+  }
+
   // stored:<prefix>_<id>
   if (source.startsWith("stored:")) {
     const m = source.match(/^stored:(lg|sf|fr|gi)_(.+)$/);
