@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useMediaRecorder } from "@/hooks/useMediaRecorder";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 /**
  * Atelier Nocturne mic button.
@@ -43,35 +44,45 @@ export default function MicButton({ onTranscribed }: { onTranscribed: (text: str
     ? "var(--ember)"
     : "var(--text-tertiary)";
 
+  const label = error ? `Erreur : ${error}` : isRecording ? "Arrêter" : "Enregistrer";
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={error ? `Erreur : ${error}` : isRecording ? "Arrêter" : "Enregistrer"}
-      aria-label={isRecording ? "Arrêter l'enregistrement" : "Enregistrer"}
-      disabled={busy || state === "stopping"}
-      className="p-1.5 rounded-lg transition-colors disabled:opacity-30 nopan nodrag"
-      style={{ color: tone }}
-      onMouseEnter={(e) => {
-        if (!isRecording && !error) e.currentTarget.style.color = "var(--text-secondary)";
-      }}
-      onMouseLeave={(e) => {
-        if (!isRecording && !error) e.currentTarget.style.color = "var(--text-tertiary)";
-      }}
-    >
-      {busy ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
-          <circle cx="12" cy="12" r="9" strokeDasharray="56" strokeDashoffset="20" />
-        </svg>
-      ) : isRecording ? (
-        <span className="block w-3 h-3 rounded-full animate-pulse" style={{ background: "var(--ember)" }} />
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="9" y="3" width="6" height="11" rx="3" />
-          <path d="M5 11a7 7 0 0 0 14 0" />
-          <path d="M12 18v3" />
-        </svg>
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={onClick}
+            aria-label={isRecording ? "Arrêter l'enregistrement" : "Enregistrer"}
+            disabled={busy || state === "stopping"}
+            className="p-1.5 rounded-lg transition-colors disabled:opacity-30 nopan nodrag"
+            style={{ color: tone }}
+            onMouseEnter={(e) => {
+              if (!isRecording && !error) e.currentTarget.style.color = "var(--text-secondary)";
+            }}
+            onMouseLeave={(e) => {
+              if (!isRecording && !error) e.currentTarget.style.color = "var(--text-tertiary)";
+            }}
+          >
+            {busy ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+                <circle cx="12" cy="12" r="9" strokeDasharray="56" strokeDashoffset="20" />
+              </svg>
+            ) : isRecording ? (
+              <span className="block w-3 h-3 rounded-full animate-pulse" style={{ background: "var(--ember)" }} />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0" />
+                <path d="M12 18v3" />
+              </svg>
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>
+        <p>{label}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
