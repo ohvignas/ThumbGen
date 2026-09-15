@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useMemo, useCallback, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -19,6 +19,7 @@ import ImageAnnotateModal from "./chat/ImageAnnotateModal";
 import type { DisplayMessage, MessageBlock } from "./chat/Message";
 import type { ChatEvent } from "@/hooks/useChat";
 import UsageBadge from "./chat/UsageBadge";
+import { rowsToUIMessages } from "./chat/history-to-ui-messages";
 
 /**
  * Right-side chat panel. Slide-in 420px wide. Mounted from Canvas.
@@ -58,10 +59,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     setMessages,
     error,
   } = useChat({
-    // TODO(Task 4): seed with initialUiMessages from history-to-ui-messages.ts
-    // once that converter lands. Until then each conversation starts with an
-    // empty live session here — persisted turns still render via the
-    // `history` REST fetch below.
+    // Starts empty; the "Load persisted history" useEffect below seeds this
+    // via setMessages(rowsToUIMessages(rows)) as soon as activeConversationId
+    // is known (including on first mount), so the initial [] here is only
+    // ever visible for a single render before that effect runs.
     messages: [],
     transport: new DefaultChatTransport({ api: "/api/agent/chat" }),
     // Auto-resumes the turn once a client tool (request_user_image) has been
@@ -74,8 +75,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const bumpConversationListVersion = useChatStore((s) => s.bumpConversationListVersion);
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
-
-  const [history, setHistory] = useState<DisplayMessage[]>([]);
 
   // TODO(Task 5-11): remove this whole adapter block once MessageList/
   // Composer/AgentActivity/PendingUiAction are rewritten to consume
@@ -124,22 +123,21 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   // /api/face-reactions/analyze-untagged is still available if anyone wants
   // to retro-tag manually (e.g. via curl or a future UI button).
 
-  // Load persisted history when active conversation changes
+  // Load persisted history when active conversation changes, seeding
+  // useChat's own message state directly via rowsToUIMessages (Task 4) —
+  // this replaces the old history/setHistory adapter + rowToDisplay, which
+  // parsed content_json as the stale v1 AnthropicBlock[] shape and rendered
+  // every persisted message as an empty bubble now that Task 2's migration
+  // has moved the DB to ModelMessage[]-shaped rows.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       if (!activeConversationId) {
-        if (!cancelled) {
-          setHistory([]);
-          setMessages([]);
-        }
+        if (!cancelled) setMessages([]);
         return;
       }
       const rows = await fetch(`/api/agent/conversations/${activeConversationId}/messages`).then((r) => r.json()) as Array<{ id: string; role: "user" | "assistant"; content_json: string }>;
-      if (!cancelled) {
-        setHistory(rows.map(rowToDisplay));
-        setMessages([]);
-      }
+      if (!cancelled) setMessages(rowsToUIMessages(rows));
     };
     load();
     return () => {
@@ -147,11 +145,14 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   }, [activeConversationId, setMessages]);
 
-  // TODO(Task 5-11): remove — combines persisted history with this-session
-  // live messages, plus a synthetic error bubble (useChat's `error` used to
-  // be an `error` ChatEvent consumed by the old liveMessage builder).
+  // TODO(Task 5-11): remove — adapts this-session live messages (now
+  // including seeded persisted history, since chatMessages/legacyLiveMessages
+  // derive from useChat's own `messages`, which the effects above seed via
+  // setMessages(rowsToUIMessages(rows))) plus a synthetic error bubble
+  // (useChat's `error` used to be an `error` ChatEvent consumed by the old
+  // liveMessage builder).
   const messages: DisplayMessage[] = useMemo(() => {
-    const combined: DisplayMessage[] = [...history, ...legacyLiveMessages];
+    const combined: DisplayMessage[] = [...legacyLiveMessages];
     if (error) {
       combined.push({
         id: "live-error",
@@ -160,7 +161,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       });
     }
     return combined;
-  }, [history, legacyLiveMessages, error]);
+  }, [legacyLiveMessages, error]);
 
   const pendingUiRequest = useMemo<UiToolRequest | null>(() => {
     const requests = legacyEvents.filter((e) => e.type === "ui_tool_request");
@@ -236,8 +237,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // discard the refetch so we don't paint old messages over the new conv's UI.
     const rows = await fetch(`/api/agent/conversations/${convId}/messages`).then((r) => r.json());
     if (useChatStore.getState().activeConversationId !== convId) return;
-    setHistory((rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>).map(rowToDisplay));
-    setMessages([]);
+    setMessages(rowsToUIMessages(rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>));
   }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, sendMessage, nodes, edges, setMessages]);
 
   return (
@@ -302,58 +302,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 }
 
 // --- Helpers ---
-
-type AnthropicBlock =
-  | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
-  | {
-      type: "tool_use";
-      id: string;
-      name: string;
-      input: unknown;
-      // Custom fields we attach in loop.ts so the chat UI can re-render the
-      // tool result (gallery, summary) after the live message is replaced by
-      // the DB refetch. Anthropic ignores unknown fields when reading back.
-      _images?: string[];
-      _summary?: string;
-    }
-  | { type: "tool_result"; tool_use_id: string; content: unknown };
-
-function rowToDisplay(row: {
-  id: string;
-  role: "user" | "assistant";
-  content_json: string;
-}): DisplayMessage {
-  let blocks: AnthropicBlock[] = [];
-  try {
-    blocks = JSON.parse(row.content_json) as AnthropicBlock[];
-  } catch {
-    blocks = [];
-  }
-  const display: MessageBlock[] = [];
-  for (const b of blocks) {
-    if (b.type === "text") display.push({ type: "text", text: b.text });
-    else if (b.type === "image") {
-      display.push({
-        type: "image",
-        preview_url: `data:${b.source.media_type};base64,${b.source.data}`,
-      });
-    } else if (b.type === "tool_use") {
-      display.push({
-        type: "tool_call",
-        id: b.id,
-        name: b.name,
-        input: b.input,
-        status: "done",
-        summary: b._summary,
-        images: b._images,
-      });
-    }
-    // tool_result blocks are responses to assistant tool_use; we don't display them separately
-    // (they're part of the user role message in Anthropic format but represent tool output)
-  }
-  return { id: row.id, role: row.role, blocks: display };
-}
 
 function snapshotCanvas(nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }>, edges: Array<{ source: string; target: string; targetHandle?: string | null }>): unknown {
   return {
