@@ -23,7 +23,7 @@ shadcn déjà installés (`src/components/ui/`) : `alert`, `bubble`, `button`, `
 
 - **Canvas et nodes React Flow** (`Canvas.tsx`, `edges/CustomEdge.tsx`, `nodes/*.tsx`) : aucun changement visuel. Ce sont l'outil de travail principal, avec des contraintes spécifiques (handles, drag, sélection) — hors périmètre. La seule modification : renommage mécanique de deux variables CSS (voir Fondation ci-dessous), zéro impact visuel.
 - **Nouvelles fonctionnalités produit** (veille concurrentielle, suivi de projets vidéo, test titres/miniatures, stats) : pas construites ici. La Sidebar est structurée pour pouvoir en accueillir plus tard, mais un seul groupe de navigation ("Miniatures") existe pour l'instant.
-- **Comportement applicatif** : aucun changement. Tous les appels fetch, la logique d'état (Zustand), le drag-and-drop, les raccourcis clavier restent identiques — c'est une réécriture de présentation (JSX/markup/styles), pas de logique.
+- **Comportement applicatif** : aucun changement, SAUF le parcours de gestion des visages (voir section dédiée ci-dessous) qui corrige des frictions réelles en plus du reskin. Partout ailleurs (Modèles, Logos, Inspirations, ProjectBar, ZoomBar, Settings, modals), tous les appels fetch, la logique d'état (Zustand), le drag-and-drop, les raccourcis clavier restent identiques — réécriture de présentation, pas de logique.
 - **Typographie** : reste Arial partout (déjà un système mono-police ; le preset b0 n'impose pas de police).
 
 ## Architecture
@@ -121,7 +121,18 @@ Manquants aujourd'hui, à installer via `npx shadcn@latest add <name>` (style `b
 ### Sidebar → `AppSidebar.tsx` (remplace `Sidebar.tsx` + `SidebarRail.tsx`)
 Structure façon bloc sidebar-07 : `Sidebar collapsible="icon"`. `SidebarHeader` = marque ThumbGen (pas de team-switcher, un seul workspace). `SidebarContent` = un seul `SidebarGroup` "Miniatures" avec `SidebarMenuButton` pour Personnages / Modèles d'image / Inspirations / Logos (comportement inchangé : clic = toggle d'un panneau, comme aujourd'hui). `SidebarFooter` = `SidebarMenuButton` vers Usage (`/usage`) et Réglages (ouvre le nouveau Dialog Settings).
 
-Le panneau qui s'affiche au clic (recherche + grille d'assets + upload + drag-drop + suppression) garde exactement sa logique (state, fetch, drag handlers) mais son markup passe de `style={{ background: "var(--surface)" }}` etc à des classes Tailwind liées aux tokens b0 (`bg-muted`, `text-muted-foreground`, `border-border`...) et à de vraies primitives (`Input` pour la recherche, `Button` pour les actions, `Empty`/`EmptyMedia` pour les états vides — déjà utilisé dans `MessageList.tsx`, même pattern).
+Le panneau qui s'affiche au clic (recherche + grille d'assets + upload + drag-drop + suppression) garde sa logique pour Modèles/Logos/Inspirations (state, fetch, drag handlers inchangés — seul le markup passe de `style={{ background: "var(--surface)" }}` etc à des classes Tailwind liées aux tokens b0, et à de vraies primitives `Input`/`Button`/`Empty`/`EmptyMedia`). L'onglet "Visages" (ex-"Personnages") a un vrai correctif de parcours, détaillé ci-dessous.
+
+#### Parcours — gestion des visages (correctif, pas juste un reskin)
+
+Constat sur le comportement actuel (`Sidebar.tsx`) : deux systèmes de visages empilés sans explication (Personas 3-angles via webcam uniquement, et "Autres visages" 1-photo via upload fichier) ; la barre de recherche en haut du panneau ne filtre rien pour cet onglet (branchée seulement côté Inspirations) ; aucune option d'import de photo pour créer un Persona (webcam obligatoire) ; aucune édition possible (delete-only).
+
+Correctifs (aucun changement d'API/backend — `/api/personas` et `/api/face-reactions` gardent leurs contrats actuels) :
+- **Grille unifiée "Visages"** : les entrées Persona (badge `{n}/3`) et les entrées legacy (badge `1 photo`) s'affichent ensemble, triées par date de création, dans la même grille. Clic = ajoute un nœud `faceReference` au canvas (comportement déjà identique pour les deux aujourd'hui — inchangé).
+- **Un seul bouton "Nouveau visage"** ouvre un `Dialog` à deux choix clairs : "Capturer avec la webcam" (ouvre `WebcamCaptureModal`, flux 3-angles inchangé, POST `/api/personas`) ou "Importer une photo" (file picker simple, POST `/api/face-reactions`, flux legacy inchangé). Les deux options restent chacune sur leur endpoint actuel — c'est uniquement l'entrée unique + le choix explicite qui est nouveau.
+- **Recherche fonctionnelle** : le champ de recherche en haut du panneau filtre désormais la grille Visages (et Modèles, et Logos) par label, en réutilisant le même pattern déjà validé pour Inspirations (`swipeSearch`/`filteredSwipe`) — un state de recherche par onglet, filtre client-side sur le label.
+- **Renommage inline** pour les deux types de visages (même pattern `onBlur` déjà utilisé pour les Logos).
+- **Hors scope pour cette passe** (fast-follow explicite, pas dans ce plan) : remplacer/recapturer un seul angle d'un Persona existant — nécessiterait un contrat API plus riche, non confirmé. Ne pas l'implémenter maintenant.
 
 ### `ProjectBar.tsx`
 Le menu custom positionné en absolu (avec listener `mousedown` manuel pour fermer au clic extérieur) devient un `DropdownMenu`/`DropdownMenuTrigger`/`DropdownMenuContent`/`DropdownMenuItem`. Le renommage inline reste un `Input` contrôlé dans l'item. Le bouton déclencheur devient un `Button variant="outline"`.
