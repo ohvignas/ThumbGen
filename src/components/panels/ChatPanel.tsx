@@ -1,7 +1,15 @@
 "use client";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useChat } from "@ai-sdk/react";
+import {
+  DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithToolCalls,
+  isToolUIPart,
+  getToolName,
+  type UIMessage,
+  type FileUIPart,
+} from "ai";
 import { useChatStore } from "@/store/chat-store";
-import { useChat } from "@/hooks/useChat";
 import { useCanvasStore } from "@/store/canvas-store";
 import ConversationList from "./chat/ConversationList";
 import MessageList from "./chat/MessageList";
@@ -18,9 +26,19 @@ import UsageBadge from "./chat/UsageBadge";
  *
  * Lifecycle:
  *   - On open + active conversation change: fetch persisted messages
- *   - On send: optimistic user message + open SSE stream
- *   - SSE events flow into a "live" assistant message until done
+ *   - On send: @ai-sdk/react's useChat optimistically pushes the user
+ *     message and opens the UI-message stream against postV2
+ *     (src/lib/agent/v2/route-handler.ts, gated by THUMBGEN_AGENT_V2)
+ *   - The assistant message streams in as part of useChat's own `messages`
+ *     until `status` returns to "ready"
  *   - On done: refetch messages from DB to canonicalize
+ *
+ * NOTE: data-fetching was swapped from the old hand-rolled SSE hook
+ * (src/hooks/useChat.ts) to @ai-sdk/react's useChat. MessageList/Composer/
+ * AgentActivity/PendingUiAction still expect the OLD DisplayMessage[]/
+ * ChatEvent[] shapes (they're rewritten in Tasks 5-11), so everything below
+ * marked TODO(Task 5-11) is a temporary adapter translating useChat's
+ * UIMessage[]/ChatStatus output back into those shapes.
  */
 export default function ChatPanel({ projectId }: { projectId: string }) {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -32,7 +50,27 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
 
-  const { send, stop, streaming, events, reset, respondToUiTool } = useChat();
+  const {
+    messages: chatMessages,
+    status,
+    sendMessage,
+    stop,
+    addToolOutput,
+    setMessages,
+    error,
+  } = useChat({
+    // TODO(Task 4): seed with initialUiMessages from history-to-ui-messages.ts
+    // once that converter lands. Until then each conversation starts with an
+    // empty live session here — persisted turns still render via the
+    // `history` REST fetch below.
+    messages: [],
+    transport: new DefaultChatTransport({ api: "/api/agent/chat" }),
+    // Auto-resumes the turn once a client tool (request_user_image) has been
+    // resolved via addToolOutput — needed for Task 11's human-in-the-loop
+    // flow to actually continue the conversation instead of sitting
+    // resolved-but-idle.
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+  });
 
   const bumpConversationListVersion = useChatStore((s) => s.bumpConversationListVersion);
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
@@ -40,19 +78,39 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   const [history, setHistory] = useState<DisplayMessage[]>([]);
 
-  // When the agent emits `conversation_renamed` (auto-titled first turn), nudge
-  // the conversation list to refetch so the user sees the new title without a
-  // manual reload. We use a ref to track the seen ones since events accumulates.
+  // TODO(Task 5-11): remove this whole adapter block once MessageList/
+  // Composer/AgentActivity/PendingUiAction are rewritten to consume
+  // useChat's UIMessage[]/ChatStatus directly. It maps this-session live
+  // messages (chatMessages) back into the OLD DisplayMessage[]/ChatEvent[]
+  // shapes those (still unmodified) children expect.
+  const legacyLiveMessages: DisplayMessage[] = useMemo(
+    () => chatMessages.filter((m) => m.role !== "system").map(uiMessageToLegacyDisplayMessage),
+    [chatMessages],
+  );
+  const legacyEvents: ChatEvent[] = useMemo(
+    () => chatMessages.flatMap(uiMessageToLegacyEvents),
+    [chatMessages],
+  );
+  const legacyStreaming = status === "streaming" || status === "submitted";
+
+  // When the agent emits a `conversation_renamed` event (auto-titled first
+  // turn), nudge the conversation list to refetch so the user sees the new
+  // title without a manual reload. We use a ref to track the seen ones
+  // since legacyEvents accumulates.
+  // NOTE: v2 (postV2) does not currently emit anything that maps to
+  // `conversation_renamed` via the adapter below, so this effect is
+  // presently a no-op under THUMBGEN_AGENT_V2=1 — kept as-is (untouched
+  // JSX/behavior) since wiring that up is out of this task's scope.
   const seenRenameRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    for (const e of events) {
+    for (const e of legacyEvents) {
       if (e.type !== "conversation_renamed") continue;
       const key = `${e.conversation_id}:${e.title}`;
       if (seenRenameRef.current.has(key)) continue;
       seenRenameRef.current.add(key);
       bumpConversationListVersion();
     }
-  }, [events, bumpConversationListVersion]);
+  }, [legacyEvents, bumpConversationListVersion]);
 
   // When project changes, clear active conv so ConversationList picks the new
   // project's first conv (or stays empty if none). Without this, the previous
@@ -74,69 +132,42 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       if (!activeConversationId) {
         if (!cancelled) {
           setHistory([]);
-          reset();
+          setMessages([]);
         }
         return;
       }
       const rows = await fetch(`/api/agent/conversations/${activeConversationId}/messages`).then((r) => r.json()) as Array<{ id: string; role: "user" | "assistant"; content_json: string }>;
       if (!cancelled) {
         setHistory(rows.map(rowToDisplay));
-        reset();
+        setMessages([]);
       }
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, reset]);
+  }, [activeConversationId, setMessages]);
 
-  // Build the live assistant message from streaming events
-  const liveMessage: DisplayMessage | null = useMemo(() => {
-    if (events.length === 0) return null;
-    const blocks: MessageBlock[] = [];
-    let textBuf = "";
-
-    const flushText = () => {
-      if (textBuf) {
-        blocks.push({ type: "text", text: textBuf });
-        textBuf = "";
-      }
-    };
-
-    for (const e of events) {
-      if (e.type === "text_delta") {
-        textBuf += e.content;
-      } else if (e.type === "tool_call") {
-        flushText();
-        blocks.push({
-          type: "tool_call",
-          id: e.id,
-          name: e.name,
-          input: e.input,
-          status: "pending",
-        });
-      } else if (e.type === "tool_result") {
-        const idx = blocks.findIndex((b) => b.type === "tool_call" && b.id === e.id);
-        if (idx >= 0) {
-          const cur = blocks[idx] as Extract<MessageBlock, { type: "tool_call" }>;
-          blocks[idx] = { ...cur, status: "done", summary: e.summary, images: e.images };
-        }
-      } else if (e.type === "error") {
-        flushText();
-        blocks.push({ type: "text", text: `⚠ ${e.message}` });
-      }
+  // TODO(Task 5-11): remove — combines persisted history with this-session
+  // live messages, plus a synthetic error bubble (useChat's `error` used to
+  // be an `error` ChatEvent consumed by the old liveMessage builder).
+  const messages: DisplayMessage[] = useMemo(() => {
+    const combined: DisplayMessage[] = [...history, ...legacyLiveMessages];
+    if (error) {
+      combined.push({
+        id: "live-error",
+        role: "assistant",
+        blocks: [{ type: "text", text: `⚠ ${error.message}` }],
+      });
     }
-    flushText();
-    return { id: "live", role: "assistant", blocks };
-  }, [events]);
-
-  const messages = liveMessage ? [...history, liveMessage] : history;
+    return combined;
+  }, [history, legacyLiveMessages, error]);
 
   const pendingUiRequest = useMemo<UiToolRequest | null>(() => {
-    const requests = events.filter((e) => e.type === "ui_tool_request");
+    const requests = legacyEvents.filter((e) => e.type === "ui_tool_request");
     if (requests.length === 0) return null;
     const last = requests[requests.length - 1] as Extract<ChatEvent, { type: "ui_tool_request" }>;
-    const acked = events.some(
+    const acked = legacyEvents.some(
       (e) => e.type === "ui_tool_response_ack" && (e as { id: string }).id === last.id,
     );
     if (acked) return null;
@@ -145,7 +176,18 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       name: last.name as "request_user_image" | "request_user_sketch",
       input: last.input as { reason?: string; suggested_kind?: string; initial_image_id?: string },
     };
-  }, [events]);
+  }, [legacyEvents]);
+
+  // TODO(Task 5-11): remove — bridges PendingUiAction's legacy
+  // (toolUseId, result) callback onto useChat's real addToolOutput, which
+  // needs the tool name (not just the call id) to resolve the right part.
+  const respondToUiTool = useCallback(
+    (toolCallId: string, result: unknown) => {
+      if (!pendingUiRequest) return;
+      void addToolOutput({ tool: pendingUiRequest.name, toolCallId, output: result });
+    },
+    [addToolOutput, pendingUiRequest],
+  );
 
   const onSend = useCallback(async () => {
     // Auto-create a conversation if none active, then proceed with the send
@@ -164,28 +206,30 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     }
 
     const text = draft;
-    const atts = attachments.map((a) => ({ type: "image" as const, source: a.source }));
-
-    // Optimistic user message in history
-    const userBlocks: MessageBlock[] = [
-      ...(text ? [{ type: "text" as const, text }] : []),
-      ...attachments.map((a) => ({ type: "image" as const, preview_url: a.preview_url })),
-    ];
-    setHistory((h) => [
-      ...h,
-      { id: `local-${Date.now()}`, role: "user", blocks: userBlocks },
-    ]);
+    const attachmentFileParts: FileUIPart[] = attachments.map((a) => ({
+      type: "file",
+      mediaType: "image",
+      url: a.preview_url,
+    }));
 
     setDraft("");
     clearAttachments();
 
-    // Send and stream
-    await send({
-      conversation_id: convId,
-      project_id: projectId,
-      message: { text, attachments: atts },
-      canvas_snapshot: snapshotCanvas(nodes, edges),
-    });
+    // useChat's sendMessage pushes the user's UIMessage into `chatMessages`
+    // synchronously before the network call resolves (AbstractChat.sendMessage
+    // in ai/dist/index.js calls state.pushMessage then awaits makeRequest), so
+    // — unlike the old hook — no manual optimistic append into `history` is
+    // needed here.
+    await sendMessage(
+      { text, files: attachmentFileParts },
+      {
+        body: {
+          conversation_id: convId,
+          project_id: projectId,
+          canvas_snapshot: snapshotCanvas(nodes, edges),
+        },
+      },
+    );
 
     // Refetch persisted history (canonical assistant message replaces the live one).
     // If the user switched conversations mid-stream, the active conv has changed —
@@ -193,8 +237,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     const rows = await fetch(`/api/agent/conversations/${convId}/messages`).then((r) => r.json());
     if (useChatStore.getState().activeConversationId !== convId) return;
     setHistory((rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>).map(rowToDisplay));
-    reset();
-  }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, send, nodes, edges, reset]);
+    setMessages([]);
+  }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, sendMessage, nodes, edges, setMessages]);
 
   return (
     <aside
@@ -246,9 +290,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         />
       )}
 
-      <AgentActivity events={events} streaming={streaming} />
+      <AgentActivity events={legacyEvents} streaming={legacyStreaming} />
 
-      <Composer onSend={onSend} streaming={streaming} onStop={stop} />
+      <Composer onSend={onSend} streaming={legacyStreaming} onStop={stop} />
 
       {annotateImageUrl && (
         <ImageAnnotateModal imageUrl={annotateImageUrl} onClose={closeAnnotate} />
@@ -339,4 +383,88 @@ function summarizeNode(type: string, data: Record<string, unknown>): Record<stri
     default:
       return {};
   }
+}
+
+// TODO(Task 5-11): remove everything below — temporary UIMessage ->
+// legacy DisplayMessage[]/ChatEvent[] adapter kept only so the untouched
+// child components (MessageList/AgentActivity/PendingUiAction) keep working
+// against @ai-sdk/react's useChat output until they're rewritten.
+
+/** Client tools resolved via addToolOutput from the browser (Plan 2's UI-tool
+ * mechanism), matching PendingUiAction's UiToolRequest["name"] union. */
+const CLIENT_UI_TOOL_NAMES = new Set(["request_user_image", "request_user_sketch"]);
+
+function uiMessageToLegacyDisplayMessage(m: UIMessage): DisplayMessage {
+  const blocks: MessageBlock[] = [];
+  for (const part of m.parts) {
+    if (part.type === "text") {
+      if (part.text) blocks.push({ type: "text", text: part.text });
+    } else if (part.type === "file") {
+      if (part.mediaType.startsWith("image")) {
+        blocks.push({ type: "image", preview_url: part.url });
+      }
+    } else if (isToolUIPart(part)) {
+      const name = getToolName(part);
+      const status: "pending" | "done" | "error" =
+        part.state === "output-available"
+          ? "done"
+          : part.state === "output-error" || part.state === "output-denied"
+            ? "error"
+            : "pending";
+      const output = part.state === "output-available" ? (part.output as Record<string, unknown> | undefined) : undefined;
+      blocks.push({
+        type: "tool_call",
+        id: part.toolCallId,
+        name,
+        input: part.input,
+        status,
+        summary: typeof output?.summary === "string" ? output.summary : undefined,
+        images: Array.isArray(output?.images) ? (output.images as string[]) : undefined,
+      });
+    }
+  }
+  return { id: m.id, role: m.role === "user" ? "user" : "assistant", blocks };
+}
+
+function uiMessageToLegacyEvents(m: UIMessage): ChatEvent[] {
+  const out: ChatEvent[] = [];
+  for (const part of m.parts) {
+    if (part.type === "text") {
+      if (part.text) out.push({ type: "text_delta", content: part.text });
+      continue;
+    }
+    if (!isToolUIPart(part)) continue;
+    if (part.state === "input-streaming") continue; // input not settled yet
+
+    const name = getToolName(part);
+    const input = part.input;
+
+    if (CLIENT_UI_TOOL_NAMES.has(name)) {
+      out.push({ type: "ui_tool_request", id: part.toolCallId, name, input });
+      if (part.state === "output-available" || part.state === "output-error" || part.state === "output-denied") {
+        out.push({ type: "ui_tool_response_ack", id: part.toolCallId });
+      }
+      continue;
+    }
+
+    out.push({ type: "tool_call", id: part.toolCallId, name, input, scope: "server" });
+    if (part.state === "output-available") {
+      const output = part.output as { summary?: string; images?: string[] } | undefined;
+      out.push({
+        type: "tool_result",
+        id: part.toolCallId,
+        name,
+        summary: typeof output?.summary === "string" ? output.summary : "",
+        images: output?.images,
+      });
+    } else if (part.state === "output-error" || part.state === "output-denied") {
+      out.push({
+        type: "tool_result",
+        id: part.toolCallId,
+        name,
+        summary: part.state === "output-error" ? part.errorText : "refusé",
+      });
+    }
+  }
+  return out;
 }
