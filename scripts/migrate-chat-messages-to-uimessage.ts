@@ -48,11 +48,20 @@ function convertToolResultOutput(content: AnthropicBlock[] | string) {
       if (c.type === "text") {
         return { type: "text" as const, text: c.text };
       } else if (c.type === "image") {
+        // `data` must be the tagged FileData object ({type:"data", data}),
+        // not a bare string — a bare string matches AI SDK's message-level
+        // FilePart shorthand (auto-normalized by ai@7.0.99's own
+        // standardizePrompt) but NOT the separate schema a tool result's
+        // `output.value[]` items are validated against, where `type:"file"`
+        // strictly requires `data` to already be tagged. See
+        // src/lib/agent/v2/tool-adapter.ts's toModelOutput for the live
+        // trace of this exact bug (Task 14's Bug 2) and
+        // task-14-report.md's continuation for the full write-up.
         return {
           type: "file" as const,
           mediaType: c.source.media_type,
-          data: c.source.data,
-        } as any;
+          data: { type: "data" as const, data: c.source.data },
+        };
       } else {
         return { type: "text" as const, text: "" };
       }
