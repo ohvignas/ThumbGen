@@ -1377,10 +1377,14 @@ Expected: clean (the 3 tests deleted in Step 3 tested exactly the code deleted i
 
 - [ ] **Step 8: Commit**
 
+**Do NOT use `git add -A`/`-u`/`.`** — this repo's working tree has pre-existing, unrelated uncommitted changes (from other in-progress work) that must never be swept into this plan's commits. `git rm` (Step 3) already stages the deletions; add only the two files Step 2/4 modified on top of that:
+
 ```bash
-git add -A
+git add src/app/api/agent/chat/route.ts src/lib/agent/v2/route-handler.ts
 git commit -m "chore: cutover — v2 backend is now the only path, delete v1 (loop.ts, llm-client.ts, translate.ts, useChat.ts, pending-actions.ts, tool-result route, in-memory MCP client)"
 ```
+
+Before committing, run `git status --short` and confirm nothing outside {the files this task deletes/modifies} is staged.
 
 ---
 
