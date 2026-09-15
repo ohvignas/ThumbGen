@@ -12,6 +12,9 @@ import PendingUiAction, { PendingToolPart } from "./chat/PendingUiAction";
 import AgentActivity from "./chat/AgentActivity";
 import ImageAnnotateModal from "./chat/ImageAnnotateModal";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter } from "@/components/ui/card";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { PlusIcon } from "lucide-react";
 import UsageBadge from "./chat/UsageBadge";
 import { rowsToUIMessages } from "./chat/history-to-ui-messages";
 
@@ -221,29 +224,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, sendMessage, nodes, edges, setMessages]);
 
   return (
-    <aside
-      className="fixed right-0 top-0 bottom-0 w-[420px] flex flex-col z-40"
-      style={{
-        background: "var(--node-bg)",
-        borderLeft: "1px solid var(--line)",
-      }}
-    >
-      <header
-        className="px-4 py-3 flex items-center justify-between gap-3"
-        style={{ borderBottom: "1px solid var(--line-faint)" }}
-      >
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span
-            className="text-[9px] uppercase shrink-0"
-            style={{
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-              letterSpacing: "0.22em",
-            }}
-          >
-            <span style={{ color: "var(--brand)" }}>·</span> Agent
-          </span>
-          <h2
+    <aside className="fixed right-3 top-3 bottom-3 w-[420px] z-40">
+      <Card className="h-full flex flex-col gap-0 py-0 overflow-hidden" style={{ background: "var(--node-bg)" }}>
+        <CardHeader className="border-b py-3" style={{ borderColor: "var(--line-faint)" }}>
+          <CardTitle
             className="italic truncate"
             style={{
               color: "var(--text-primary)",
@@ -253,30 +237,51 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
               letterSpacing: "-0.015em",
             }}
           >
-            Brainstorm
-          </h2>
-        </div>
-        <UsageBadge />
-      </header>
+            <span style={{ color: "var(--brand)" }}>·</span> Brainstorm
+          </CardTitle>
+          <CardDescription
+            className="text-[10px] uppercase"
+            style={{
+              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
+              letterSpacing: "0.18em",
+              color: "var(--text-muted)",
+            }}
+          >
+            Agent conversationnel ThumbGen
+          </CardDescription>
+          <CardAction>
+            <Tooltip>
+              <TooltipTrigger render={<span><UsageBadge /></span>} />
+              <TooltipContent>
+                <p>Usage OpenRouter ce mois-ci</p>
+              </TooltipContent>
+            </Tooltip>
+          </CardAction>
+        </CardHeader>
 
-      <ConversationList projectId={projectId} />
+        <ConversationList projectId={projectId} />
 
-      <MessageList messages={chatMessages} status={status} />
+        <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
+          <MessageList messages={chatMessages} status={status} />
 
-      {pendingToolPart && (
-        <PendingUiAction part={pendingToolPart} onResolve={respondToUiTool} />
-      )}
+          {pendingToolPart && (
+            <PendingUiAction part={pendingToolPart} onResolve={respondToUiTool} />
+          )}
 
-      <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
+          <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
 
-      {error && (
-        <Alert variant="destructive" className="mx-3 my-2">
-          <AlertTitle>Erreur</AlertTitle>
-          <AlertDescription>{error.message}</AlertDescription>
-        </Alert>
-      )}
+          {error && (
+            <Alert variant="destructive" className="mx-3 my-2">
+              <AlertTitle>Erreur</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
 
-      <Composer onSend={onSend} status={status} onStop={stop} />
+        <CardFooter className="p-0 border-t-0 bg-transparent">
+          <Composer onSend={onSend} status={status} onStop={stop} />
+        </CardFooter>
+      </Card>
 
       {annotateImageUrl && (
         <ImageAnnotateModal imageUrl={annotateImageUrl} onClose={closeAnnotate} />
