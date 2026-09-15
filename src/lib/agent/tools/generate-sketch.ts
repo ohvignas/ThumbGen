@@ -22,6 +22,8 @@ const InputSchema = z.object({
 
 const ASPECT_MAP: Record<string, string> = { "16x9": "16:9", "9x16": "9:16", "1x1": "1:1" };
 const SKETCH_MODEL = "gemini-2.5-flash-image"; // fastest/cheapest variant for drafts
+const OPENROUTER_SKETCH_SLUG = "google/gemini-2.5-flash-image";
+const OPENROUTER_IMAGES_ENDPOINT = "https://openrouter.ai/api/v1/images";
 
 const PENCIL_SUFFIX =
   " Render this as a hand-drawn rough pencil sketch on white paper — visible pencil strokes, simple line work, monochrome graphite, very rough proportions, no fine detail, working draft style. The goal is a sketch a designer would scribble on a notebook to communicate composition, not a polished render.";
@@ -36,25 +38,25 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     const ratio = aspect_ratio ?? "16x9";
     const useStyle = style ?? "pencil_sketch";
 
-    const apiKey = getSetting("geminiApiKey");
+    const apiKey = getSetting("openrouterApiKey");
     if (!apiKey) {
       return {
         isError: true,
-        content: [{ type: "text" as const, text: "Gemini API key not configured. Add it in Settings." }],
+        content: [{ type: "text" as const, text: "Clé API OpenRouter non configurée. Ajoute-la dans Réglages." }],
       };
     }
 
-    // Resolve image inputs (face + extra refs) → Gemini inlineData parts
-    const imageParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    // Resolve image inputs (face + extra refs) → data URLs for OpenRouter's
+    // input_references (each entry must be {type:"image_url", image_url:{url}}
+    // — a bare string 400s, confirmed against the real API).
+    const imageDataUrls: string[] = [];
     const sourcesToLoad: string[] = [];
     if (face_source) sourcesToLoad.push(face_source);
     if (reference_sources?.length) sourcesToLoad.push(...reference_sources);
     for (const src of sourcesToLoad) {
       try {
         const resolved = await resolveImageSource(src);
-        imageParts.push({
-          inlineData: { mimeType: resolved.mimeType, data: resolved.bytes.toString("base64") },
-        });
+        imageDataUrls.push(`data:${resolved.mimeType};base64,${resolved.bytes.toString("base64")}`);
       } catch (e) {
         return {
           isError: true,
@@ -79,27 +81,22 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     }
     const preface = prefaceParts.length ? prefaceParts.join(" ") + " " : "";
     const stylized = useStyle === "pencil_sketch" ? `${prompt}${PENCIL_SUFFIX}` : prompt;
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${SKETCH_MODEL}:generateContent?key=${apiKey}`;
     const body = {
-      contents: [
-        {
-          parts: [
-            ...imageParts,
-            { text: `Generate a YouTube thumbnail draft. ${preface}${stylized}` },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ["TEXT", "IMAGE"],
-        imageConfig: { aspectRatio: ASPECT_MAP[ratio], imageSize: "1K" },
-      },
+      model: OPENROUTER_SKETCH_SLUG,
+      prompt: `Generate a YouTube thumbnail draft. ${preface}${stylized}`,
+      n: 1,
+      aspect_ratio: ASPECT_MAP[ratio],
+      resolution: "1K",
+      ...(imageDataUrls.length > 0
+        ? { input_references: imageDataUrls.map((url) => ({ type: "image_url", image_url: { url } })) }
+        : {}),
     };
 
     let res: Response;
     try {
-      res = await fetch(endpoint, {
+      res = await fetch(OPENROUTER_IMAGES_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
       });
     } catch (e) {
@@ -112,33 +109,32 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       logGeneration({
-        provider: "gemini",
+        provider: "openrouter",
         model: SKETCH_MODEL,
         endpoint: "generate",
         timeMs: Date.now() - start,
         imageCount: 0,
         prompt,
         status: "error",
-        errorMessage: `Gemini ${res.status}: ${errText.slice(0, 200)}`,
+        errorMessage: `OpenRouter ${res.status}: ${errText.slice(0, 200)}`,
       });
       return {
         isError: true,
-        content: [{ type: "text" as const, text: `Gemini API error ${res.status}` }],
+        content: [{ type: "text" as const, text: `OpenRouter API error ${res.status}` }],
       };
     }
 
     const result = await res.json();
-    const part = result.candidates?.[0]?.content?.parts?.find(
-      (p: { inlineData?: unknown; inline_data?: unknown }) => p.inlineData || p.inline_data,
-    );
-    const imgData = part?.inlineData ?? part?.inline_data;
+    const imgData = result.data?.[0]?.b64_json
+      ? { data: result.data[0].b64_json, mimeType: result.data[0].media_type }
+      : undefined;
     if (!imgData) {
       return {
         isError: true,
-        content: [{ type: "text" as const, text: "Gemini returned no image" }],
+        content: [{ type: "text" as const, text: "OpenRouter returned no image" }],
       };
     }
-    const mimeType: string = imgData.mimeType ?? imgData.mime_type ?? "image/png";
+    const mimeType: string = imgData.mimeType || "image/png";
     const base64: string = imgData.data;
     const bytes = Buffer.from(base64, "base64");
 
@@ -151,16 +147,16 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       )
       .run(id, prompt, mimeType, bytes, costEstimate);
 
-    const usage = result.usageMetadata || {};
+    const usage = result.usage || {};
     logGeneration({
-      provider: "gemini",
+      provider: "openrouter",
       model: SKETCH_MODEL,
       endpoint: "generate",
       timeMs: Date.now() - start,
       imageCount: 1,
-      inputTokens: usage.promptTokenCount || 0,
-      outputTokens: usage.candidatesTokenCount || 0,
-      totalTokens: usage.totalTokenCount || 0,
+      inputTokens: usage.prompt_tokens || 0,
+      outputTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
       prompt,
       generatedImageIds: [id],
     });
