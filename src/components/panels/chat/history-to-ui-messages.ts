@@ -71,7 +71,26 @@ export function rowsToUIMessages(rows: Row[]): UIMessage[] {
           } as UIMessage["parts"][number]);
         }
       }
-      out.push({ id: row.id, role: msg.role as "user" | "assistant", parts });
+
+      // A row's content_json can hold MULTIPLE sequential non-tool entries —
+      // not just one — because persist-turn.ts's onEnd aggregates
+      // responseMessages across every step of a turn, and route-handler.ts
+      // runs up to 25 steps (stopWhen: isStepCount(25)). A 2-step turn (call
+      // tool A, get result, then call tool B or answer based on it) persists
+      // as e.g. [assistant(callA), tool(resultA), assistant(callB-or-text)]
+      // — all in ONE row. Pushing a new UIMessage per entry would give two
+      // objects both carrying `id: row.id`, a duplicate React key in
+      // MessageList (via uiMessageToLegacyDisplayMessage's `key={m.id}`) and
+      // the same logical turn rendering as multiple bubbles on reload instead
+      // of the single bubble it is live. So: only start a new UIMessage for
+      // the FIRST non-tool entry of a row; every subsequent one appends its
+      // parts onto that same message instead.
+      const prevForRow = out.at(-1);
+      if (prevForRow && prevForRow.id === row.id) {
+        prevForRow.parts.push(...parts);
+      } else {
+        out.push({ id: row.id, role: msg.role as "user" | "assistant", parts });
+      }
     }
   }
   return out;

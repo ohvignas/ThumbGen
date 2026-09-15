@@ -62,4 +62,29 @@ describe("rowsToUIMessages", () => {
       { type: "text", text: "done" },
     ]);
   });
+
+  it("merges a sequential multi-step turn (call tool, get result, then respond) into ONE UIMessage instead of duplicate-id messages", () => {
+    const rows = [
+      {
+        id: "r1",
+        role: "assistant" as const,
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "c1", toolName: "search_youtube", input: {} }] },
+          { role: "tool", content: [{ type: "tool-result", toolCallId: "c1", toolName: "search_youtube", output: { videos: [] } }] },
+          { role: "assistant", content: [{ type: "text", text: "Voici ce que j'ai trouvé." }] },
+        ]),
+      },
+    ];
+    const messages = rowsToUIMessages(rows);
+    // One UIMessage for the whole turn, not two sharing the same id.
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe("r1");
+
+    const toolPart = messages[0].parts.find((p) => p.type === "tool-search_youtube") as { state: string; output: unknown };
+    expect(toolPart.state).toBe("output-available");
+    expect(toolPart.output).toEqual({ videos: [] });
+
+    const textPart = messages[0].parts.find((p) => p.type === "text");
+    expect(textPart).toEqual({ type: "text", text: "Voici ce que j'ai trouvé." });
+  });
 });
