@@ -19,8 +19,9 @@ vi.mock("@/lib/agent/tools/_helpers/image-source", () => ({
   resolveImageSource: (...args: unknown[]) => resolveImageSourceMock(...args),
 }));
 
+const persistAssistantTurnMock = vi.fn();
 vi.mock("@/lib/agent/v2/persist-turn", () => ({
-  persistAssistantTurn: vi.fn(),
+  persistAssistantTurn: (...args: unknown[]) => persistAssistantTurnMock(...args),
 }));
 
 const streamTextMock = vi.fn();
@@ -29,17 +30,33 @@ vi.mock("ai", async (importOriginal) => {
   return { ...actual, streamText: (opts: unknown) => streamTextMock(opts) };
 });
 
-import "@/lib/agent/tools/all";
+// Deliberately NOT importing "@/lib/agent/tools/all" here — tool-adapter.ts
+// now does that import itself (Task 14's Bug 1 fix), and this suite must
+// exercise that real wiring rather than papering over a reverted fix with
+// its own copy of the same import. Before the fix, this file (and
+// v2-tool-adapter.test.ts) importing "@/lib/agent/tools/all" themselves is
+// exactly what kept the suite green while the real chat route's tool
+// registry was empty — see task-14-report.md.
 import { setSetting } from "@/lib/settings";
 
 // Matches what a real streamText() call returns, as far as postV2 touches it:
 // a UI-stream response factory plus consumeStream() (finding #5's disconnect
-// fix — postV2 now calls this unconditionally after streamText()).
+// fix — postV2 now calls this unconditionally after streamText()). Captures
+// the options object postV2 passes to toUIMessageStreamResponse() on the
+// returned handle (`_uiStreamOptions`) so tests can invoke its onEnd/onError
+// directly — the real AI SDK calls these once the stream actually finishes,
+// which this mock (unlike the real thing) never does on its own.
 function makeStreamResult() {
+  let uiStreamOptions: { onError?: (e: unknown) => string; onEnd?: (e: { outcome: { status: string; error?: unknown } }) => void } = {};
   return {
-    toUIMessageStreamResponse: () =>
-      new Response("ok", { headers: { "content-type": "text/event-stream" } }),
+    toUIMessageStreamResponse: (opts?: typeof uiStreamOptions) => {
+      uiStreamOptions = opts ?? {};
+      return new Response("ok", { headers: { "content-type": "text/event-stream" } });
+    },
     consumeStream: vi.fn(async () => {}),
+    get _uiStreamOptions() {
+      return uiStreamOptions;
+    },
   };
 }
 
@@ -74,6 +91,7 @@ describe("postV2", () => {
       mimeType: "image/jpeg",
       bytes: Buffer.from(""),
     }));
+    persistAssistantTurnMock.mockClear();
   });
 
   it("returns 400 when conversation_id is missing", async () => {
@@ -95,7 +113,7 @@ describe("postV2", () => {
     const res = await postV2(
       new Request("http://localhost/api/agent/chat", {
         method: "POST",
-        body: JSON.stringify({ conversation_id: "c1", project_id: "p1", message: { text: "hi" } }),
+        body: JSON.stringify({ conversation_id: "c1", project_id: "p1", messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }] }),
       }) as never,
     );
     expect(res.status).toBe(400);
@@ -112,7 +130,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: { text: "hi" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
           canvas_snapshot: { nodes: [], edges: [] },
         }),
       }) as never,
@@ -140,7 +158,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: { text: "hi" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
         }),
       }) as never,
     );
@@ -166,7 +184,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: { text: "hi" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
         }),
       }) as never,
     );
@@ -186,10 +204,8 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: `c-${Date.now()}`,
           project_id: "p1",
-          message: {
-            text: "look at this",
-            attachments: [{ type: "image", source: "stored:fr_nonexistent" }],
-          },
+          messages: [{ role: "user", parts: [{ type: "text", text: "look at this" }] }],
+          attachments: [{ type: "image", source: "stored:fr_nonexistent" }],
         }),
       }) as never,
     );
@@ -223,7 +239,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: "c-old-format",
           project_id: "p1",
-          message: { text: "continue" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
         }),
       }) as never,
     );
@@ -256,7 +272,7 @@ describe("postV2", () => {
         body: JSON.stringify({
           conversation_id: "c-migrated-format",
           project_id: "p1",
-          message: { text: "continue" },
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
         }),
       }) as never,
     );
@@ -265,5 +281,271 @@ describe("postV2", () => {
     const callArgs = streamTextMock.mock.calls[0][0] as { messages: Array<{ role: string }> };
     // The two prior (already-migrated) rows plus the new user turn.
     expect(callArgs.messages.length).toBe(3);
+  });
+
+  it("auto-resolves an abandoned pending request_user_image before persisting a new user turn", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    listMessagesMock.mockReturnValue([
+      fakeRow({ id: "u1", role: "user", content_json: JSON.stringify([{ role: "user", content: [{ type: "text", text: "fais-moi une image" }] }]) }),
+      fakeRow({
+        id: "a1",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "abandoned-1", toolName: "request_user_image", input: {} }] },
+        ]),
+      }),
+    ]);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: "c-abandoned",
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "en fait fais autre chose" }] }],
+        }),
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    // First call: the synthetic skip-result, persisted BEFORE the new user
+    // row so the conversation's tool-call/tool-result pairing stays valid.
+    expect(appendMessageMock).toHaveBeenCalledTimes(2);
+    const firstCallArg = appendMessageMock.mock.calls[0][0] as { role: string; content_json: string };
+    expect(firstCallArg.role).toBe("assistant");
+    const persisted = JSON.parse(firstCallArg.content_json);
+    expect(persisted).toEqual([
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "abandoned-1",
+            toolName: "request_user_image",
+            output: { type: "json", value: { skipped: true, reason: "abandoned" } },
+          },
+        ],
+      },
+    ]);
+    const secondCallArg = appendMessageMock.mock.calls[1][0] as { role: string };
+    expect(secondCallArg.role).toBe("user");
+  });
+
+  it("does NOT synthesize a skip-result when the last row's client-tool call is already resolved", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    listMessagesMock.mockReturnValue([
+      fakeRow({
+        id: "a1",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "resolved-1", toolName: "request_user_image", input: {} }] },
+        ]),
+      }),
+      fakeRow({
+        id: "a1-result",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "tool", content: [{ type: "tool-result", toolCallId: "resolved-1", toolName: "request_user_image", output: { type: "json", value: { skipped: true } } }] },
+        ]),
+      }),
+    ]);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: "c-already-resolved",
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
+        }),
+      }) as never,
+    );
+    // Only the new user row — no synthetic skip-result for an already-resolved call.
+    expect(appendMessageMock).toHaveBeenCalledTimes(1);
+    expect((appendMessageMock.mock.calls[0][0] as { role: string }).role).toBe("user");
+  });
+
+  it("does NOT synthesize a skip-result for a pending SERVER tool call (only request_user_image/sketch qualify)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    listMessagesMock.mockReturnValue([
+      fakeRow({
+        id: "a1",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "server-1", toolName: "list_logos", input: {} }] },
+        ]),
+      }),
+    ]);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: "c-server-tool-pending",
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "continue" }] }],
+        }),
+      }) as never,
+    );
+    expect(appendMessageMock).toHaveBeenCalledTimes(1);
+    expect((appendMessageMock.mock.calls[0][0] as { role: string }).role).toBe("user");
+  });
+
+  // Coverage for the stream-level onError/onEnd persistence path added
+  // alongside Task 14's Bug 2 fixes — previously nothing exercised this at
+  // all (the mock ignored toUIMessageStreamResponse's options argument
+  // entirely), which is exactly how the double-persist regression this
+  // covers shipped unnoticed in the first place.
+  it("persists an interrupted:1 marker via the stream-level onEnd when the request never reached streamText's own onEnd/onAbort", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    // Neither streamText's own onEnd nor onAbort was ever invoked by this
+    // mock (it doesn't simulate a real stream) — matches the real-world
+    // case a provider/API failure hits, where streamText's own callbacks
+    // never fire at all. Simulate the SDK reporting the whole request
+    // failed via the stream-level UIMessageStreamOnEndCallback.
+    streamResult._uiStreamOptions.onEnd?.({ outcome: { status: "failed" } });
+    expect(persistAssistantTurnMock).toHaveBeenCalledTimes(1);
+    expect(persistAssistantTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ interrupted: true, finishReason: "error", responseMessages: [] }),
+    );
+  });
+
+  it("does NOT double-persist when streamText's own onEnd already recorded the turn before the stream-level onEnd fires 'failed' (the exact regression: rows 153+154 for one request in a real conversation)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    const callArgs = streamTextMock.mock.calls[0][0] as {
+      onEnd: (e: { responseMessages: unknown[]; usage: Record<string, number>; finishReason: string }) => Promise<void>;
+    };
+    // streamText's real behavior for a step that produced output before a
+    // later failure: onEnd fires with a real (if partial) response, in
+    // addition to a `tool-error` part reaching the client via the per-chunk
+    // onError — NOT a stream-level "failed" outcome, since the turn did
+    // produce a response. Confirmed this is what actually happened for the
+    // real double-persisted rows this test is named after.
+    await callArgs.onEnd({ responseMessages: [{ role: "assistant", content: [] }], usage: { inputTokens: 1, outputTokens: 1 }, finishReason: "stop" });
+    expect(persistAssistantTurnMock).toHaveBeenCalledTimes(1);
+    // Now simulate the stream-level onEnd firing anyway (belt-and-suspenders
+    // — even if it somehow reported "failed" after a real onEnd already
+    // ran, turnPersisted must suppress the second write).
+    streamResult._uiStreamOptions.onEnd?.({ outcome: { status: "failed" } });
+    expect(persistAssistantTurnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stream-level onError only logs — does not persist (a routine tool-error part must not create a stray interrupted row alongside the turn's real response)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    const returned = streamResult._uiStreamOptions.onError?.(new Error("some tool-error part"));
+    expect(returned).toBe("An error occurred.");
+    expect(persistAssistantTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("stream-level onEnd is a no-op when the outcome is 'completed'", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    streamResult._uiStreamOptions.onEnd?.({ outcome: { status: "completed" } });
+    expect(persistAssistantTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a clean 400 and never calls streamText when a continuation resolves zero client-tool parts (defense-in-depth for ChatPanel.tsx's sendAutomaticallyWhen scoping)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    // A tool-continuation request (last message is role:"assistant", not
+    // "user") whose only tool part is a fully-resolved SERVER tool — exactly
+    // what ai's own (unscoped) lastAssistantMessageIsCompleteWithToolCalls
+    // would consider "complete" and auto-resubmit for, but which has no
+    // client-tool resolution for the tool-continuation branch to act on.
+    const res = await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [
+            {
+              role: "assistant",
+              parts: [{ type: "tool-list_logos", state: "output-available", toolCallId: "c1", output: {} }],
+            },
+          ],
+        }),
+      }) as never,
+    );
+    expect(res.status).toBe(400);
+    expect(streamTextMock).not.toHaveBeenCalled();
+    expect(appendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("proceeds normally (calls streamText) when a continuation resolves a real client-tool part", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [
+            {
+              role: "assistant",
+              parts: [{ type: "tool-request_user_image", state: "output-available", toolCallId: "c1", output: { skipped: true } }],
+            },
+          ],
+        }),
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect(streamTextMock).toHaveBeenCalledTimes(1);
+    expect(appendMessageMock).toHaveBeenCalledTimes(1);
   });
 });

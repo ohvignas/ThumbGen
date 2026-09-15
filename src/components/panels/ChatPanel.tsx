@@ -1,26 +1,37 @@
 "use client";
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useMemo, useCallback } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { lastAssistantMessageIsCompleteWithClientToolCalls } from "./chat/should-auto-continue";
 import { useChatStore } from "@/store/chat-store";
-import { useChat } from "@/hooks/useChat";
 import { useCanvasStore } from "@/store/canvas-store";
 import ConversationList from "./chat/ConversationList";
 import MessageList from "./chat/MessageList";
 import Composer from "./chat/Composer";
-import PendingUiAction, { UiToolRequest } from "./chat/PendingUiAction";
+import PendingUiAction, { PendingToolPart } from "./chat/PendingUiAction";
 import AgentActivity from "./chat/AgentActivity";
 import ImageAnnotateModal from "./chat/ImageAnnotateModal";
-import type { DisplayMessage, MessageBlock } from "./chat/Message";
-import type { ChatEvent } from "@/hooks/useChat";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import UsageBadge from "./chat/UsageBadge";
+import { rowsToUIMessages } from "./chat/history-to-ui-messages";
 
 /**
  * Right-side chat panel. Slide-in 420px wide. Mounted from Canvas.
  *
  * Lifecycle:
  *   - On open + active conversation change: fetch persisted messages
- *   - On send: optimistic user message + open SSE stream
- *   - SSE events flow into a "live" assistant message until done
+ *   - On send: @ai-sdk/react's useChat optimistically pushes the user
+ *     message and opens the UI-message stream against postV2
+ *     (src/lib/agent/v2/route-handler.ts, the only agent backend)
+ *   - The assistant message streams in as part of useChat's own `messages`
+ *     until `status` returns to "ready"
  *   - On done: refetch messages from DB to canonicalize
+ *
+ * NOTE: data-fetching was swapped from the old hand-rolled SSE hook
+ * (src/hooks/useChat.ts) to @ai-sdk/react's useChat. MessageList/AgentActivity
+ * were rewired in Tasks 5/6, Composer in Task 7, and PendingUiAction in
+ * Task 11 (this is the last of those rewires — no adapter scaffolding
+ * remains) to consume useChat's chatMessages/status/addToolOutput directly.
  */
 export default function ChatPanel({ projectId }: { projectId: string }) {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -32,27 +43,35 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
 
-  const { send, stop, streaming, events, reset, respondToUiTool } = useChat();
+  const {
+    messages: chatMessages,
+    status,
+    sendMessage,
+    stop,
+    addToolOutput,
+    setMessages,
+    error,
+  } = useChat({
+    // Starts empty; the "Load persisted history" useEffect below seeds this
+    // via setMessages(rowsToUIMessages(rows)) as soon as activeConversationId
+    // is known (including on first mount), so the initial [] here is only
+    // ever visible for a single render before that effect runs.
+    messages: [],
+    transport: new DefaultChatTransport({ api: "/api/agent/chat" }),
+    // Auto-resumes the turn once a client tool (request_user_image) has been
+    // resolved via addToolOutput — needed for Task 11's human-in-the-loop
+    // flow to actually continue the conversation instead of sitting
+    // resolved-but-idle. Scoped to client-tool completions specifically (see
+    // the function's own doc comment) — ai's own
+    // lastAssistantMessageIsCompleteWithToolCalls fires for ANY completed
+    // tool call, which could otherwise trigger an unbounded auto-
+    // continuation loop when the server's MAX_STEPS cap lands on a step that
+    // happened to end with completed server-tool results.
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls,
+  });
 
-  const bumpConversationListVersion = useChatStore((s) => s.bumpConversationListVersion);
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
-
-  const [history, setHistory] = useState<DisplayMessage[]>([]);
-
-  // When the agent emits `conversation_renamed` (auto-titled first turn), nudge
-  // the conversation list to refetch so the user sees the new title without a
-  // manual reload. We use a ref to track the seen ones since events accumulates.
-  const seenRenameRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    for (const e of events) {
-      if (e.type !== "conversation_renamed") continue;
-      const key = `${e.conversation_id}:${e.title}`;
-      if (seenRenameRef.current.has(key)) continue;
-      seenRenameRef.current.add(key);
-      bumpConversationListVersion();
-    }
-  }, [events, bumpConversationListVersion]);
 
   // When project changes, clear active conv so ConversationList picks the new
   // project's first conv (or stays empty if none). Without this, the previous
@@ -67,85 +86,78 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   // /api/face-reactions/analyze-untagged is still available if anyone wants
   // to retro-tag manually (e.g. via curl or a future UI button).
 
-  // Load persisted history when active conversation changes
+  // Load persisted history when active conversation changes, seeding
+  // useChat's own message state directly via rowsToUIMessages (Task 4) —
+  // this replaces the old history/setHistory adapter + rowToDisplay, which
+  // parsed content_json as the stale v1 AnthropicBlock[] shape and rendered
+  // every persisted message as an empty bubble now that Task 2's migration
+  // has moved the DB to ModelMessage[]-shaped rows.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       if (!activeConversationId) {
-        if (!cancelled) {
-          setHistory([]);
-          reset();
-        }
+        if (!cancelled) setMessages([]);
         return;
       }
       const rows = await fetch(`/api/agent/conversations/${activeConversationId}/messages`).then((r) => r.json()) as Array<{ id: string; role: "user" | "assistant"; content_json: string }>;
-      if (!cancelled) {
-        setHistory(rows.map(rowToDisplay));
-        reset();
-      }
+      if (!cancelled) setMessages(rowsToUIMessages(rows));
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, reset]);
+  }, [activeConversationId, setMessages]);
 
-  // Build the live assistant message from streaming events
-  const liveMessage: DisplayMessage | null = useMemo(() => {
-    if (events.length === 0) return null;
-    const blocks: MessageBlock[] = [];
-    let textBuf = "";
+  // The last message's pending client-tool part (request_user_image /
+  // request_user_sketch) — a direct scan of chatMessages, replacing the old
+  // legacyEvents-array scan. Requires state === "input-available"
+  // specifically (not just "!== output-available"): the deleted
+  // uiMessageToLegacyEvents adapter also excluded "input-streaming" (args
+  // not settled yet — `input?.reason` would be undefined, and resolving
+  // mid-stream sets state to "output-available" without ever firing the
+  // auto-continuation, since sendAutomaticallyWhen's send is gated on
+  // status being neither "streaming" nor "submitted" — the next
+  // tool-input-available chunk then silently overwrites the resolved part).
+  // "output-error"/"output-denied" are excluded too for the same reason —
+  // only "input-available" is a state where offering a resolution is safe.
+  const pendingToolPart = useMemo<PendingToolPart | undefined>(() => {
+    const lastMessage = chatMessages.at(-1);
+    return lastMessage?.role === "assistant"
+      ? lastMessage.parts.find(
+          (p): p is PendingToolPart =>
+            (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
+            p.state === "input-available",
+        )
+      : undefined;
+  }, [chatMessages]);
 
-    const flushText = () => {
-      if (textBuf) {
-        blocks.push({ type: "text", text: textBuf });
-        textBuf = "";
-      }
-    };
-
-    for (const e of events) {
-      if (e.type === "text_delta") {
-        textBuf += e.content;
-      } else if (e.type === "tool_call") {
-        flushText();
-        blocks.push({
-          type: "tool_call",
-          id: e.id,
-          name: e.name,
-          input: e.input,
-          status: "pending",
-        });
-      } else if (e.type === "tool_result") {
-        const idx = blocks.findIndex((b) => b.type === "tool_call" && b.id === e.id);
-        if (idx >= 0) {
-          const cur = blocks[idx] as Extract<MessageBlock, { type: "tool_call" }>;
-          blocks[idx] = { ...cur, status: "done", summary: e.summary, images: e.images };
-        }
-      } else if (e.type === "error") {
-        flushText();
-        blocks.push({ type: "text", text: `⚠ ${e.message}` });
-      }
-    }
-    flushText();
-    return { id: "live", role: "assistant", blocks };
-  }, [events]);
-
-  const messages = liveMessage ? [...history, liveMessage] : history;
-
-  const pendingUiRequest = useMemo<UiToolRequest | null>(() => {
-    const requests = events.filter((e) => e.type === "ui_tool_request");
-    if (requests.length === 0) return null;
-    const last = requests[requests.length - 1] as Extract<ChatEvent, { type: "ui_tool_request" }>;
-    const acked = events.some(
-      (e) => e.type === "ui_tool_response_ack" && (e as { id: string }).id === last.id,
-    );
-    if (acked) return null;
-    return {
-      id: last.id,
-      name: last.name as "request_user_image" | "request_user_sketch",
-      input: last.input as { reason?: string; suggested_kind?: string; initial_image_id?: string },
-    };
-  }, [events]);
+  // Resolves PendingUiAction's pending part via useChat's real addToolOutput.
+  // `options.body` is NOT optional: addToolOutput's auto-continuation
+  // (sendAutomaticallyWhen above) goes through the SAME DefaultChatTransport
+  // as a normal send, so it needs the same conversation_id/project_id/
+  // canvas_snapshot or route-handler.ts's own guard 400s it (verified
+  // against node_modules/ai/dist/index.js's real addToolOutput ->
+  // makeRequest -> transport.sendMessages call path) — see this task's brief
+  // header note.
+  const respondToUiTool = useCallback(
+    (toolCallId: string, result: unknown) => {
+      if (!pendingToolPart) return;
+      const toolName = pendingToolPart.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
+      void addToolOutput({
+        tool: toolName,
+        toolCallId,
+        output: result,
+        options: {
+          body: {
+            conversation_id: activeConversationId,
+            project_id: projectId,
+            canvas_snapshot: snapshotCanvas(nodes, edges),
+          },
+        },
+      });
+    },
+    [addToolOutput, pendingToolPart, activeConversationId, projectId, nodes, edges],
+  );
 
   const onSend = useCallback(async () => {
     // Auto-create a conversation if none active, then proceed with the send
@@ -164,37 +176,49 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     }
 
     const text = draft;
-    const atts = attachments.map((a) => ({ type: "image" as const, source: a.source }));
-
-    // Optimistic user message in history
-    const userBlocks: MessageBlock[] = [
-      ...(text ? [{ type: "text" as const, text }] : []),
-      ...attachments.map((a) => ({ type: "image" as const, preview_url: a.preview_url })),
-    ];
-    setHistory((h) => [
-      ...h,
-      { id: `local-${Date.now()}`, role: "user", blocks: userBlocks },
-    ]);
 
     setDraft("");
     clearAttachments();
 
-    // Send and stream
-    await send({
-      conversation_id: convId,
-      project_id: projectId,
-      message: { text, attachments: atts },
-      canvas_snapshot: snapshotCanvas(nodes, edges),
-    });
+    // useChat's sendMessage pushes the user's UIMessage into `chatMessages`
+    // synchronously before the network call resolves (AbstractChat.sendMessage
+    // in ai/dist/index.js calls state.pushMessage then awaits makeRequest), so
+    // — unlike the old hook — no manual optimistic append into `history` is
+    // needed here.
+    //
+    // Attachments deliberately do NOT go through AI SDK's own `files`/
+    // FileUIPart mechanism (Plan 2's Task 7 decision keeps AttachButton.tsx's
+    // existing `stored:<id>` string flow) — they're sent as a sibling
+    // top-level `attachments` field in `body`, read by route-handler.ts.
+    await sendMessage(
+      { text },
+      {
+        body: {
+          conversation_id: convId,
+          project_id: projectId,
+          canvas_snapshot: snapshotCanvas(nodes, edges),
+          attachments: attachments.map((a) => ({ type: "image" as const, source: a.source })),
+        },
+      },
+    );
 
     // Refetch persisted history (canonical assistant message replaces the live one).
     // If the user switched conversations mid-stream, the active conv has changed —
     // discard the refetch so we don't paint old messages over the new conv's UI.
     const rows = await fetch(`/api/agent/conversations/${convId}/messages`).then((r) => r.json());
     if (useChatStore.getState().activeConversationId !== convId) return;
-    setHistory((rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>).map(rowToDisplay));
-    reset();
-  }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, send, nodes, edges, reset]);
+    setMessages(rowsToUIMessages(rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>));
+
+    // Cheap, idempotent, always safe to call — ConversationList.tsx refetches
+    // the whole list on every bump. This is how the conversation list picks
+    // up an auto-generated title (route-handler.ts's generateAndPersistTitle,
+    // fire-and-forget server-side on a conversation's first turn) — there's
+    // no more SSE `conversation_renamed` event under v2 to trigger this
+    // precisely, so bumping unconditionally after every send is the simplest
+    // correct replacement. If the title write raced past this refetch, the
+    // list just shows the old title until the next bump.
+    useChatStore.getState().bumpConversationListVersion();
+  }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, sendMessage, nodes, edges, setMessages]);
 
   return (
     <aside
@@ -237,18 +261,22 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
       <ConversationList projectId={projectId} />
 
-      <MessageList messages={messages} />
+      <MessageList messages={chatMessages} status={status} />
 
-      {pendingUiRequest && (
-        <PendingUiAction
-          request={pendingUiRequest}
-          onResolve={(id, result) => respondToUiTool(id, result)}
-        />
+      {pendingToolPart && (
+        <PendingUiAction part={pendingToolPart} onResolve={respondToUiTool} />
       )}
 
-      <AgentActivity events={events} streaming={streaming} />
+      <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
 
-      <Composer onSend={onSend} streaming={streaming} onStop={stop} />
+      {error && (
+        <Alert variant="destructive" className="mx-3 my-2">
+          <AlertTitle>Erreur</AlertTitle>
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      )}
+
+      <Composer onSend={onSend} status={status} onStop={stop} />
 
       {annotateImageUrl && (
         <ImageAnnotateModal imageUrl={annotateImageUrl} onClose={closeAnnotate} />
@@ -258,58 +286,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 }
 
 // --- Helpers ---
-
-type AnthropicBlock =
-  | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
-  | {
-      type: "tool_use";
-      id: string;
-      name: string;
-      input: unknown;
-      // Custom fields we attach in loop.ts so the chat UI can re-render the
-      // tool result (gallery, summary) after the live message is replaced by
-      // the DB refetch. Anthropic ignores unknown fields when reading back.
-      _images?: string[];
-      _summary?: string;
-    }
-  | { type: "tool_result"; tool_use_id: string; content: unknown };
-
-function rowToDisplay(row: {
-  id: string;
-  role: "user" | "assistant";
-  content_json: string;
-}): DisplayMessage {
-  let blocks: AnthropicBlock[] = [];
-  try {
-    blocks = JSON.parse(row.content_json) as AnthropicBlock[];
-  } catch {
-    blocks = [];
-  }
-  const display: MessageBlock[] = [];
-  for (const b of blocks) {
-    if (b.type === "text") display.push({ type: "text", text: b.text });
-    else if (b.type === "image") {
-      display.push({
-        type: "image",
-        preview_url: `data:${b.source.media_type};base64,${b.source.data}`,
-      });
-    } else if (b.type === "tool_use") {
-      display.push({
-        type: "tool_call",
-        id: b.id,
-        name: b.name,
-        input: b.input,
-        status: "done",
-        summary: b._summary,
-        images: b._images,
-      });
-    }
-    // tool_result blocks are responses to assistant tool_use; we don't display them separately
-    // (they're part of the user role message in Anthropic format but represent tool output)
-  }
-  return { id: row.id, role: row.role, blocks: display };
-}
 
 function snapshotCanvas(nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }>, edges: Array<{ source: string; target: string; targetHandle?: string | null }>): unknown {
   return {

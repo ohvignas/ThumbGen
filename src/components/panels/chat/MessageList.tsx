@@ -1,33 +1,29 @@
 "use client";
-import { useEffect, useRef } from "react";
-import Message, { DisplayMessage } from "./Message";
+import { MessageScrollerProvider, MessageScroller, MessageScrollerViewport, MessageScrollerContent, MessageScrollerItem, MessageScrollerButton } from "@/components/ui/message-scroller";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import Message from "./Message";
+import type { ChatStatus, UIMessage } from "ai";
 
-export default function MessageList({ messages }: { messages: DisplayMessage[] }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.scrollTo({ top: ref.current.scrollHeight, behavior: "smooth" });
-    }
-  }, [messages]);
-
+export default function MessageList({ messages, status }: { messages: UIMessage[]; status: ChatStatus }) {
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-center px-8">
-        <div>
-          <p
-            className="italic mb-2"
+      <Empty className="flex-1 border-none">
+        <EmptyHeader>
+          <EmptyTitle
+            className="italic"
             style={{
               color: "var(--text-secondary)",
               fontFamily: "var(--font-display), 'Fraunces', serif",
               fontSize: 28,
+              fontWeight: 400,
               letterSpacing: "-0.015em",
               lineHeight: 1.15,
             }}
           >
             on commence <br />par quoi ?
-          </p>
-          <p
-            className="text-[11px] mt-3"
+          </EmptyTitle>
+          <EmptyDescription
+            className="text-[11px] mt-1"
             style={{
               color: "var(--text-muted)",
               fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
@@ -36,26 +32,26 @@ export default function MessageList({ messages }: { messages: DisplayMessage[] }
             }}
           >
             Texte · Image · Vocal
-          </p>
-        </div>
-      </div>
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
   return (
-    <div
-      ref={ref}
-      className="flex-1 overflow-y-auto"
-      style={{ borderTop: "1px solid var(--line-faint)" }}
-    >
-      {messages.map((m, i) => (
-        <div
-          key={m.id}
-          style={{ borderBottom: i === messages.length - 1 ? "none" : "1px solid var(--line-faint)" }}
-        >
-          <Message msg={m} />
-        </div>
-      ))}
-    </div>
+    <MessageScrollerProvider>
+      <MessageScroller className="flex-1" style={{ borderTop: "1px solid var(--line-faint)" }}>
+        <MessageScrollerViewport>
+          <MessageScrollerContent>
+            {messages.map((m, idx) => (
+              <MessageScrollerItem key={m.id} scrollAnchor={m.role === "user"}>
+                <Message message={m} isStreaming={status === "streaming" && idx === messages.length - 1} />
+              </MessageScrollerItem>
+            ))}
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <MessageScrollerButton />
+      </MessageScroller>
+    </MessageScrollerProvider>
   );
 }

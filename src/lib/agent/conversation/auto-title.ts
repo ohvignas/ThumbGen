@@ -1,4 +1,5 @@
-import { getOpenRouterClient } from "@/lib/agent/llm-client";
+import { generateText } from "ai";
+import { getOpenRouterProvider } from "@/lib/agent/v2/openrouter-provider";
 import { updateConversationTitle } from "./store";
 
 // A small fast model for one-shot titling. anthropic/claude-haiku-4.5 via
@@ -20,38 +21,37 @@ Réponds UNIQUEMENT avec le titre brut, rien d'autre.`;
 
 /**
  * Generate a short title for a conversation from the user's first message.
- * Fire-and-forget: failures are logged but don't block the agent loop. The
- * SSE `send` callback is invoked on success so the chat UI can refresh the
- * conversation list immediately.
+ * Fire-and-forget (matches v1's exact behavior — the caller does not await
+ * this): failures are logged but don't block the agent turn. There's no more
+ * SSE `conversation_renamed` event under v2 — the caller triggers a
+ * conversation-list refresh on its own timeline (ChatPanel.tsx bumps
+ * conversationListVersion after every send, independent of this) and picks
+ * up whatever title is in the DB by then; the eventual-consistency gap this
+ * creates (title may lag by one refresh if this hasn't written yet) already
+ * existed in v1, since the SSE event there was equally unawaited/racy against
+ * the main turn's own completion.
  */
 export async function generateAndPersistTitle(
   conversationId: string,
   firstUserText: string,
-  send: (event: string, data: unknown) => void,
 ): Promise<void> {
-  const client = getOpenRouterClient();
-  if (!client || !firstUserText.trim()) return;
+  const provider = getOpenRouterProvider();
+  if (!provider || !firstUserText.trim()) return;
 
   try {
-    const res = await client.chat.completions.create({
-      model: TITLE_MODEL,
-      max_tokens: 40,
-      messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: firstUserText.slice(0, 1000) },
-      ],
+    const { text } = await generateText({
+      model: provider(TITLE_MODEL),
+      system: SYSTEM,
+      messages: [{ role: "user", content: firstUserText.slice(0, 1000) }],
+      maxOutputTokens: 40,
     });
 
-    const raw = res.choices[0]?.message?.content;
-    if (!raw || typeof raw !== "string") return;
-
-    let title = raw.trim().replace(/^["'«»"]+|["'«»"]+$/g, "");
+    let title = text.trim().replace(/^["'«»"]+|["'«»"]+$/g, "");
     title = title.replace(/[.!?…]+$/g, "").trim();
     if (!title) return;
     if (title.length > 80) title = title.slice(0, 77).trimEnd() + "…";
 
     updateConversationTitle(conversationId, title);
-    send("conversation_renamed", { conversation_id: conversationId, title });
   } catch (e) {
     console.warn("[auto-title] generation failed:", (e as Error).message);
   }

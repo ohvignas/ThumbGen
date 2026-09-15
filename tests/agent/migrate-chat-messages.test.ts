@@ -74,8 +74,13 @@ describe("migrateAllMessages", () => {
       output: { type: string; value: unknown[] };
     };
     expect(toolResultPart.toolCallId).toBe("call_1");
+    // `data` must be the tagged FileData object, not a bare string — see
+    // convertToolResultOutput's comment in the migration script and
+    // src/lib/agent/v2/tool-adapter.ts's toModelOutput for why a bare
+    // string here fails real ModelMessage[] validation on the very next
+    // model turn (Task 14's Bug 2).
     expect(toolResultPart.output.value).toContainEqual({
-      type: "file", mediaType: "image/jpeg", data: "AAA=",
+      type: "file", mediaType: "image/jpeg", data: { type: "data", data: "AAA=" },
     });
 
     // The now-redundant tool_result-only row becomes a no-op, not deleted

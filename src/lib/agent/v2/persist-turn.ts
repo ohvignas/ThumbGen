@@ -42,12 +42,12 @@ export type FinishInfo = {
  * JSON (`[{type:"text",...}]` / `{type:"tool_use",...}` / etc.) into
  * `content_json`; v2 writes ModelMessage-shaped JSON (`[{role,content},...]`)
  * into that exact same column. Neither side can parse the other's rows.
- * THUMBGEN_AGENT_V2 is meant to be flipped ONCE, for good — not toggled
+ * The v1→v2 cutover was meant to happen ONCE, for good — not toggled
  * per-conversation or back and forth — because a conversation that picks up
- * even a single v2 turn can no longer be replayed correctly by the v1 code
- * path (and symmetrically, a v1 conversation continued under v2 before
- * `scripts/migrate-chat-messages-to-uimessage.ts` has run for it will feed
- * malformed history into `streamText`). See route-handler.ts's shape guard
+ * even a single v2 turn can no longer be replayed correctly by v1 (now
+ * deleted; see Task 13). A v1 conversation continued under v2 before
+ * `scripts/migrate-chat-messages-to-uimessage.ts` had run for it would have
+ * fed malformed history into `streamText`. See route-handler.ts's shape guard
  * on `priorMessages`, which rejects that case at request time with a clear
  * 400 instead of failing silently deep inside the provider call.
  *
