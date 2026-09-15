@@ -27,7 +27,22 @@ export async function postV2(req: NextRequest): Promise<Response> {
     | {
         conversation_id?: string;
         project_id?: string;
-        messages?: Array<{ role: string; parts?: Array<{ type: string; text?: string }> }>;
+        messages?: Array<{
+          role: string;
+          parts?: Array<{
+            type: string;
+            text?: string;
+            // Present on tool parts only — read on the tool-continuation
+            // path below (Task 11), where `lastMessage` is the ASSISTANT
+            // message whose client-tool part (request_user_image /
+            // request_user_sketch) was just resolved client-side via
+            // useChat's addToolOutput (PendingUiAction.tsx / ChatPanel.tsx).
+            toolCallId?: string;
+            state?: string;
+            output?: unknown;
+            errorText?: string;
+          }>;
+        }>;
         attachments?: Array<{ type: "image"; source: string }>;
         canvas_snapshot?: unknown;
       }
@@ -62,32 +77,107 @@ export async function postV2(req: NextRequest): Promise<Response> {
   let userParts: Array<
     { type: "text"; text: string } | { type: "file"; mediaType: string; data: string }
   >;
+
+  // `body.messages.at(-1)` is a fresh user turn for a NORMAL send, but NOT
+  // for the auto-continuation `sendAutomaticallyWhen` fires once
+  // PendingUiAction.tsx resolves a client tool (request_user_image /
+  // request_user_sketch) via useChat's addToolOutput (ChatPanel.tsx) — there,
+  // `this.state.messages` (the full client-side array @ai-sdk/react's
+  // useChat sends as `body.messages`) ends with the ASSISTANT message whose
+  // tool part just got resolved, not a new user message. Treating that as a
+  // fresh user turn would silently persist a spurious empty user row and
+  // hand streamText a `[...priorMessages, {role:"user",content:[]}]` with a
+  // bogus empty turn tacked on. Verified via the real addToolOutput call
+  // path (node_modules/ai/dist/index.js) during Task 3's review — see
+  // Task 11's brief header note (bugs #1/#2).
+  const lastMessage = body.messages?.at(-1);
+  const isNewUserTurn = lastMessage?.role === "user";
+
   try {
-    // Concatenate the new turn's text part(s) — useChat's sendMessage({text})
-    // produces a single { type: "text", text } part per call, but this stays
-    // defensive against multiple text parts rather than assuming exactly one.
-    const lastMessageText = (body.messages?.at(-1)?.parts ?? [])
-      .filter((p): p is { type: "text"; text: string } => p.type === "text" && typeof p.text === "string")
-      .map((p) => p.text)
-      .join("");
-
     userParts = [];
-    if (lastMessageText) userParts.push({ type: "text", text: lastMessageText });
-    for (const a of body.attachments ?? []) {
-      if (a.type !== "image") continue;
-      const img = await resolveImageSource(a.source);
-      userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });
-    }
+    if (isNewUserTurn) {
+      // Concatenate the new turn's text part(s) — useChat's sendMessage({text})
+      // produces a single { type: "text", text } part per call, but this stays
+      // defensive against multiple text parts rather than assuming exactly one.
+      const lastMessageText = (lastMessage?.parts ?? [])
+        .filter((p): p is { type: "text"; text: string } => p.type === "text" && typeof p.text === "string")
+        .map((p) => p.text)
+        .join("");
 
-    appendMessage({
-      conversation_id: conversationId,
-      role: "user",
-      content_json: JSON.stringify([{ role: "user", content: userParts }]),
-      interrupted: 0,
-      total_input_tokens: 0,
-      total_output_tokens: 0,
-      cost_estimate: 0,
-    });
+      if (lastMessageText) userParts.push({ type: "text", text: lastMessageText });
+      for (const a of body.attachments ?? []) {
+        if (a.type !== "image") continue;
+        const img = await resolveImageSource(a.source);
+        userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });
+      }
+
+      appendMessage({
+        conversation_id: conversationId,
+        role: "user",
+        content_json: JSON.stringify([{ role: "user", content: userParts }]),
+        interrupted: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        cost_estimate: 0,
+      });
+    } else {
+      // Tool-continuation: persist the client's resolution as its own
+      // `role:"tool"` ModelMessage row, separate from the assistant's
+      // tool-call row (already persisted by that turn's own onEnd before it
+      // paused for client input). This is NOT optional scaffolding-avoidance
+      // — two things make it required, not just tidy:
+      //   1. rowsToUIMessages (Task 4) already expects a tool-result to
+      //      arrive in a row separate from its matching tool-call row (see
+      //      its own header comment) and folds them back together by
+      //      toolCallId when history is reloaded.
+      //   2. `streamText` below validates `messages` at runtime against
+      //      `ai`'s real `modelMessageSchema` (confirmed reading
+      //      node_modules/ai/dist/index.js's `standardizePrompt` /
+      //      `toolResultPartSchema`) — a tool-result's `output` must be the
+      //      wrapped `{type:"json"|"text"|...,value}` form, not a bare
+      //      passthrough of the client's raw result object. Confirmed
+      //      against a real persisted row (`sqlite3 data/thumbgen.db`) that
+      //      a genuine server-tool result is stored exactly this way
+      //      (`output:{type:"content",value:[...]}`). Without this wrapper,
+      //      the very NEXT turn's `priorMessages` (built from this row) would
+      //      fail that validation and streamText would throw
+      //      InvalidPromptError instead of continuing.
+      // Only `request_user_image`/`request_user_sketch` (the two client
+      // tools PendingUiAction.tsx ever resolves — matching V2_CLIENT_TOOLS'
+      // exclusion of request_user_sketch from what the model can actually
+      // call) are considered here, so an already-persisted SERVER tool
+      // result elsewhere on the same message is never re-picked-up/
+      // duplicated.
+      const resolvedClientToolParts = (lastMessage?.parts ?? []).filter(
+        (p): p is { type: string; toolCallId: string; state: string; output?: unknown; errorText?: string } =>
+          (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
+          typeof p.toolCallId === "string" &&
+          (p.state === "output-available" || p.state === "output-error"),
+      );
+      if (resolvedClientToolParts.length > 0) {
+        const toolResultMessage = {
+          role: "tool" as const,
+          content: resolvedClientToolParts.map((p) => ({
+            type: "tool-result" as const,
+            toolCallId: p.toolCallId,
+            toolName: p.type.slice("tool-".length),
+            output:
+              p.state === "output-error"
+                ? { type: "error-text" as const, value: p.errorText ?? "error" }
+                : { type: "json" as const, value: p.output ?? null },
+          })),
+        };
+        appendMessage({
+          conversation_id: conversationId,
+          role: "assistant",
+          content_json: JSON.stringify([toolResultMessage]),
+          interrupted: 0,
+          total_input_tokens: 0,
+          total_output_tokens: 0,
+          cost_estimate: 0,
+        });
+      }
+    }
 
     // Every prior row is assumed to already be ModelMessage-shaped — true
     // once scripts/migrate-chat-messages-to-uimessage.ts has run for real
@@ -99,7 +189,14 @@ export async function postV2(req: NextRequest): Promise<Response> {
     // malformed history into streamText and letting it fail with an opaque
     // provider error: a ModelMessage always carries a `role` key, an
     // Anthropic content block never does.
-    const priorRows = listMessages(conversationId).slice(0, -1);
+    //
+    // On a normal send, the row just appended above (the new user turn) is
+    // excluded here and re-added below from the in-memory `userParts`
+    // instead (avoids re-parsing the JSON we just wrote). On a tool-
+    // continuation there's nothing to re-add afterward — the freshly
+    // appended tool-result row (if any) IS the last row and belongs in
+    // `priorMessages` as-is, so nothing is sliced off.
+    const priorRows = isNewUserTurn ? listMessages(conversationId).slice(0, -1) : listMessages(conversationId);
     priorMessages = [];
     for (const row of priorRows) {
       const parsed: unknown = JSON.parse(row.content_json);
@@ -126,7 +223,13 @@ export async function postV2(req: NextRequest): Promise<Response> {
   const result = streamText({
     model: provider(modelId),
     system: systemText,
-    messages: [...priorMessages, { role: "user", content: userParts }] as ModelMessage[],
+    // No new user message is appended on a tool-continuation (isNewUserTurn
+    // false) — `priorMessages` alone (assistant tool-call + the freshly
+    // persisted tool-result row above) is the correct prompt; streamText
+    // just resumes from where the model paused.
+    messages: (isNewUserTurn
+      ? [...priorMessages, { role: "user", content: userParts }]
+      : [...priorMessages]) as ModelMessage[],
     tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
     stopWhen: isStepCount(MAX_STEPS),
     // v1 checks abort only at the outer-iteration and token-streaming

@@ -2,12 +2,28 @@
 import { useEffect, useState } from "react";
 import LibraryPickerModal from "./LibraryPickerModal";
 import { useCanvasStore } from "@/store/canvas-store";
+import type { UIMessage } from "ai";
 
-export type UiToolRequest = {
-  id: string;
-  name: "request_user_image" | "request_user_sketch";
-  input: { reason?: string; suggested_kind?: string; initial_image_id?: string };
-};
+/**
+ * The last message's pending client-tool part — a `tool-request_user_image`
+ * or `tool-request_user_sketch` part whose `state` is not yet
+ * "output-available" (derived in ChatPanel.tsx via a direct scan of
+ * `chatMessages`, no intermediate normalized shape).
+ *
+ * Extracted against the template-literal `` `tool-${string}` `` shape
+ * (matching ToolCallCard.tsx's own `ToolPart`, Task 9) rather than the two
+ * literal tool-name strings directly: `useChat` here isn't given an explicit
+ * UIMessage<..., ToolsMap> generic listing every tool name, so
+ * `UIMessage["parts"][number]`'s tool variant only narrows down to the
+ * broad `tool-${string}` template — `Extract<..., {type: "tool-request_
+ * user_image" | "tool-request_user_sketch"}>` collapses to `never` (confirmed
+ * via `tsc --noEmit`) since a broad template type is never assignable to a
+ * narrower literal union. The two real tool names are still checked at
+ * runtime in the `.find()` predicate below / the `toolName` branches further
+ * down; this type only needs to be broad enough for `part.toolCallId`/
+ * `part.input`/`part.type` to type-check.
+ */
+export type PendingToolPart = Extract<UIMessage["parts"][number], { type: `tool-${string}` }>;
 
 const SKETCH_SENTINEL_NODE_ID = "__chat_sketch__";
 
@@ -49,18 +65,27 @@ function ActionButton({
 }
 
 export default function PendingUiAction({
-  request,
+  part,
   onResolve,
 }: {
-  request: UiToolRequest;
-  onResolve: (toolUseId: string, result: unknown) => void;
+  part: PendingToolPart;
+  onResolve: (toolCallId: string, result: unknown) => void;
 }) {
   const [showLib, setShowLib] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [sketchOpen, setSketchOpen] = useState(false);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
 
-  const skip = () => onResolve(request.id, { skipped: true });
+  // `part.input` is `unknown` at the type level (AI SDK's default UITools
+  // has no entry for these tool names, so it can't narrow further) — the
+  // real shape is `requestUserImageInputSchema`'s inferred type
+  // (reason/suggested_kind); `initial_image_id` was already speculative/
+  // unused in the OLD UiToolRequest["input"] type this replaces.
+  const input = part.input as { reason?: string; suggested_kind?: string; initial_image_id?: string } | undefined;
+  const toolName = part.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
+  const toolCallId = part.toolCallId;
+
+  const skip = () => onResolve(toolCallId, { skipped: true });
 
   useEffect(() => {
     if (!sketchOpen) return;
@@ -78,21 +103,21 @@ export default function PendingUiAction({
         fd.append("file", new File([blob], "sketch.png", { type: blob.type || "image/png" }));
         const upRes = await fetch("/api/chat-uploads", { method: "POST", body: fd });
         const upJson = (await upRes.json()) as { source?: string };
-        if (upJson.source) onResolve(request.id, { generated_id: upJson.source });
-        else onResolve(request.id, { skipped: true });
+        if (upJson.source) onResolve(toolCallId, { generated_id: upJson.source });
+        else onResolve(toolCallId, { skipped: true });
       } catch {
-        onResolve(request.id, { skipped: true });
+        onResolve(toolCallId, { skipped: true });
       }
     });
     return () => unsub();
-  }, [sketchOpen, request.id, onResolve, updateNodeData]);
+  }, [sketchOpen, toolCallId, onResolve, updateNodeData]);
 
   const openSketch = () => {
     window.dispatchEvent(
       new CustomEvent("open-sketch-editor", {
         detail: {
           nodeId: SKETCH_SENTINEL_NODE_ID,
-          aspectRatio: request.input.suggested_kind || "16x9",
+          aspectRatio: input?.suggested_kind || "16x9",
           workflowAssets: [],
         },
       }),
@@ -100,7 +125,7 @@ export default function PendingUiAction({
     setSketchOpen(true);
   };
 
-  if (request.name === "request_user_image") {
+  if (toolName === "request_user_image") {
     return (
       <div
         className="mx-3 my-2 rounded-xl p-3"
@@ -126,7 +151,7 @@ export default function PendingUiAction({
             lineHeight: 1.4,
           }}
         >
-          {request.input.reason || "L'assistant demande une image."}
+          {input?.reason || "L'assistant demande une image."}
         </p>
         <div className="flex gap-2 flex-wrap">
           <label
@@ -154,8 +179,8 @@ export default function PendingUiAction({
                   fd.append("file", f);
                   const res = await fetch("/api/chat-uploads", { method: "POST", body: fd });
                   const j = (await res.json()) as { source?: string; error?: string };
-                  if (j.source) onResolve(request.id, { source_ids: [j.source] });
-                  else onResolve(request.id, { skipped: true });
+                  if (j.source) onResolve(toolCallId, { source_ids: [j.source] });
+                  else onResolve(toolCallId, { skipped: true });
                 } finally {
                   setUploading(false);
                 }
@@ -173,7 +198,7 @@ export default function PendingUiAction({
           <LibraryPickerModal
             onClose={() => setShowLib(false)}
             onPick={(source) => {
-              onResolve(request.id, { source_ids: [source] });
+              onResolve(toolCallId, { source_ids: [source] });
               setShowLib(false);
             }}
           />
@@ -182,7 +207,7 @@ export default function PendingUiAction({
     );
   }
 
-  if (request.name === "request_user_sketch") {
+  if (toolName === "request_user_sketch") {
     return (
       <div
         className="mx-3 my-2 rounded-xl p-3"
@@ -207,7 +232,7 @@ export default function PendingUiAction({
             lineHeight: 1.4,
           }}
         >
-          {request.input.reason || "L'assistant veut que tu dessines un croquis."}
+          {input?.reason || "L'assistant veut que tu dessines un croquis."}
         </p>
         <div className="flex gap-2">
           <ActionButton onClick={openSketch} disabled={sketchOpen}>

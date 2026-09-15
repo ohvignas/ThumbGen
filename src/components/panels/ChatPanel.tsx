@@ -1,23 +1,19 @@
 "use client";
-import { useEffect, useMemo, useCallback, useRef } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
-  isToolUIPart,
-  getToolName,
-  type UIMessage,
 } from "ai";
 import { useChatStore } from "@/store/chat-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import ConversationList from "./chat/ConversationList";
 import MessageList from "./chat/MessageList";
 import Composer from "./chat/Composer";
-import PendingUiAction, { UiToolRequest } from "./chat/PendingUiAction";
+import PendingUiAction, { PendingToolPart } from "./chat/PendingUiAction";
 import AgentActivity from "./chat/AgentActivity";
 import ImageAnnotateModal from "./chat/ImageAnnotateModal";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import type { ChatEvent } from "@/hooks/useChat";
 import UsageBadge from "./chat/UsageBadge";
 import { rowsToUIMessages } from "./chat/history-to-ui-messages";
 
@@ -35,11 +31,9 @@ import { rowsToUIMessages } from "./chat/history-to-ui-messages";
  *
  * NOTE: data-fetching was swapped from the old hand-rolled SSE hook
  * (src/hooks/useChat.ts) to @ai-sdk/react's useChat. MessageList/AgentActivity
- * were rewired in Tasks 5/6 and Composer in Task 7 to consume useChat's
- * chatMessages/status directly. PendingUiAction still expects the OLD
- * ChatEvent[] shape (it's rewritten in Task 11), so the `legacyEvents`/
- * `uiMessageToLegacyEvents` adapter below (marked TODO(Task 11)) stays in
- * place solely to feed `pendingUiRequest`/`respondToUiTool` until then.
+ * were rewired in Tasks 5/6, Composer in Task 7, and PendingUiAction in
+ * Task 11 (this is the last of those rewires — no adapter scaffolding
+ * remains) to consume useChat's chatMessages/status/addToolOutput directly.
  */
 export default function ChatPanel({ projectId }: { projectId: string }) {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -73,38 +67,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
 
-  const bumpConversationListVersion = useChatStore((s) => s.bumpConversationListVersion);
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
-
-  // TODO(Task 11): remove once PendingUiAction is rewritten to consume
-  // useChat's UIMessage[]/ChatStatus directly. It maps this-session live
-  // messages (chatMessages) back into the OLD ChatEvent[] shape that child
-  // (still unmodified) expects. MessageList/AgentActivity/Composer were
-  // rewired to consume chatMessages/status directly in Tasks 5/6/7.
-  const legacyEvents: ChatEvent[] = useMemo(
-    () => chatMessages.flatMap(uiMessageToLegacyEvents),
-    [chatMessages],
-  );
-
-  // When the agent emits a `conversation_renamed` event (auto-titled first
-  // turn), nudge the conversation list to refetch so the user sees the new
-  // title without a manual reload. We use a ref to track the seen ones
-  // since legacyEvents accumulates.
-  // NOTE: v2 (postV2) does not currently emit anything that maps to
-  // `conversation_renamed` via the adapter below, so this effect is
-  // presently a no-op under THUMBGEN_AGENT_V2=1 — kept as-is (untouched
-  // JSX/behavior) since wiring that up is out of this task's scope.
-  const seenRenameRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    for (const e of legacyEvents) {
-      if (e.type !== "conversation_renamed") continue;
-      const key = `${e.conversation_id}:${e.title}`;
-      if (seenRenameRef.current.has(key)) continue;
-      seenRenameRef.current.add(key);
-      bumpConversationListVersion();
-    }
-  }, [legacyEvents, bumpConversationListVersion]);
 
   // When project changes, clear active conv so ConversationList picks the new
   // project's first conv (or stays empty if none). Without this, the previous
@@ -141,30 +105,46 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   }, [activeConversationId, setMessages]);
 
-  const pendingUiRequest = useMemo<UiToolRequest | null>(() => {
-    const requests = legacyEvents.filter((e) => e.type === "ui_tool_request");
-    if (requests.length === 0) return null;
-    const last = requests[requests.length - 1] as Extract<ChatEvent, { type: "ui_tool_request" }>;
-    const acked = legacyEvents.some(
-      (e) => e.type === "ui_tool_response_ack" && (e as { id: string }).id === last.id,
-    );
-    if (acked) return null;
-    return {
-      id: last.id,
-      name: last.name as "request_user_image" | "request_user_sketch",
-      input: last.input as { reason?: string; suggested_kind?: string; initial_image_id?: string },
-    };
-  }, [legacyEvents]);
+  // The last message's pending client-tool part (request_user_image /
+  // request_user_sketch, state not yet "output-available") — a direct scan
+  // of chatMessages, replacing the old legacyEvents-array scan.
+  const pendingToolPart = useMemo<PendingToolPart | undefined>(() => {
+    const lastMessage = chatMessages.at(-1);
+    return lastMessage?.role === "assistant"
+      ? lastMessage.parts.find(
+          (p): p is PendingToolPart =>
+            (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
+            p.state !== "output-available",
+        )
+      : undefined;
+  }, [chatMessages]);
 
-  // TODO(Task 5-11): remove — bridges PendingUiAction's legacy
-  // (toolUseId, result) callback onto useChat's real addToolOutput, which
-  // needs the tool name (not just the call id) to resolve the right part.
+  // Resolves PendingUiAction's pending part via useChat's real addToolOutput.
+  // `options.body` is NOT optional: addToolOutput's auto-continuation
+  // (sendAutomaticallyWhen above) goes through the SAME DefaultChatTransport
+  // as a normal send, so it needs the same conversation_id/project_id/
+  // canvas_snapshot or route-handler.ts's own guard 400s it (verified
+  // against node_modules/ai/dist/index.js's real addToolOutput ->
+  // makeRequest -> transport.sendMessages call path) — see this task's brief
+  // header note.
   const respondToUiTool = useCallback(
     (toolCallId: string, result: unknown) => {
-      if (!pendingUiRequest) return;
-      void addToolOutput({ tool: pendingUiRequest.name, toolCallId, output: result });
+      if (!pendingToolPart) return;
+      const toolName = pendingToolPart.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
+      void addToolOutput({
+        tool: toolName,
+        toolCallId,
+        output: result,
+        options: {
+          body: {
+            conversation_id: activeConversationId,
+            project_id: projectId,
+            canvas_snapshot: snapshotCanvas(nodes, edges),
+          },
+        },
+      });
     },
-    [addToolOutput, pendingUiRequest],
+    [addToolOutput, pendingToolPart, activeConversationId, projectId, nodes, edges],
   );
 
   const onSend = useCallback(async () => {
@@ -261,11 +241,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
       <MessageList messages={chatMessages} status={status} />
 
-      {pendingUiRequest && (
-        <PendingUiAction
-          request={pendingUiRequest}
-          onResolve={(id, result) => respondToUiTool(id, result)}
-        />
+      {pendingToolPart && (
+        <PendingUiAction part={pendingToolPart} onResolve={respondToUiTool} />
       )}
 
       <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
@@ -316,56 +293,4 @@ function summarizeNode(type: string, data: Record<string, unknown>): Record<stri
     default:
       return {};
   }
-}
-
-// TODO(Task 11): remove everything below — temporary UIMessage -> legacy
-// ChatEvent[] adapter kept only so the untouched PendingUiAction child
-// component keeps working against @ai-sdk/react's useChat output until it's
-// rewritten.
-
-/** Client tools resolved via addToolOutput from the browser (Plan 2's UI-tool
- * mechanism), matching PendingUiAction's UiToolRequest["name"] union. */
-const CLIENT_UI_TOOL_NAMES = new Set(["request_user_image", "request_user_sketch"]);
-
-function uiMessageToLegacyEvents(m: UIMessage): ChatEvent[] {
-  const out: ChatEvent[] = [];
-  for (const part of m.parts) {
-    if (part.type === "text") {
-      if (part.text) out.push({ type: "text_delta", content: part.text });
-      continue;
-    }
-    if (!isToolUIPart(part)) continue;
-    if (part.state === "input-streaming") continue; // input not settled yet
-
-    const name = getToolName(part);
-    const input = part.input;
-
-    if (CLIENT_UI_TOOL_NAMES.has(name)) {
-      out.push({ type: "ui_tool_request", id: part.toolCallId, name, input });
-      if (part.state === "output-available" || part.state === "output-error" || part.state === "output-denied") {
-        out.push({ type: "ui_tool_response_ack", id: part.toolCallId });
-      }
-      continue;
-    }
-
-    out.push({ type: "tool_call", id: part.toolCallId, name, input, scope: "server" });
-    if (part.state === "output-available") {
-      const output = part.output as { summary?: string; images?: string[] } | undefined;
-      out.push({
-        type: "tool_result",
-        id: part.toolCallId,
-        name,
-        summary: typeof output?.summary === "string" ? output.summary : "",
-        images: output?.images,
-      });
-    } else if (part.state === "output-error" || part.state === "output-denied") {
-      out.push({
-        type: "tool_result",
-        id: part.toolCallId,
-        name,
-        summary: part.state === "output-error" ? part.errorText : "refusé",
-      });
-    }
-  }
-  return out;
 }
