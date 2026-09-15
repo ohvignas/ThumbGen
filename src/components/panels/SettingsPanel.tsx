@@ -116,7 +116,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasGemini ? "var(--accent)" : "var(--bone-faint)" }}
+            style={{ background: settings?.hasGemini ? "var(--canvas-accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasGemini ? `Connecté (${settings.geminiApiKey})` : "Non configuré"}
@@ -139,7 +139,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--canvas-accent)" }}
         >
           Obtenir une clé gratuite →
         </a>
@@ -153,7 +153,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasIdeogram ? "var(--accent)" : "var(--bone-faint)" }}
+            style={{ background: settings?.hasIdeogram ? "var(--canvas-accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasIdeogram ? `Connecté (${settings.ideogramApiKey})` : "Non configuré"}
@@ -176,7 +176,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--canvas-accent)" }}
         >
           Obtenir une clé →
         </a>
@@ -190,7 +190,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasOpenai ? "var(--accent)" : "var(--bone-faint)" }}
+            style={{ background: settings?.hasOpenai ? "var(--canvas-accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasOpenai ? `Connecté (${settings?.openaiApiKey})` : "Non configuré"}
@@ -213,7 +213,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--canvas-accent)" }}
         >
           Obtenir une clé →
         </a>
@@ -227,7 +227,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasGrok ? "var(--accent)" : "var(--bone-faint)" }}
+            style={{ background: settings?.hasGrok ? "var(--canvas-accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasGrok ? `Connecté (${settings?.grokApiKey})` : "Non configuré"}
@@ -250,7 +250,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--canvas-accent)" }}
         >
           Obtenir une clé →
         </a>
@@ -264,7 +264,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasOpenrouter ? "var(--accent)" : "var(--bone-faint)" }}
+            style={{ background: settings?.hasOpenrouter ? "var(--canvas-accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasOpenrouter ? `Connecté (${settings?.openrouterApiKey})` : "Non configuré"}
@@ -287,7 +287,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--canvas-accent)" }}
         >
           Obtenir une clé →
         </a>
@@ -332,7 +332,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasAnthropic ? "var(--accent)" : "var(--bone-faint)" }}
+            style={{ background: settings?.hasAnthropic ? "var(--canvas-accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasAnthropic ? `Connecté (${settings?.anthropicApiKey})` : "Non configuré"}
@@ -355,7 +355,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--canvas-accent)" }}
         >
           Obtenir une clé →
         </a>
@@ -369,7 +369,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         <div className="flex items-center gap-2 mb-1">
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasYoutube ? "var(--accent)" : "var(--bone-faint)" }}
+            style={{ background: settings?.hasYoutube ? "var(--canvas-accent)" : "var(--bone-faint)" }}
           />
           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {settings?.hasYoutube ? `Connecté (${settings.youtubeApiKey})` : "Non configuré"}
@@ -392,7 +392,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
           target="_blank"
           rel="noopener"
           className="text-[10px] mt-1 block"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--canvas-accent)" }}
         >
           Obtenir une clé →
         </a>
@@ -459,7 +459,7 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
         disabled={saving}
         className="w-full py-2 rounded-lg text-xs font-medium transition-all"
         style={{
-          background: saved ? "var(--accent)" : "var(--bone)",
+          background: saved ? "var(--canvas-accent)" : "var(--bone)",
           color: "var(--canvas-bg)",
           opacity: saving ? 0.5 : 1,
         }}

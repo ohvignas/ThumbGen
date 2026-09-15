@@ -87,7 +87,7 @@ export default function GeneratorNode({
   const faceCap = provider === "gemini" ? REFERENCE_CAPS[model]?.characters : undefined;
   const faceUnsupported = connectedFaceCount > 0 && faceCap === 0;
 
-  const iconColor = provider === "ideogram" ? INPUT_TYPE_COLORS.ideogram : "var(--accent)";
+  const iconColor = provider === "ideogram" ? INPUT_TYPE_COLORS.ideogram : "var(--canvas-accent)";
   const modelIcon = (
     <svg width="16" height="16" viewBox="0 0 24 24" fill={iconColor} strokeWidth="0">
       <path d="M12 2L9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61z" />
@@ -390,7 +390,7 @@ export default function GeneratorNode({
       <Handle type="target" position={Position.Left} id="ref-in" style={{ top: "20%" }} />
       <button
         className="absolute nopan nodrag text-xs cursor-pointer transition-colors"
-        style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--accent)", background: "none", border: "none", padding: "2px 4px" }}
+        style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--canvas-accent)", background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
         onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 200 }, id, "ref-in", "image")}
@@ -485,7 +485,7 @@ export default function GeneratorNode({
             className="px-2 rounded-xl nopan nodrag transition-all flex-shrink-0"
             style={{
               background: "var(--surface)",
-              color: "var(--accent-yellow)",
+              color: "var(--canvas-accent-yellow)",
             }}
             title="Définir comme modèle par défaut"
           >
@@ -543,7 +543,7 @@ export default function GeneratorNode({
                   onClick={() => updateNodeData(id, { imageSize: size })}
                   className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
                   style={{
-                    background: (data.imageSize || "2K") === size ? "var(--accent)" : "var(--surface)",
+                    background: (data.imageSize || "2K") === size ? "var(--canvas-accent)" : "var(--surface)",
                     color: (data.imageSize || "2K") === size ? "var(--canvas-bg)" : "var(--text-muted)",
                   }}
                 >
@@ -563,7 +563,7 @@ export default function GeneratorNode({
                 onClick={() => updateNodeData(id, { numImages: n })}
                 className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
                 style={{
-                  background: (data.numImages || 1) === n ? "var(--accent)" : "var(--surface)",
+                  background: (data.numImages || 1) === n ? "var(--canvas-accent)" : "var(--surface)",
                   color: (data.numImages || 1) === n ? "var(--canvas-bg)" : "var(--text-muted)",
                 }}
               >
@@ -596,7 +596,7 @@ export default function GeneratorNode({
             {ideogramMode === "remix" && (
               <div>
                 <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Poids de l&apos;image : {data.imageWeight ?? 50}%</label>
-                <input type="range" min={0} max={100} value={data.imageWeight ?? 50} onChange={(e) => updateNodeData(id, { imageWeight: Number(e.target.value) })} className="w-full nopan nodrag" style={{ accentColor: "var(--accent)" }} />
+                <input type="range" min={0} max={100} value={data.imageWeight ?? 50} onChange={(e) => updateNodeData(id, { imageWeight: Number(e.target.value) })} className="w-full nopan nodrag" style={{ accentColor: "var(--canvas-accent)" }} />
               </div>
             )}
           </>
@@ -628,7 +628,7 @@ export default function GeneratorNode({
                     onChange={() => isAvailable && toggleCompareModel(m.id)}
                     disabled={!isAvailable}
                     className="nopan nodrag"
-                    style={{ accentColor: "var(--accent)" }}
+                    style={{ accentColor: "var(--canvas-accent)" }}
                   />
                   {m.label} <span style={{ color: "var(--text-muted)" }}>— {getModelPriceLabel(m.id)}</span>
                   {!isAvailable && <span style={{ color: "var(--bone-faint)", fontSize: 10 }}>(inactif)</span>}
@@ -646,7 +646,7 @@ export default function GeneratorNode({
           onClick={compareModels.size > 0 ? handleCompare : handleGenerate}
           disabled={data.isGenerating}
           className="w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          style={{ background: "var(--accent-yellow)", color: "var(--canvas-bg)" }}
+          style={{ background: "var(--canvas-accent-yellow)", color: "var(--canvas-bg)" }}
         >
           {data.isGenerating ? (
             <>
@@ -668,7 +668,7 @@ export default function GeneratorNode({
       </div>
 
       <Handle type="source" position={Position.Right} id="result" />
-      <span className="absolute text-xs pointer-events-none" style={{ right: -8, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--accent)" }}>
+      <span className="absolute text-xs pointer-events-none" style={{ right: -8, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--canvas-accent)" }}>
         Résultat
       </span>
     </NodeShell>

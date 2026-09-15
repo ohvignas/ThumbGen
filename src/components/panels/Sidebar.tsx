@@ -678,7 +678,7 @@ export default function Sidebar() {
                 {uploadedSwipes.length > 0 && (
                   <div className="mb-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="w-2 h-2 rounded-full" style={{ background: "var(--accent)" }} />
+                      <span className="w-2 h-2 rounded-full" style={{ background: "var(--canvas-accent)" }} />
                       <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
                         Mes références
                       </span>
@@ -808,7 +808,7 @@ export default function Sidebar() {
                 {filteredSwipe.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="w-2 h-2 rounded-full" style={{ background: "var(--accent)" }} />
+                      <span className="w-2 h-2 rounded-full" style={{ background: "var(--canvas-accent)" }} />
                       <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
                         Miniatures enregistrées
                       </span>
@@ -982,7 +982,7 @@ export default function Sidebar() {
                         border: "1px solid transparent",
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "var(--accent)";
+                        e.currentTarget.style.borderColor = "var(--canvas-accent)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.borderColor = "transparent";

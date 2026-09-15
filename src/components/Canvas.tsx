@@ -219,7 +219,7 @@ function CanvasInner() {
     </svg>
   );
   const imageIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4 4-6 5 7" />
     </svg>
   );
@@ -230,7 +230,7 @@ function CanvasInner() {
           title: "Entrées",
           items: [
             { label: "Prompt", icon: promptIcon, onClick: () => addNode("prompt", contextMenu.flowPos) },
-            { label: "Croquis", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addNode("sketch", contextMenu.flowPos) },
+            { label: "Croquis", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addNode("sketch", contextMenu.flowPos) },
             { label: "Visage de référence", icon: faceIcon, onClick: () => addNode("faceReference", contextMenu.flowPos) },
             { label: "Image / logo", icon: imageIcon, onClick: () => addNode("swipeFile", contextMenu.flowPos) },
           ],
@@ -238,11 +238,11 @@ function CanvasInner() {
         {
           title: "",
           items: [
-            { label: "Générateur", icon: STAR_ICON("var(--accent-yellow)", true), onClick: () => addNode("generator", contextMenu.flowPos, { model: favoriteModel }) },
+            { label: "Générateur", icon: STAR_ICON("var(--canvas-accent-yellow)", true), onClick: () => addNode("generator", contextMenu.flowPos, { model: favoriteModel }) },
             {
               label: "Texte overlay",
               icon: (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-yellow)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent-yellow)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 7V5h16v2M9 20h6M12 5v15" />
                 </svg>
               ),
@@ -329,7 +329,7 @@ function CanvasInner() {
               title: "Entrées",
               items: [
                 { label: "Prompt", icon: promptIcon, onClick: () => addConnectedNode("prompt") },
-                { label: "Croquis", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addConnectedNode("sketch") },
+                { label: "Croquis", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>, onClick: () => addConnectedNode("sketch") },
                 { label: "Visage de référence", icon: faceIcon, onClick: () => addConnectedNode("faceReference") },
                 { label: "Image / logo", icon: imageIcon, onClick: () => addConnectedNode("swipeFile") },
               ],
@@ -337,13 +337,13 @@ function CanvasInner() {
             {
               title: "",
               items: [
-                { label: "Générateur", icon: STAR_ICON("var(--accent-yellow)", true), onClick: () => addConnectedNode("generator", { model: favoriteModel }) },
+                { label: "Générateur", icon: STAR_ICON("var(--canvas-accent-yellow)", true), onClick: () => addConnectedNode("generator", { model: favoriteModel }) },
               ],
             },
             {
               title: "",
               items: [
-                { label: "Aperçu", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>, onClick: () => addConnectedNode("preview") },
+                { label: "Aperçu", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>, onClick: () => addConnectedNode("preview") },
               ],
             },
           ]}

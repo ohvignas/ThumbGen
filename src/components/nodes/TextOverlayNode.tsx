@@ -141,7 +141,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
       onDelete={() => removeNode(id)}
       width={320}
       icon={
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-yellow)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent-yellow)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 7V5h16v2M9 20h6M12 5v15" />
         </svg>
       }
@@ -149,7 +149,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
       <Handle type="target" position={Position.Left} id="image-in" style={{ top: "20%" }} />
       <span
         className="absolute text-xs pointer-events-none"
-        style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--accent)" }}
+        style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--canvas-accent)" }}
       >
         Image
       </span>
@@ -218,7 +218,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
                 onClick={() => updateNodeData(id, { overlayPosition: p.id })}
                 className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
                 style={{
-                  background: position === p.id ? "var(--accent)" : "var(--surface)",
+                  background: position === p.id ? "var(--canvas-accent)" : "var(--surface)",
                   color: position === p.id ? "var(--canvas-bg)" : "var(--text-muted)",
                 }}
               >
@@ -245,7 +245,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
             value={fontScale}
             onChange={(e) => updateNodeData(id, { overlayFontScale: Number(e.target.value) })}
             className="w-full nopan nodrag"
-            style={{ accentColor: "var(--accent)" }}
+            style={{ accentColor: "var(--canvas-accent)" }}
           />
         </div>
 
@@ -253,7 +253,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
           onClick={applyOverlay}
           disabled={rendering || !sourceImage}
           className="w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: "var(--accent-yellow)", color: "var(--canvas-bg)" }}
+          style={{ background: "var(--canvas-accent-yellow)", color: "var(--canvas-bg)" }}
         >
           {rendering ? "Application…" : "→ Appliquer le texte"}
         </button>
@@ -274,7 +274,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
       <Handle type="source" position={Position.Right} id="result" />
       <span
         className="absolute text-xs pointer-events-none"
-        style={{ right: -8, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--accent)" }}
+        style={{ right: -8, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--canvas-accent)" }}
       >
         Résultat
       </span>

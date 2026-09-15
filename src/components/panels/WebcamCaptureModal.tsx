@@ -151,7 +151,7 @@ export default function WebcamCaptureModal({
             <div
               key={s.angle}
               className="flex-1 h-1 rounded-full"
-              style={{ background: shots[s.angle] ? "var(--accent)" : i === stepIndex ? "var(--bone-soft)" : "var(--surface)" }}
+              style={{ background: shots[s.angle] ? "var(--canvas-accent)" : i === stepIndex ? "var(--bone-soft)" : "var(--surface)" }}
             />
           ))}
         </div>
@@ -210,7 +210,7 @@ export default function WebcamCaptureModal({
               onClick={capture}
               disabled={!ready || !!error}
               className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40"
-              style={{ background: "var(--accent-yellow)", color: "var(--canvas-bg)" }}
+              style={{ background: "var(--canvas-accent-yellow)", color: "var(--canvas-bg)" }}
             >
               Capturer
             </button>
@@ -230,7 +230,7 @@ export default function WebcamCaptureModal({
             onClick={next}
             disabled={!preview}
             className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30"
-            style={{ background: "var(--accent)", color: "var(--canvas-bg)" }}
+            style={{ background: "var(--canvas-accent)", color: "var(--canvas-bg)" }}
           >
             {stepIndex < STEPS.length - 1 ? "Suivant" : "Terminer"}
           </button>

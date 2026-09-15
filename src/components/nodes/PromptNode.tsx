@@ -87,7 +87,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
           placeholder="Décris ta miniature : un gros plan de mon visage choqué avec le logo Claude…"
           className="w-full h-24 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none nopan nodrag"
           style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid transparent" }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--canvas-accent)")}
           onBlur={(e) => (e.currentTarget.style.borderColor = "transparent")}
         />
 
@@ -98,7 +98,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
             className="w-full py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-2 nopan nodrag"
             style={{
               background: enhancing ? "var(--surface)" : "rgba(110, 221, 179, 0.1)",
-              color: enhancing ? "var(--text-muted)" : "var(--accent)",
+              color: enhancing ? "var(--text-muted)" : "var(--canvas-accent)",
               border: "1px solid rgba(110, 221, 179, 0.2)",
             }}
           >
@@ -126,14 +126,14 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
           placeholder="Negative prompt (optional)..."
           className="w-full h-12 rounded-xl px-4 py-2 text-xs resize-none focus:outline-none nopan nodrag"
           style={{ background: "var(--surface)", color: "var(--text-tertiary)", border: "1px solid transparent" }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--canvas-accent)")}
           onBlur={(e) => (e.currentTarget.style.borderColor = "transparent")}
         />
       </div>
 
       <Handle type="source" position={Position.Right} id="prompt" />
       <div className="handle-label handle-label-right" style={{ top: "50%", right: -8, transform: "translateX(100%) translateY(-50%)" }}>
-        <span style={{ color: "var(--accent)", fontSize: 10 }}>Prompt</span>
+        <span style={{ color: "var(--canvas-accent)", fontSize: 10 }}>Prompt</span>
       </div>
     </NodeShell>
   );

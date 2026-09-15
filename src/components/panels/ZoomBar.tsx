@@ -139,7 +139,7 @@ export default function ZoomBar() {
         onClick={() => setMode("navigate")}
         className="p-1.5 rounded-lg transition-all"
         style={{
-          background: mode === "navigate" ? "var(--accent-yellow)" : "transparent",
+          background: mode === "navigate" ? "var(--canvas-accent-yellow)" : "transparent",
           color: mode === "navigate" ? "var(--canvas-bg)" : "var(--text-tertiary)",
         }}
         title="Navigate"
@@ -152,7 +152,7 @@ export default function ZoomBar() {
         onClick={() => setMode("pan")}
         className="p-1.5 rounded-lg transition-all"
         style={{
-          background: mode === "pan" ? "var(--accent-yellow)" : "transparent",
+          background: mode === "pan" ? "var(--canvas-accent-yellow)" : "transparent",
           color: mode === "pan" ? "var(--canvas-bg)" : "var(--text-tertiary)",
         }}
         title="Pan"
