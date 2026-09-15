@@ -406,9 +406,9 @@ export default function AppSidebar() {
               <>
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-sm font-medium text-foreground">Visages</h3>
-                  <Button size="sm" variant="secondary" onClick={() => setNewVisageOpen(true)} disabled={savingPersona}>
+                  <Button size="sm" variant="secondary" onClick={() => setNewVisageOpen(true)} disabled={savingPersona || faceUploading}>
                     <Plus className="size-3" />
-                    {savingPersona ? "Enregistrement…" : "Nouveau visage"}
+                    {savingPersona ? "Enregistrement…" : faceUploading ? "Import…" : "Nouveau visage"}
                   </Button>
                 </div>
                 <p className="text-xs mb-3 text-muted-foreground">Clique pour ajouter au canvas ({filteredVisages.length})</p>

@@ -27,7 +27,7 @@ export default function WebcamCaptureModal({
   onComplete,
 }: {
   onClose: () => void;
-  onComplete: (photos: Record<Angle, string>, name: string) => void;
+  onComplete: (photos: Record<Angle, string>, name: string) => void | Promise<void>;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -43,6 +43,10 @@ export default function WebcamCaptureModal({
   // should carry over unchanged.
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  // Guards finish() below against duplicate persona creation from a
+  // key-repeat Enter or an impatient double-click while the save (3
+  // base64-encoded photos POSTed to /api/personas) is in flight.
+  const [submitting, setSubmitting] = useState(false);
 
   const step = STEPS[stepIndex];
   const preview = shots[step.angle];
@@ -129,13 +133,25 @@ export default function WebcamCaptureModal({
     }
   };
 
-  const finish = () => {
-    // Don't stop the stream here: onComplete's save can fail, in which case
-    // the caller keeps this modal open so the user can retry or go back to
-    // retake — stopping the camera now would leave them stuck with a dead
-    // feed. The mount effect's cleanup stops it once this component
-    // actually unmounts (close, or a successful save).
-    onComplete(shots as Record<Angle, string>, name.trim());
+  const finish = async () => {
+    // Bail if a save is already in flight — prevents a key-repeat Enter or
+    // a double-click from firing onComplete (and thus POST /api/personas)
+    // more than once and creating duplicate personas.
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      // Don't stop the stream here: onComplete's save can fail, in which case
+      // the caller keeps this modal open so the user can retry or go back to
+      // retake — stopping the camera now would leave them stuck with a dead
+      // feed. The mount effect's cleanup stops it once this component
+      // actually unmounts (close, or a successful save).
+      await onComplete(shots as Record<Angle, string>, name.trim());
+    } finally {
+      // On success the caller unmounts this modal (harmless no-op state
+      // update if it beats this to it); on failure this re-enables the
+      // button so the user can retry.
+      setSubmitting(false);
+    }
   };
 
   const prev = () => {
@@ -192,7 +208,7 @@ export default function WebcamCaptureModal({
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") finish(); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.repeat) finish(); }}
               placeholder="Ex: Antoine, Moi, Perso vidéo…"
               className="w-full px-3 py-2 rounded-xl text-sm mb-3 focus:outline-none"
               style={{ background: "var(--surface)", color: "var(--text-secondary)", border: "1px solid transparent" }}
@@ -207,10 +223,11 @@ export default function WebcamCaptureModal({
               </button>
               <button
                 onClick={finish}
-                className="flex-1 py-2 rounded-xl text-xs font-medium"
+                disabled={submitting}
+                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40"
                 style={{ background: "var(--canvas-accent)", color: "var(--canvas-bg)" }}
               >
-                Créer le personnage
+                {submitting ? "Enregistrement…" : "Créer le personnage"}
               </button>
             </div>
           </>
