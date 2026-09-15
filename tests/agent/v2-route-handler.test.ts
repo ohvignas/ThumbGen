@@ -386,4 +386,56 @@ describe("postV2", () => {
     streamResult._uiStreamOptions.onEnd?.({ outcome: { status: "completed" } });
     expect(persistAssistantTurnMock).not.toHaveBeenCalled();
   });
+
+  it("returns a clean 400 and never calls streamText when a continuation resolves zero client-tool parts (defense-in-depth for ChatPanel.tsx's sendAutomaticallyWhen scoping)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    // A tool-continuation request (last message is role:"assistant", not
+    // "user") whose only tool part is a fully-resolved SERVER tool — exactly
+    // what ai's own (unscoped) lastAssistantMessageIsCompleteWithToolCalls
+    // would consider "complete" and auto-resubmit for, but which has no
+    // client-tool resolution for the tool-continuation branch to act on.
+    const res = await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [
+            {
+              role: "assistant",
+              parts: [{ type: "tool-list_logos", state: "output-available", toolCallId: "c1", output: {} }],
+            },
+          ],
+        }),
+      }) as never,
+    );
+    expect(res.status).toBe(400);
+    expect(streamTextMock).not.toHaveBeenCalled();
+    expect(appendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("proceeds normally (calls streamText) when a continuation resolves a real client-tool part", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(makeStreamResult());
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [
+            {
+              role: "assistant",
+              parts: [{ type: "tool-request_user_image", state: "output-available", toolCallId: "c1", output: { skipped: true } }],
+            },
+          ],
+        }),
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect(streamTextMock).toHaveBeenCalledTimes(1);
+    expect(appendMessageMock).toHaveBeenCalledTimes(1);
+  });
 });

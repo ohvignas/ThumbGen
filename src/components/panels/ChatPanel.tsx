@@ -1,10 +1,8 @@
 "use client";
 import { useEffect, useMemo, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
-import {
-  DefaultChatTransport,
-  lastAssistantMessageIsCompleteWithToolCalls,
-} from "ai";
+import { DefaultChatTransport } from "ai";
+import { lastAssistantMessageIsCompleteWithClientToolCalls } from "./chat/should-auto-continue";
 import { useChatStore } from "@/store/chat-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import ConversationList from "./chat/ConversationList";
@@ -63,8 +61,13 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // Auto-resumes the turn once a client tool (request_user_image) has been
     // resolved via addToolOutput — needed for Task 11's human-in-the-loop
     // flow to actually continue the conversation instead of sitting
-    // resolved-but-idle.
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    // resolved-but-idle. Scoped to client-tool completions specifically (see
+    // the function's own doc comment) — ai's own
+    // lastAssistantMessageIsCompleteWithToolCalls fires for ANY completed
+    // tool call, which could otherwise trigger an unbounded auto-
+    // continuation loop when the server's MAX_STEPS cap lands on a step that
+    // happened to end with completed server-tool results.
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls,
   });
 
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);

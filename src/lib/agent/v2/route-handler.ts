@@ -275,6 +275,21 @@ export async function postV2(req: NextRequest): Promise<Response> {
           total_output_tokens: 0,
           cost_estimate: 0,
         });
+      } else {
+        // Defense-in-depth: this should be unreachable now that ChatPanel.tsx's
+        // sendAutomaticallyWhen only fires for a message whose last step
+        // includes an actual client-tool completion (request_user_image /
+        // request_user_sketch) — see lastAssistantMessageIsCompleteWithClientToolCalls
+        // there. Without this guard, a continuation with zero resolved
+        // client-tool parts (e.g. a stale client still running the old,
+        // unscoped predicate, or a future regression) would silently fall
+        // through to streamText below and re-run the model for up to
+        // MAX_STEPS more steps with nothing new to respond to. Return early
+        // instead, matching this file's other guard-clause responses.
+        return new Response(
+          "No client-tool resolution found in this continuation; nothing to resume.",
+          { status: 400 },
+        );
       }
     }
 
