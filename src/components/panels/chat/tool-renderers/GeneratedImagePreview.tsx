@@ -6,10 +6,28 @@ import { useChatStore } from "@/store/chat-store";
 /**
  * See SearchYoutubeGallery.tsx for the full explanation of why a tool part's
  * `output` needs normalizing across two real shapes (live execute() return
- * vs. persisted/reloaded history). Duplicated here rather than shared so
- * this file stays a standalone component per this task's brief.
+ * vs. persisted/reloaded history) — including why a reloaded `type:"file"`
+ * item's `data` field must itself accept EITHER a bare base64 string
+ * (pre-Bug-2-fix / unmigrated rows) or the tagged `{type:"data", data}`
+ * object (current, schema-correct rows): accepting only the newer shape is
+ * what silently made this component render nothing (`imageItem` undefined
+ * → `return null`, no image, no caption, no "+ canvas" button) for any
+ * reloaded generate_sketch result once that fix landed. Duplicated here
+ * rather than shared so this file stays a standalone component per this
+ * task's brief.
  */
 type NormalizedItem = { type: "text"; text: string } | { type: "image"; mediaType: string; data: string };
+
+/** Reloaded file parts carry `data` as either a bare base64 string (pre-fix
+ * / unmigrated rows) or the tagged `{type:"data", data}` object (current,
+ * schema-correct rows) — accept both. */
+function extractFileData(data: unknown): string | undefined {
+  if (typeof data === "string") return data;
+  if (data && typeof data === "object" && typeof (data as { data?: unknown }).data === "string") {
+    return (data as { data: string }).data;
+  }
+  return undefined;
+}
 
 function normalizeToolContent(output: unknown): NormalizedItem[] {
   if (!output || typeof output !== "object") return [];
@@ -27,8 +45,9 @@ function normalizeToolContent(output: unknown): NormalizedItem[] {
       out.push({ type: "text", text: c.text });
     } else if (c.type === "image" && typeof c.data === "string") {
       out.push({ type: "image", mediaType: typeof c.mimeType === "string" ? c.mimeType : "image/jpeg", data: c.data });
-    } else if (c.type === "file" && typeof c.data === "string" && typeof c.mediaType === "string" && c.mediaType.startsWith("image/")) {
-      out.push({ type: "image", mediaType: c.mediaType, data: c.data });
+    } else if (c.type === "file" && typeof c.mediaType === "string" && c.mediaType.startsWith("image/")) {
+      const d = extractFileData(c.data);
+      if (d) out.push({ type: "image", mediaType: c.mediaType, data: d });
     }
   }
   return out;

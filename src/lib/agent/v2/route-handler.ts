@@ -16,6 +16,56 @@ if (typeof window === "undefined") startGcLoop();
 
 const MAX_STEPS = 25;
 
+/**
+ * Retroactively fixes up any persisted tool-result image part whose `data`
+ * field is still a bare base64 string (every row written before Task 14's
+ * Bug 2 fix landed, plus any row `scripts/migrate-chat-messages-to-uimessage.ts`
+ * wrote before ITS matching fix) into the tagged `{type:"data", data}`
+ * shape `type:"file"` actually requires — see tool-adapter.ts's
+ * toModelOutput for the full explanation of why the bare string fails real
+ * ModelMessage[] validation.
+ *
+ * Without this, an old poisoned row (confirmed for real: rowid 151 in
+ * conversation ad1f4e56-...) fails `modelMessageSchema` forever — every
+ * future request in that conversation errors, `route-handler.ts`'s
+ * `looksMigrated` guard above only checks for a `role` key and never
+ * shape-validates deeper, so it lets these through unnoticed. Applied here,
+ * on READ, to the messages actually sent to the model — this makes old rows
+ * retroactively valid without a separate migration pass or ever rewriting
+ * the DB. `structuredClone` avoids mutating the caller's parsed value in
+ * place (defensive; nothing else currently holds a reference to it, but the
+ * cost is negligible and it keeps this function obviously side-effect-free).
+ */
+function normalizeStaleToolResultFileData(messages: unknown[]): unknown[] {
+  return messages.map((m) => {
+    if (typeof m !== "object" || m === null) return m;
+    const msg = m as { role?: unknown; content?: unknown };
+    if (msg.role !== "tool" || !Array.isArray(msg.content)) return m;
+    let changed = false;
+    const content = msg.content.map((part) => {
+      if (typeof part !== "object" || part === null) return part;
+      const p = part as { type?: unknown; output?: unknown };
+      if (p.type !== "tool-result" || typeof p.output !== "object" || p.output === null) return part;
+      const output = p.output as { type?: unknown; value?: unknown };
+      if (output.type !== "content" || !Array.isArray(output.value)) return part;
+      let outputChanged = false;
+      const value = output.value.map((item) => {
+        if (typeof item !== "object" || item === null) return item;
+        const i = item as { type?: unknown; data?: unknown };
+        if (i.type === "file" && typeof i.data === "string") {
+          outputChanged = true;
+          return { ...i, data: { type: "data" as const, data: i.data } };
+        }
+        return item;
+      });
+      if (!outputChanged) return part;
+      changed = true;
+      return { ...p, output: { ...output, value } };
+    });
+    return changed ? { ...msg, content } : m;
+  });
+}
+
 export async function postV2(req: NextRequest): Promise<Response> {
   // `messages` here is the wire shape @ai-sdk/react's useChat/DefaultChatTransport
   // actually sends (the full UIMessage[] the client holds) — there is no
@@ -248,7 +298,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
           { status: 400 },
         );
       }
-      priorMessages.push(...(parsed as unknown[]));
+      priorMessages.push(...normalizeStaleToolResultFileData(parsed as unknown[]));
     }
 
     const systemBlocks = buildSystemMessages(body.canvas_snapshot, body.project_id);
@@ -256,6 +306,19 @@ export async function postV2(req: NextRequest): Promise<Response> {
   } catch (e) {
     return new Response(`Failed to prepare the conversation: ${(e as Error).message}`, { status: 400 });
   }
+
+  // Guards the stream-level onError/onEnd fallback below against
+  // double-persisting: streamText's OWN onEnd only skips firing for
+  // NoOutputGeneratedError specifically — any other failure that happens
+  // after at least one step already produced output fires BOTH the
+  // per-chunk onError (used only for logging below, not persistence — see
+  // the toUIMessageStreamResponse() call) AND this onEnd, for the SAME
+  // turn. Confirmed against real data: conversation 71150f5b-... has row
+  // 153 (empty, interrupted:1) and row 154 (the full, real 280KB response)
+  // both persisted from ONE request. Set true at the top of streamText's
+  // own onEnd/onAbort so the stream-level fallback never fires against a
+  // turn that already got a proper row.
+  let turnPersisted = false;
 
   const result = streamText({
     model: provider(modelId),
@@ -296,6 +359,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
     // name — see persist-turn.ts's FinishInfo.totalUsage for why aggregation
     // across steps is required in the first place).
     onEnd: async ({ responseMessages, usage, finishReason }) => {
+      turnPersisted = true;
       persistAssistantTurn({
         conversationId,
         responseMessages,
@@ -313,6 +377,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
     // per-step results finished before the abort — so they're reconstructed
     // here by aggregating across those steps.
     onAbort: ({ steps }) => {
+      turnPersisted = true;
       const totalUsage = steps.reduce(
         (acc, s) => ({
           inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
@@ -359,23 +424,47 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // ANOTHER orphaned user message, and so on — a growing run of consecutive
   // un-replied user turns that make the conversation progressively more
   // likely to trip the model provider on every future request, with no way
-  // to recover except abandoning the conversation. Persisting an
-  // `interrupted:1` marker here (mirroring onAbort's own placeholder) keeps
-  // the conversation's turn structure well-formed for reconstruction and
-  // stops that compounding spiral at the first failure instead of letting it
-  // snowball.
+  // to recover except abandoning the conversation.
+  //
+  // Persistence deliberately does NOT happen in `onError` below — `onError`
+  // is the per-chunk stream handler, called for EVERY error-shaped part
+  // that reaches the client, including a routine `tool-error` part
+  // (!providerExecuted) from a tool that throws but lets the turn continue
+  // normally afterward (e.g. search-youtube.ts on a non-OK YouTube response,
+  // or resolveImageSource on a stale ref) — persisting there produced a
+  // stray `interrupted:1` row ALONGSIDE the turn's real, successful
+  // response (confirmed against real data: conversation 71150f5b-... has
+  // both row 153, empty/interrupted, and row 154, the full real answer,
+  // from one request). `onError` here is log-only. The stream-level `onEnd`
+  // below (UIMessageStreamOnEndCallback — distinct from streamText's own
+  // `onEnd` above; this one reports the whole request's outcome exactly
+  // once) is where a still-unpersisted failure gets its `interrupted:1`
+  // marker, guarded by `turnPersisted` so it never fires against a turn
+  // streamText's own onEnd/onAbort already recorded.
   return result.toUIMessageStreamResponse({
     onError: (error) => {
       console.error("[agent v2] stream error:", error);
-      persistAssistantTurn({
-        conversationId,
-        responseMessages: [],
-        totalUsage: {},
-        finishReason: "error",
-        interrupted: true,
-        modelInfo,
-      });
       return "An error occurred.";
+    },
+    onEnd: ({ outcome }) => {
+      if (outcome.status !== "failed" || turnPersisted) return;
+      try {
+        persistAssistantTurn({
+          conversationId,
+          responseMessages: [],
+          totalUsage: { inputTokens: 0, outputTokens: 0 },
+          finishReason: "error",
+          interrupted: true,
+          modelInfo,
+        });
+      } catch (e) {
+        // Never let a persistence failure (e.g. this environment's
+        // separately-tracked SQLite corruption) escape from here — `ai`
+        // rethrows anything onError/onEnd throws, which would break the
+        // HTTP stream into a truncated response instead of the clean
+        // "An error occurred." frame the client already received.
+        console.error("[agent v2] failed to persist error marker:", e);
+      }
     },
   });
 }

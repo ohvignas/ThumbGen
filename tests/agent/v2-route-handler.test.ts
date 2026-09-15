@@ -19,8 +19,9 @@ vi.mock("@/lib/agent/tools/_helpers/image-source", () => ({
   resolveImageSource: (...args: unknown[]) => resolveImageSourceMock(...args),
 }));
 
+const persistAssistantTurnMock = vi.fn();
 vi.mock("@/lib/agent/v2/persist-turn", () => ({
-  persistAssistantTurn: vi.fn(),
+  persistAssistantTurn: (...args: unknown[]) => persistAssistantTurnMock(...args),
 }));
 
 const streamTextMock = vi.fn();
@@ -29,17 +30,33 @@ vi.mock("ai", async (importOriginal) => {
   return { ...actual, streamText: (opts: unknown) => streamTextMock(opts) };
 });
 
-import "@/lib/agent/tools/all";
+// Deliberately NOT importing "@/lib/agent/tools/all" here — tool-adapter.ts
+// now does that import itself (Task 14's Bug 1 fix), and this suite must
+// exercise that real wiring rather than papering over a reverted fix with
+// its own copy of the same import. Before the fix, this file (and
+// v2-tool-adapter.test.ts) importing "@/lib/agent/tools/all" themselves is
+// exactly what kept the suite green while the real chat route's tool
+// registry was empty — see task-14-report.md.
 import { setSetting } from "@/lib/settings";
 
 // Matches what a real streamText() call returns, as far as postV2 touches it:
 // a UI-stream response factory plus consumeStream() (finding #5's disconnect
-// fix — postV2 now calls this unconditionally after streamText()).
+// fix — postV2 now calls this unconditionally after streamText()). Captures
+// the options object postV2 passes to toUIMessageStreamResponse() on the
+// returned handle (`_uiStreamOptions`) so tests can invoke its onEnd/onError
+// directly — the real AI SDK calls these once the stream actually finishes,
+// which this mock (unlike the real thing) never does on its own.
 function makeStreamResult() {
+  let uiStreamOptions: { onError?: (e: unknown) => string; onEnd?: (e: { outcome: { status: string; error?: unknown } }) => void } = {};
   return {
-    toUIMessageStreamResponse: () =>
-      new Response("ok", { headers: { "content-type": "text/event-stream" } }),
+    toUIMessageStreamResponse: (opts?: typeof uiStreamOptions) => {
+      uiStreamOptions = opts ?? {};
+      return new Response("ok", { headers: { "content-type": "text/event-stream" } });
+    },
     consumeStream: vi.fn(async () => {}),
+    get _uiStreamOptions() {
+      return uiStreamOptions;
+    },
   };
 }
 
@@ -74,6 +91,7 @@ describe("postV2", () => {
       mimeType: "image/jpeg",
       bytes: Buffer.from(""),
     }));
+    persistAssistantTurnMock.mockClear();
   });
 
   it("returns 400 when conversation_id is missing", async () => {
@@ -263,5 +281,109 @@ describe("postV2", () => {
     const callArgs = streamTextMock.mock.calls[0][0] as { messages: Array<{ role: string }> };
     // The two prior (already-migrated) rows plus the new user turn.
     expect(callArgs.messages.length).toBe(3);
+  });
+
+  // Coverage for the stream-level onError/onEnd persistence path added
+  // alongside Task 14's Bug 2 fixes — previously nothing exercised this at
+  // all (the mock ignored toUIMessageStreamResponse's options argument
+  // entirely), which is exactly how the double-persist regression this
+  // covers shipped unnoticed in the first place.
+  it("persists an interrupted:1 marker via the stream-level onEnd when the request never reached streamText's own onEnd/onAbort", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    // Neither streamText's own onEnd nor onAbort was ever invoked by this
+    // mock (it doesn't simulate a real stream) — matches the real-world
+    // case a provider/API failure hits, where streamText's own callbacks
+    // never fire at all. Simulate the SDK reporting the whole request
+    // failed via the stream-level UIMessageStreamOnEndCallback.
+    streamResult._uiStreamOptions.onEnd?.({ outcome: { status: "failed" } });
+    expect(persistAssistantTurnMock).toHaveBeenCalledTimes(1);
+    expect(persistAssistantTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ interrupted: true, finishReason: "error", responseMessages: [] }),
+    );
+  });
+
+  it("does NOT double-persist when streamText's own onEnd already recorded the turn before the stream-level onEnd fires 'failed' (the exact regression: rows 153+154 for one request in a real conversation)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    const callArgs = streamTextMock.mock.calls[0][0] as {
+      onEnd: (e: { responseMessages: unknown[]; usage: Record<string, number>; finishReason: string }) => Promise<void>;
+    };
+    // streamText's real behavior for a step that produced output before a
+    // later failure: onEnd fires with a real (if partial) response, in
+    // addition to a `tool-error` part reaching the client via the per-chunk
+    // onError — NOT a stream-level "failed" outcome, since the turn did
+    // produce a response. Confirmed this is what actually happened for the
+    // real double-persisted rows this test is named after.
+    await callArgs.onEnd({ responseMessages: [{ role: "assistant", content: [] }], usage: { inputTokens: 1, outputTokens: 1 }, finishReason: "stop" });
+    expect(persistAssistantTurnMock).toHaveBeenCalledTimes(1);
+    // Now simulate the stream-level onEnd firing anyway (belt-and-suspenders
+    // — even if it somehow reported "failed" after a real onEnd already
+    // ran, turnPersisted must suppress the second write).
+    streamResult._uiStreamOptions.onEnd?.({ outcome: { status: "failed" } });
+    expect(persistAssistantTurnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stream-level onError only logs — does not persist (a routine tool-error part must not create a stray interrupted row alongside the turn's real response)", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    const returned = streamResult._uiStreamOptions.onError?.(new Error("some tool-error part"));
+    expect(returned).toBe("An error occurred.");
+    expect(persistAssistantTurnMock).not.toHaveBeenCalled();
+  });
+
+  it("stream-level onEnd is a no-op when the outcome is 'completed'", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const streamResult = makeStreamResult();
+    streamTextMock.mockReturnValue(streamResult);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    await postV2(
+      new Request("http://localhost/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: `c-${Date.now()}`,
+          project_id: "p1",
+          messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }) as never,
+    );
+    streamResult._uiStreamOptions.onEnd?.({ outcome: { status: "completed" } });
+    expect(persistAssistantTurnMock).not.toHaveBeenCalled();
   });
 });
