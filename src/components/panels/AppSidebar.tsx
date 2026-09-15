@@ -47,8 +47,7 @@ const MODELS = [
   { id: "gpt-image-2", label: "GPT Image 2 (4K)", color: PROVIDER_COLORS.openai },
   { id: "gpt-image-1.5", label: "GPT Image 1.5", color: PROVIDER_COLORS.openai },
   { id: "gpt-image-1", label: "GPT Image 1", color: PROVIDER_COLORS.openai },
-  { id: "grok-imagine-image-2.0", label: "Grok Imagine 2.0", color: PROVIDER_COLORS.grok },
-  { id: "bytedance-seed/seedream-4.5", label: "Seedream 4.5 (ByteDance)", color: PROVIDER_COLORS.openrouter },
+  { id: "grok-imagine-image", label: "Grok Imagine", color: PROVIDER_COLORS.grok },
 ];
 
 export default function AppSidebar() {
