@@ -35,11 +35,22 @@ describe("buildAiSdkTools", () => {
       input: {},
       output: fake,
     } as never);
+    // `data` must be the tagged FileData object ({type:"data", data}), not a
+    // bare string — a bare string matches AI SDK's message-level FilePart
+    // shorthand (auto-normalized by ai@7.0.99's own standardizePrompt) but
+    // NOT the separate schema a tool result's `output.value[]` items are
+    // validated against, where `type:"file"` strictly requires `data` to
+    // already be tagged. Confirmed live: the bare-string shape passed this
+    // test yet made every image-bearing tool result (e.g. search_youtube's
+    // thumbnail gallery) fail real ModelMessage[] validation with "Invalid
+    // input: expected object, received string" on the very next model turn
+    // — see tool-adapter.ts's toModelOutput comment and task-14-report.md's
+    // Bug 2 write-up for the full trace.
     expect(out).toEqual({
       type: "content",
       value: [
         { type: "text", text: "hello" },
-        { type: "file", mediaType: "image/png", data: "AAA=" },
+        { type: "file", mediaType: "image/png", data: { type: "data", data: "AAA=" } },
       ],
     });
   });

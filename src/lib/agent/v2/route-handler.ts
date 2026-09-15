@@ -343,5 +343,39 @@ export async function postV2(req: NextRequest): Promise<Response> {
     },
   });
 
-  return result.toUIMessageStreamResponse();
+  // A genuine provider/API failure (bad request rejected by the model
+  // backend, network error, etc. — NOT a user-initiated Stop, which is
+  // onAbort above) takes neither the onEnd nor the onAbort path: streamText
+  // encodes it as an `error` part inside the SSE stream instead of throwing,
+  // so consumeStream's onError above never sees it either. Left unhandled,
+  // toUIMessageStreamResponse()'s DEFAULT onError (`() => 'An error
+  // occurred.'`) silently swallows the real error (masking it from both the
+  // server console and the client) AND — critically — never calls
+  // persistAssistantTurn, so the user's message that triggered this turn is
+  // left in the DB with no assistant reply, forever. Every subsequent
+  // request in that same conversation then has to replay that orphaned user
+  // turn as part of its history; if the NEXT attempt also errors (same
+  // transient provider issue, or a retry of the same bad input), it leaves
+  // ANOTHER orphaned user message, and so on — a growing run of consecutive
+  // un-replied user turns that make the conversation progressively more
+  // likely to trip the model provider on every future request, with no way
+  // to recover except abandoning the conversation. Persisting an
+  // `interrupted:1` marker here (mirroring onAbort's own placeholder) keeps
+  // the conversation's turn structure well-formed for reconstruction and
+  // stops that compounding spiral at the first failure instead of letting it
+  // snowball.
+  return result.toUIMessageStreamResponse({
+    onError: (error) => {
+      console.error("[agent v2] stream error:", error);
+      persistAssistantTurn({
+        conversationId,
+        responseMessages: [],
+        totalUsage: {},
+        finishReason: "error",
+        interrupted: true,
+        modelInfo,
+      });
+      return "An error occurred.";
+    },
+  });
 }
