@@ -3,6 +3,12 @@
 import { useState, useEffect } from "react";
 import McpSettingsSection from "./settings/McpSettingsSection";
 import { AGENT_MODELS, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 
 type SettingsData = {
   geminiApiKey: string;
@@ -24,6 +30,46 @@ type SettingsData = {
   agentModel: string;
   agentWebSearch: string;
 };
+
+function ApiKeyField({
+  id,
+  label,
+  extra,
+  placeholder,
+  value,
+  onChange,
+  connected,
+  connectedValue,
+  helpHref,
+  helpLabel,
+}: {
+  id: string;
+  label: string;
+  extra?: React.ReactNode;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  connected: boolean;
+  connectedValue?: string;
+  helpHref: string;
+  helpLabel: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>
+        {label} {extra}
+      </Label>
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full ${connected ? "bg-primary" : "bg-muted-foreground/30"}`} />
+        <span className="text-[10px] text-muted-foreground">{connected ? `Connecté (${connectedValue})` : "Non configuré"}</span>
+      </div>
+      <Input id={id} type="password" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+      <a href={helpHref} target="_blank" rel="noopener" className="text-[10px] text-primary block">
+        {helpLabel} →
+      </a>
+    </div>
+  );
+}
 
 export default function SettingsPanel({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
@@ -57,7 +103,6 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
   const handleSave = async () => {
     setSaving(true);
     const body: Record<string, string> = {};
-    // Only send fields that the user actually filled in
     if (gemini) body.geminiApiKey = gemini;
     if (ideogram) body.ideogramApiKey = ideogram;
     if (openai) body.openaiApiKey = openai;
@@ -77,7 +122,6 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
     });
     setSaving(false);
     setSaved(true);
-    // Refresh settings display
     const res = await fetch("/api/settings");
     const data = await res.json();
     setSettings(data);
@@ -92,380 +136,145 @@ export default function SettingsPanel({ onClose, onSaved }: { onClose: () => voi
   };
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-          Réglages
-        </h3>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-lg transition-all"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+    <div className="space-y-4">
+      <ApiKeyField
+        id="gemini-key"
+        label="Clé API Google Gemini"
+        placeholder="AIzaSy..."
+        value={gemini}
+        onChange={setGemini}
+        connected={!!settings?.hasGemini}
+        connectedValue={settings?.geminiApiKey}
+        helpHref="https://aistudio.google.com/apikey"
+        helpLabel="Obtenir une clé gratuite"
+      />
+      <ApiKeyField
+        id="ideogram-key"
+        label="Clé API Ideogram"
+        placeholder="ide_..."
+        value={ideogram}
+        onChange={setIdeogram}
+        connected={!!settings?.hasIdeogram}
+        connectedValue={settings?.ideogramApiKey}
+        helpHref="https://ideogram.ai/manage-api"
+        helpLabel="Obtenir une clé"
+      />
+      <ApiKeyField
+        id="openai-key"
+        label="Clé API OpenAI"
+        placeholder="sk-..."
+        value={openai}
+        onChange={setOpenai}
+        connected={!!settings?.hasOpenai}
+        connectedValue={settings?.openaiApiKey}
+        helpHref="https://platform.openai.com/api-keys"
+        helpLabel="Obtenir une clé"
+      />
+      <ApiKeyField
+        id="grok-key"
+        label="Clé API Grok (xAI)"
+        placeholder="xai-..."
+        value={grok}
+        onChange={setGrok}
+        connected={!!settings?.hasGrok}
+        connectedValue={settings?.grokApiKey}
+        helpHref="https://console.x.ai"
+        helpLabel="Obtenir une clé"
+      />
 
-      {/* Gemini */}
-      <div className="mb-4">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Clé API Google Gemini
-        </label>
-        <div className="flex items-center gap-2 mb-1">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasGemini ? "var(--canvas-accent)" : "var(--bone-faint)" }}
-          />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {settings?.hasGemini ? `Connecté (${settings.geminiApiKey})` : "Non configuré"}
-          </span>
-        </div>
-        <input
-          type="password"
-          placeholder="AIzaSy..."
-          value={gemini}
-          onChange={(e) => setGemini(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        />
-        <a
-          href="https://aistudio.google.com/apikey"
-          target="_blank"
-          rel="noopener"
-          className="text-[10px] mt-1 block"
-          style={{ color: "var(--canvas-accent)" }}
-        >
-          Obtenir une clé gratuite →
-        </a>
-      </div>
-
-      {/* Ideogram */}
-      <div className="mb-4">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Clé API Ideogram
-        </label>
-        <div className="flex items-center gap-2 mb-1">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasIdeogram ? "var(--canvas-accent)" : "var(--bone-faint)" }}
-          />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {settings?.hasIdeogram ? `Connecté (${settings.ideogramApiKey})` : "Non configuré"}
-          </span>
-        </div>
-        <input
-          type="password"
-          placeholder="ide_..."
-          value={ideogram}
-          onChange={(e) => setIdeogram(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        />
-        <a
-          href="https://ideogram.ai/manage-api"
-          target="_blank"
-          rel="noopener"
-          className="text-[10px] mt-1 block"
-          style={{ color: "var(--canvas-accent)" }}
-        >
-          Obtenir une clé →
-        </a>
-      </div>
-
-      {/* OpenAI */}
-      <div className="mb-4">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Clé API OpenAI
-        </label>
-        <div className="flex items-center gap-2 mb-1">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasOpenai ? "var(--canvas-accent)" : "var(--bone-faint)" }}
-          />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {settings?.hasOpenai ? `Connecté (${settings?.openaiApiKey})` : "Non configuré"}
-          </span>
-        </div>
-        <input
-          type="password"
-          placeholder="sk-..."
-          value={openai}
-          onChange={(e) => setOpenai(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        />
-        <a
-          href="https://platform.openai.com/api-keys"
-          target="_blank"
-          rel="noopener"
-          className="text-[10px] mt-1 block"
-          style={{ color: "var(--canvas-accent)" }}
-        >
-          Obtenir une clé →
-        </a>
-      </div>
-
-      {/* Grok */}
-      <div className="mb-4">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Clé API Grok (xAI)
-        </label>
-        <div className="flex items-center gap-2 mb-1">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasGrok ? "var(--canvas-accent)" : "var(--bone-faint)" }}
-          />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {settings?.hasGrok ? `Connecté (${settings?.grokApiKey})` : "Non configuré"}
-          </span>
-        </div>
-        <input
-          type="password"
-          placeholder="xai-..."
-          value={grok}
-          onChange={(e) => setGrok(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        />
-        <a
-          href="https://console.x.ai"
-          target="_blank"
-          rel="noopener"
-          className="text-[10px] mt-1 block"
-          style={{ color: "var(--canvas-accent)" }}
-        >
-          Obtenir une clé →
-        </a>
-      </div>
-
-      {/* OpenRouter — agent model gateway */}
-      <div className="mb-4">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Clé OpenRouter <span style={{ color: "var(--brand)" }}>·</span> agent IA
-        </label>
-        <div className="flex items-center gap-2 mb-1">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasOpenrouter ? "var(--canvas-accent)" : "var(--bone-faint)" }}
-          />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {settings?.hasOpenrouter ? `Connecté (${settings?.openrouterApiKey})` : "Non configuré"}
-          </span>
-        </div>
-        <input
-          type="password"
+      <div className="space-y-3">
+        <ApiKeyField
+          id="openrouter-key"
+          label="Clé OpenRouter"
+          extra={<span className="text-primary">· agent IA</span>}
           placeholder="sk-or-v1-..."
           value={openrouter}
-          onChange={(e) => setOpenrouter(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
+          onChange={setOpenrouter}
+          connected={!!settings?.hasOpenrouter}
+          connectedValue={settings?.openrouterApiKey}
+          helpHref="https://openrouter.ai/keys"
+          helpLabel="Obtenir une clé"
         />
-        <a
-          href="https://openrouter.ai/keys"
-          target="_blank"
-          rel="noopener"
-          className="text-[10px] mt-1 block"
-          style={{ color: "var(--canvas-accent)" }}
-        >
-          Obtenir une clé →
-        </a>
 
-        {/* Model picker */}
-        <label className="text-xs font-medium mt-3 mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Modèle de l&apos;agent
-        </label>
-        <select
-          value={agentModel || settings?.agentModel || DEFAULT_AGENT_MODEL}
-          onChange={(e) => setAgentModel(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        >
-          {AGENT_MODELS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label} — ${m.pricing.inputPerM}/${m.pricing.outputPerM} per M
-            </option>
-          ))}
-        </select>
-
-        {/* Web search toggle */}
-        <label className="flex items-center gap-2 mt-3 text-xs" style={{ color: "var(--text-secondary)" }}>
-          <input
-            type="checkbox"
-            checked={agentWebSearch}
-            onChange={(e) => setAgentWebSearch(e.target.checked)}
-          />
-          Recherche web automatique (variant :online)
-        </label>
-      </div>
-
-      {/* Anthropic — needed by the chat agent */}
-      <div className="mb-4">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Clé API Anthropic <span style={{ color: "var(--brand)" }}>·</span> chat IA
-        </label>
-        <div className="flex items-center gap-2 mb-1">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasAnthropic ? "var(--canvas-accent)" : "var(--bone-faint)" }}
-          />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {settings?.hasAnthropic ? `Connecté (${settings?.anthropicApiKey})` : "Non configuré"}
-          </span>
+        <div className="space-y-1.5">
+          <Label>Modèle de l&apos;agent</Label>
+          <Select value={agentModel || settings?.agentModel || DEFAULT_AGENT_MODEL} onValueChange={(v) => { if (v) setAgentModel(v); }}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AGENT_MODELS.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.label} — ${m.pricing.inputPerM}/${m.pricing.outputPerM} per M
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <input
-          type="password"
-          placeholder="sk-ant-..."
-          value={anthropic}
-          onChange={(e) => setAnthropic(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        />
-        <a
-          href="https://console.anthropic.com/settings/keys"
-          target="_blank"
-          rel="noopener"
-          className="text-[10px] mt-1 block"
-          style={{ color: "var(--canvas-accent)" }}
-        >
-          Obtenir une clé →
-        </a>
-      </div>
 
-      {/* YouTube */}
-      <div className="mb-4">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Clé API YouTube
-        </label>
-        <div className="flex items-center gap-2 mb-1">
-          <div
-            className="w-2 h-2 rounded-full"
-            style={{ background: settings?.hasYoutube ? "var(--canvas-accent)" : "var(--bone-faint)" }}
-          />
-          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {settings?.hasYoutube ? `Connecté (${settings.youtubeApiKey})` : "Non configuré"}
-          </span>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="web-search" className="text-xs font-normal">
+            Recherche web automatique (variant :online)
+          </Label>
+          <Switch id="web-search" checked={agentWebSearch} onCheckedChange={setAgentWebSearch} />
         </div>
-        <input
-          type="password"
-          placeholder="AIzaSy..."
-          value={ytKey}
-          onChange={(e) => setYtKey(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        />
-        <a
-          href="https://console.cloud.google.com/apis/credentials"
-          target="_blank"
-          rel="noopener"
-          className="text-[10px] mt-1 block"
-          style={{ color: "var(--canvas-accent)" }}
-        >
-          Obtenir une clé →
-        </a>
       </div>
 
-      {/* YouTube Channel */}
-      <div className="mb-5">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Chaîne YouTube
-        </label>
-        <input
-          type="text"
-          placeholder="https://youtube.com/@votrechaine"
-          value={ytPlaylist}
-          onChange={(e) => setYtPlaylist(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        />
-        <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          Colle l&apos;URL de ta chaîne YouTube ou un ID de playlist
-        </p>
+      <ApiKeyField
+        id="anthropic-key"
+        label="Clé API Anthropic"
+        extra={<span className="text-primary">· chat IA</span>}
+        placeholder="sk-ant-..."
+        value={anthropic}
+        onChange={setAnthropic}
+        connected={!!settings?.hasAnthropic}
+        connectedValue={settings?.anthropicApiKey}
+        helpHref="https://console.anthropic.com/settings/keys"
+        helpLabel="Obtenir une clé"
+      />
+
+      <ApiKeyField
+        id="youtube-key"
+        label="Clé API YouTube"
+        placeholder="AIzaSy..."
+        value={ytKey}
+        onChange={setYtKey}
+        connected={!!settings?.hasYoutube}
+        connectedValue={settings?.youtubeApiKey}
+        helpHref="https://console.cloud.google.com/apis/credentials"
+        helpLabel="Obtenir une clé"
+      />
+
+      <div className="space-y-1.5">
+        <Label htmlFor="yt-channel">Chaîne YouTube</Label>
+        <Input id="yt-channel" placeholder="https://youtube.com/@votrechaine" value={ytPlaylist} onChange={(e) => setYtPlaylist(e.target.value)} />
+        <p className="text-[10px] text-muted-foreground">Colle l&apos;URL de ta chaîne YouTube ou un ID de playlist</p>
       </div>
 
-      {/* Language */}
-      <div className="mb-5">
-        <label className="text-xs font-medium mb-1 block" style={{ color: "var(--text-secondary)" }}>
-          Langue par défaut
-        </label>
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs focus:outline-none"
-          style={{
-            background: "var(--surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid transparent",
-          }}
-        >
-          <option value="fr">Français</option>
-          <option value="en">English</option>
-          <option value="es">Español</option>
-          <option value="de">Deutsch</option>
-          <option value="pt">Português</option>
-          <option value="it">Italiano</option>
-        </select>
-        <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          Le texte sur les miniatures sera généré dans cette langue
-        </p>
+      <div className="space-y-1.5">
+        <Label>Langue par défaut</Label>
+        <Select value={language} onValueChange={(v) => { if (v) setLanguage(v); }}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="fr">Français</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+            <SelectItem value="es">Español</SelectItem>
+            <SelectItem value="de">Deutsch</SelectItem>
+            <SelectItem value="pt">Português</SelectItem>
+            <SelectItem value="it">Italiano</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-[10px] text-muted-foreground">Le texte sur les miniatures sera généré dans cette langue</p>
       </div>
 
-      {/* MCP */}
-      <div className="mb-5">
-        <hr className="mb-4" style={{ borderColor: "var(--bone-faint)" }} />
-        <McpSettingsSection />
-      </div>
+      <Separator />
+      <McpSettingsSection />
 
-      {/* Save */}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="w-full py-2 rounded-lg text-xs font-medium transition-all"
-        style={{
-          background: saved ? "var(--canvas-accent)" : "var(--bone)",
-          color: "var(--canvas-bg)",
-          opacity: saving ? 0.5 : 1,
-        }}
-      >
+      <Button onClick={handleSave} disabled={saving} className="w-full">
         {saving ? "Enregistrement…" : saved ? "Enregistré !" : "Enregistrer"}
-      </button>
+      </Button>
     </div>
   );
 }

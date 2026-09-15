@@ -723,12 +723,11 @@ export default function AppSidebar() {
 
       {showWebcamCapture && <WebcamCaptureModal onClose={() => setShowWebcamCapture(false)} onComplete={handlePersonaCaptured} />}
 
-      {/* SettingsPanel.tsx itself is not yet Dialog-shaped (Task 7 removes its own
-          header/close chrome to match) — wrapping it here as-is is a deliberate,
-          honest interim state: a temporary doubled close-button appearance until
-          Task 7 lands, not a placeholder. */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Réglages</DialogTitle>
+          </DialogHeader>
           <SettingsPanel onClose={() => setSettingsOpen(false)} onSaved={onSettingsSaved} />
         </DialogContent>
       </Dialog>
