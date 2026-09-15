@@ -4,32 +4,33 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { useCallback, useState, useEffect } from "react";
 import NodeShell from "./NodeShell";
-import { MODEL_COSTS, INPUT_TYPE_COLORS } from "@/lib/model-costs";
+import { MODEL_COSTS, INPUT_TYPE_COLORS, REFERENCE_CAPS } from "@/lib/model-costs";
 
+// All image generation now routes exclusively through OpenRouter's Unified
+// Image API (one key, one endpoint) — direct Gemini/OpenAI keys, Ideogram,
+// and Grok are no longer used. Ideogram and Grok have no OpenRouter image
+// equivalent (verified live against the real API) so they're dropped
+// entirely rather than left as permanently "(inactif)" dead options.
+// gpt-image-1.5 has no OpenRouter slug either — dropped for the same reason.
 const GEMINI_MODELS = [
-  { id: "gemini-3-pro-image", label: "Gemini 3 Pro", provider: "gemini" },
-  { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash", provider: "gemini" },
-  { id: "gemini-3.1-flash-lite-image", label: "Gemini 3.1 Flash Lite", provider: "gemini" },
-  { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", provider: "gemini" },
-];
-
-const IDEOGRAM_MODELS = [
-  { id: "ideogram", label: "Ideogram v3", provider: "ideogram" },
+  { id: "gemini-3-pro-image", label: "Gemini 3 Pro", provider: "openrouter" },
+  { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash", provider: "openrouter" },
+  { id: "gemini-3.1-flash-lite-image", label: "Gemini 3.1 Flash Lite", provider: "openrouter" },
+  { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", provider: "openrouter" },
 ];
 
 const OPENAI_MODELS = [
-  { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst (précis)", provider: "openai" },
-  { id: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare (rapide)", provider: "openai" },
-  { id: "gpt-image-2", label: "GPT Image 2 (4K)", provider: "openai" },
-  { id: "gpt-image-1.5", label: "GPT Image 1.5", provider: "openai" },
-  { id: "gpt-image-1", label: "GPT Image 1", provider: "openai" },
+  { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst (précis)", provider: "openrouter" },
+  { id: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare (rapide)", provider: "openrouter" },
+  { id: "gpt-image-2", label: "GPT Image 2 (4K)", provider: "openrouter" },
+  { id: "gpt-image-1", label: "GPT Image 1", provider: "openrouter" },
 ];
 
-const GROK_MODELS = [
-  { id: "grok-imagine-image", label: "Grok Imagine", provider: "grok" },
+const OPENROUTER_MODELS = [
+  { id: "bytedance-seed/seedream-4.5", label: "Seedream 4.5 (ByteDance)", provider: "openrouter" },
 ];
 
-const ALL_MODELS = [...GEMINI_MODELS, ...IDEOGRAM_MODELS, ...OPENAI_MODELS, ...GROK_MODELS];
+const ALL_MODELS = [...GEMINI_MODELS, ...OPENAI_MODELS, ...OPENROUTER_MODELS];
 
 function getModelLabel(modelId: string): string {
   return ALL_MODELS.find((m) => m.id === modelId)?.label || modelId;
@@ -37,6 +38,11 @@ function getModelLabel(modelId: string): string {
 
 function getProvider(modelId: string): string {
   return ALL_MODELS.find((m) => m.id === modelId)?.provider || "gemini";
+}
+
+function getModelPriceLabel(modelId: string): string {
+  const cost = MODEL_COSTS[modelId];
+  return cost ? `~$${cost.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}` : "";
 }
 
 export default function GeneratorNode({
@@ -61,6 +67,7 @@ export default function GeneratorNode({
           ideogram: !!s.hasIdeogram,
           openai: !!s.hasOpenai,
           grok: !!s.hasGrok,
+          openrouter: !!s.hasOpenrouter,
         });
       })
       .catch(() => {});
@@ -72,6 +79,13 @@ export default function GeneratorNode({
   const numImages = data.numImages || 1;
   const ideogramMode = data.ideogramMode || "generate";
   const provider = getProvider(model);
+
+  // Proactive warning: catch "this model can't use the connected face
+  // reference" BEFORE spending an API call on it, instead of only surfacing
+  // it after the fact via the preview node's genWarning banner.
+  const connectedFaceCount = getConnectedInputs(id).faceRefs.length;
+  const faceCap = provider === "gemini" ? REFERENCE_CAPS[model]?.characters : undefined;
+  const faceUnsupported = connectedFaceCount > 0 && faceCap === 0;
 
   const iconColor = provider === "ideogram" ? INPUT_TYPE_COLORS.ideogram : "var(--accent)";
   const modelIcon = (
@@ -167,72 +181,19 @@ export default function GeneratorNode({
 
   // Generate with a specific model
   const generateWithModel = useCallback(async (targetModel: string, inputs: Awaited<ReturnType<typeof collectInputs>>) => {
-    const targetProvider = getProvider(targetModel);
-    let endpoint: string;
-    let body: Record<string, unknown>;
-
-    if (targetProvider === "gemini") {
-      endpoint = "/api/generate/nano-banana";
-      body = {
-        prompt: inputs.promptText,
-        negativePrompt: inputs.negativePrompt,
-        faceGroups: inputs.faceGroups,
-        referenceImages: inputs.allRefImages,
-        logos: inputs.logoEntries,
-        sketchImages: inputs.sketchImages,
-        aspectRatio,
-        imageSize: data.imageSize || "2K",
-        model: targetModel,
-      };
-    } else if (targetProvider === "ideogram") {
-      if (ideogramMode === "remix" && inputs.allRefImages.length > 0) {
-        endpoint = "/api/remix/ideogram";
-        body = {
-          prompt: inputs.promptText,
-          negativePrompt: inputs.negativePrompt,
-          image: inputs.allRefImages[0],
-          imageWeight: data.imageWeight ?? 50,
-          characterReferenceImages: inputs.faceImages,
-          styleReferenceImages: inputs.allRefImages.slice(1),
-          aspectRatio,
-          renderingSpeed,
-          styleType: data.styleType || "GENERAL",
-        };
-      } else if (ideogramMode === "edit" && inputs.allRefImages.length > 0) {
-        endpoint = "/api/edit/ideogram";
-        body = {
-          prompt: inputs.promptText,
-          image: inputs.allRefImages[0],
-          mask: data.maskDataUrl || null,
-          characterReferenceImages: inputs.faceImages,
-          renderingSpeed,
-          styleType: data.styleType || "GENERAL",
-        };
-      } else {
-        endpoint = "/api/generate/ideogram";
-        body = {
-          prompt: inputs.promptText,
-          negativePrompt: inputs.negativePrompt,
-          characterReferenceImages: inputs.faceImages,
-          styleReferenceImages: inputs.allRefImages,
-          aspectRatio,
-          renderingSpeed,
-          styleType: data.styleType || "GENERAL",
-        };
-      }
-    } else {
-      endpoint = `/api/generate/${targetProvider}`;
-      body = {
-        prompt: inputs.promptText,
-        negativePrompt: inputs.negativePrompt,
-        faceImages: inputs.faceImages,
-        referenceImages: inputs.allRefImages,
-        logos: inputs.logoEntries,
-        sketchImages: inputs.sketchImages,
-        aspectRatio,
-        model: targetModel,
-      };
-    }
+    // Every model now routes through OpenRouter's Unified Image API —
+    // Ideogram/Grok/direct Gemini/direct OpenAI are no longer used.
+    const endpoint = "/api/generate/openrouter";
+    const body: Record<string, unknown> = {
+      prompt: inputs.promptText,
+      negativePrompt: inputs.negativePrompt,
+      faceImages: inputs.faceImages,
+      referenceImages: inputs.allRefImages,
+      logos: inputs.logoEntries,
+      sketchImages: inputs.sketchImages,
+      aspectRatio,
+      model: targetModel,
+    };
 
     const res = await fetch(endpoint, {
       method: "POST",
@@ -422,7 +383,7 @@ export default function GeneratorNode({
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
         onClick={() => addNodeAndConnect("faceReference", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 50 }, id, "face-in", "face")}
       >
-        Visage
+        Personnage
       </button>
 
       {/* Reference handle */}
@@ -494,28 +455,21 @@ export default function GeneratorNode({
             <optgroup label="Gemini">
               {GEMINI_MODELS.map((m) => (
                 <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
-                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Ideogram">
-              {IDEOGRAM_MODELS.map((m) => (
-                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
-                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                  {m.label} — {getModelPriceLabel(m.id)}{!availableProviders[m.provider] ? " (inactif)" : ""}
                 </option>
               ))}
             </optgroup>
             <optgroup label="OpenAI">
               {OPENAI_MODELS.map((m) => (
                 <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
-                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                  {m.label} — {getModelPriceLabel(m.id)}{!availableProviders[m.provider] ? " (inactif)" : ""}
                 </option>
               ))}
             </optgroup>
-            <optgroup label="Grok (xAI)">
-              {GROK_MODELS.map((m) => (
+            <optgroup label="ByteDance">
+              {OPENROUTER_MODELS.map((m) => (
                 <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
-                  {m.label}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                  {m.label} — {getModelPriceLabel(m.id)}{!availableProviders[m.provider] ? " (inactif)" : ""}
                 </option>
               ))}
             </optgroup>
@@ -540,6 +494,11 @@ export default function GeneratorNode({
             </svg>
           </button>
           </div>
+          {faceUnsupported && (
+            <p className="text-[10px] mt-1.5 px-2 py-1.5 rounded-lg" style={{ background: "rgba(239, 144, 146, 0.1)", color: "var(--ember)" }}>
+              ⚠ {getModelLabel(model)} ne supporte pas les visages de référence — le personnage connecté sera ignoré.
+            </p>
+          )}
         </div>
 
         {provider === "ideogram" && (
@@ -671,8 +630,11 @@ export default function GeneratorNode({
                     className="nopan nodrag"
                     style={{ accentColor: "var(--accent)" }}
                   />
-                  {m.label}
+                  {m.label} <span style={{ color: "var(--text-muted)" }}>— {getModelPriceLabel(m.id)}</span>
                   {!isAvailable && <span style={{ color: "var(--bone-faint)", fontSize: 10 }}>(inactif)</span>}
+                  {isAvailable && connectedFaceCount > 0 && m.provider === "gemini" && REFERENCE_CAPS[m.id]?.characters === 0 && (
+                    <span style={{ color: "var(--ember)", fontSize: 10 }}>(ignore le visage)</span>
+                  )}
                 </label>
               );
             })}
