@@ -106,15 +106,24 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   }, [activeConversationId, setMessages]);
 
   // The last message's pending client-tool part (request_user_image /
-  // request_user_sketch, state not yet "output-available") — a direct scan
-  // of chatMessages, replacing the old legacyEvents-array scan.
+  // request_user_sketch) — a direct scan of chatMessages, replacing the old
+  // legacyEvents-array scan. Requires state === "input-available"
+  // specifically (not just "!== output-available"): the deleted
+  // uiMessageToLegacyEvents adapter also excluded "input-streaming" (args
+  // not settled yet — `input?.reason` would be undefined, and resolving
+  // mid-stream sets state to "output-available" without ever firing the
+  // auto-continuation, since sendAutomaticallyWhen's send is gated on
+  // status being neither "streaming" nor "submitted" — the next
+  // tool-input-available chunk then silently overwrites the resolved part).
+  // "output-error"/"output-denied" are excluded too for the same reason —
+  // only "input-available" is a state where offering a resolution is safe.
   const pendingToolPart = useMemo<PendingToolPart | undefined>(() => {
     const lastMessage = chatMessages.at(-1);
     return lastMessage?.role === "assistant"
       ? lastMessage.parts.find(
           (p): p is PendingToolPart =>
             (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
-            p.state !== "output-available",
+            p.state === "input-available",
         )
       : undefined;
   }, [chatMessages]);

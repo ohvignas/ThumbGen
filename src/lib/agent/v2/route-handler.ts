@@ -148,11 +148,45 @@ export async function postV2(req: NextRequest): Promise<Response> {
       // call) are considered here, so an already-persisted SERVER tool
       // result elsewhere on the same message is never re-picked-up/
       // duplicated.
+      //
+      // A continuation's stream can APPEND further work onto the SAME
+      // assistant UIMessage it resumed (confirmed in
+      // node_modules/ai/dist/index.js's createStreamingUIMessageState,
+      // which reuses `lastMessage` when its role is "assistant" and the
+      // trigger is "submit-message") — e.g. the model answers call1's
+      // resolution and immediately calls request_user_image again (call2)
+      // on that same message. When call2 is later resolved,
+      // `lastMessage.parts` then contains BOTH call2's freshly-resolved
+      // part AND call1's part, which is STILL "output-available" from
+      // before. Filtering on state alone would re-persist call1's result a
+      // second time, no longer immediately following the assistant message
+      // that made call1 in `priorMessages` — providers reject that, and
+      // since nothing ever deletes rows, every later turn in the
+      // conversation replays the same malformed history. So the server —
+      // not the client — is the authoritative dedup boundary: exclude any
+      // resolved part whose toolCallId already has a persisted tool-result
+      // somewhere in this conversation's rows.
+      const alreadyPersistedToolCallIds = new Set<string>();
+      for (const row of listMessages(conversationId)) {
+        const parsed: unknown = JSON.parse(row.content_json);
+        if (!Array.isArray(parsed)) continue;
+        for (const m of parsed) {
+          if (typeof m !== "object" || m === null || (m as { role?: unknown }).role !== "tool") continue;
+          const content = (m as { content?: unknown }).content;
+          if (!Array.isArray(content)) continue;
+          for (const c of content) {
+            const toolCallId = (c as { toolCallId?: unknown } | null)?.toolCallId;
+            if (typeof toolCallId === "string") alreadyPersistedToolCallIds.add(toolCallId);
+          }
+        }
+      }
+
       const resolvedClientToolParts = (lastMessage?.parts ?? []).filter(
         (p): p is { type: string; toolCallId: string; state: string; output?: unknown; errorText?: string } =>
           (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
           typeof p.toolCallId === "string" &&
-          (p.state === "output-available" || p.state === "output-error"),
+          (p.state === "output-available" || p.state === "output-error") &&
+          !alreadyPersistedToolCallIds.has(p.toolCallId),
       );
       if (resolvedClientToolParts.length > 0) {
         const toolResultMessage = {
