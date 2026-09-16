@@ -122,24 +122,36 @@ export function buildResponseLanguageBlock(prefs: Pick<AgentPromptPrefs, "respon
   ].join("\n");
 }
 
+/**
+ * Neutralizes angle brackets so a value the creator typed (or pasted from
+ * elsewhere) can't fake a tag boundary — e.g. close `<channel_profile>` early
+ * or open a spoofed `<project_id>`/`<canvas_state>` block that would read to
+ * the model as a real system block instead of quoted creator text.
+ */
+function neutralizeTags(value: string): string {
+  return value.replace(/</g, "‹").replace(/>/g, "›");
+}
+
 /** The creator's channel profile from Réglages → Ma chaîne, or null when nothing is filled in. */
 export function buildChannelProfileBlock(
   prefs: Pick<AgentPromptPrefs, "youtubeChannel" | "channelProfile" | "defaultPersona">,
 ): string | null {
   const profile = prefs.channelProfile;
   const lines: string[] = [];
-  if (profile.name) lines.push(`- Channel name: ${profile.name}`);
-  if (prefs.youtubeChannel) lines.push(`- YouTube channel: ${prefs.youtubeChannel}`);
-  if (profile.niche) lines.push(`- Niche / topic: ${profile.niche}`);
-  if (profile.audience) lines.push(`- Target audience: ${profile.audience}`);
-  if (profile.tone) lines.push(`- Tone and style: ${profile.tone}`);
-  if (profile.brandColors.length > 0) lines.push(`- Brand colors: ${profile.brandColors.join(", ")}`);
+  if (profile.name) lines.push(`- Channel name: ${neutralizeTags(profile.name)}`);
+  if (prefs.youtubeChannel) lines.push(`- YouTube channel: ${neutralizeTags(prefs.youtubeChannel)}`);
+  if (profile.niche) lines.push(`- Niche / topic: ${neutralizeTags(profile.niche)}`);
+  if (profile.audience) lines.push(`- Target audience: ${neutralizeTags(profile.audience)}`);
+  if (profile.tone) lines.push(`- Tone and style: ${neutralizeTags(profile.tone)}`);
+  if (profile.brandColors.length > 0)
+    lines.push(`- Brand colors: ${profile.brandColors.map(neutralizeTags).join(", ")}`);
   if (prefs.defaultPersona) {
     lines.push(
-      `- Default character: "${prefs.defaultPersona.label}". Use stored:persona_${prefs.defaultPersona.id} as the default faceReference image_source unless the user asks for someone else or no face.`,
+      `- Default character: "${neutralizeTags(prefs.defaultPersona.label)}". Use stored:persona_${prefs.defaultPersona.id} as the default faceReference image_source unless the user asks for someone else or no face.`,
     );
   }
-  if (profile.agentInstructions) lines.push(`- Standing instructions from the creator:\n${profile.agentInstructions}`);
+  if (profile.agentInstructions)
+    lines.push(`- Standing instructions from the creator:\n${neutralizeTags(profile.agentInstructions)}`);
   if (lines.length === 0) return null;
   return [
     "<channel_profile>",
