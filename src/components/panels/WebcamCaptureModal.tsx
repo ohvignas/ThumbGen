@@ -205,8 +205,7 @@ export default function WebcamCaptureModal({
               <button
                 onClick={finish}
                 disabled={submitting}
-                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40"
-                style={{ background: "var(--canvas-accent)", color: "var(--canvas-bg)" }}
+                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40 bg-primary text-primary-foreground"
               >
                 {submitting ? "Enregistrement…" : "Créer le personnage"}
               </button>
@@ -218,8 +217,7 @@ export default function WebcamCaptureModal({
               {STEPS.map((s, i) => (
                 <div
                   key={s.angle}
-                  className="flex-1 h-1 rounded-full"
-                  style={{ background: shots[s.angle] ? "var(--canvas-accent)" : i === stepIndex ? "var(--muted-foreground)" : "var(--muted)" }}
+                  className={`flex-1 h-1 rounded-full ${shots[s.angle] ? "bg-primary" : i === stepIndex ? "bg-muted-foreground" : "bg-muted"}`}
                 />
               ))}
             </div>
@@ -276,8 +274,7 @@ export default function WebcamCaptureModal({
                 <button
                   onClick={capture}
                   disabled={!ready || !!error}
-                  className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40"
-                  style={{ background: "var(--canvas-accent-yellow)", color: "var(--canvas-bg)" }}
+                  className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40 bg-primary text-primary-foreground"
                 >
                   Capturer
                 </button>
@@ -295,8 +292,7 @@ export default function WebcamCaptureModal({
               <button
                 onClick={next}
                 disabled={!preview}
-                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30"
-                style={{ background: "var(--canvas-accent)", color: "var(--canvas-bg)" }}
+                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30 bg-primary text-primary-foreground"
               >
                 {stepIndex < STEPS.length - 1 ? "Suivant" : "Terminer"}
               </button>
