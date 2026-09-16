@@ -455,9 +455,14 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
           Flow's node wrapper — Backspace/Delete on a focused dialog button
           would otherwise delete this node, and a right-click inside the
           dialog would otherwise open the canvas's node context menu.
-          `nokey` covers the delete key (React Flow's own convention, checked
-          against the real DOM); stopping the contextmenu here covers the
-          right-click, which Canvas.tsx has no such convention for.
+          `nokey` covers the delete key: React Flow's delete-key listener
+          skips any input/textarea/contenteditable target, and — via the
+          same internal check — anything under a `.nokey` ancestor too,
+          which `contentClassName="nokey"` below sets. (`nokey` is also
+          read in an unrelated place, React Flow's pane pointer-down
+          capture for starting a box selection — not relevant here.)
+          Stopping the contextmenu here covers the right-click, which
+          Canvas.tsx has no such convention for.
         */}
         <div onContextMenu={(event) => event.stopPropagation()}>
           <ConfirmDialog

@@ -45,35 +45,50 @@ export default function LibraryPickerDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
-      {/* nokey: React Flow's delete-key handler ignores Backspace pressed in here. */}
-      <DialogContent className="nokey flex max-h-[85vh] flex-col gap-4 sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{COPY[kind].title}</DialogTitle>
-          <DialogDescription>{COPY[kind].description}</DialogDescription>
-        </DialogHeader>
-        <LibrarySearchInput value={query} onChange={setQuery} placeholder="Rechercher" label="Rechercher dans la bibliothèque" />
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => {
-            if (typeof value === "string") setTabId(value);
-          }}
-          className="min-h-0 flex-1"
-        >
-          <TabsList>
+    // The dialog's content is a portal, but React still bubbles its events
+    // through this React tree (not the DOM tree) up to React Flow's node
+    // wrapper: an unguarded right-click in here would open the canvas's
+    // node context menu over the modal, so every caller of this dialog
+    // gets that guard here rather than repeating it at each call site.
+    // Backspace/Delete on the search input or a grid/result button in here
+    // doesn't delete the node either, but for an unrelated reason: React
+    // Flow's delete-key listener skips any input/textarea/contenteditable
+    // target outright, and (via the same internal check) anything under a
+    // `.nokey` ancestor too — which `DialogContent` below sets. `nokey`
+    // itself is a plain CSS class with no key-handling of its own; React
+    // Flow also happens to read it in an unrelated place, its pane
+    // pointer-down capture (for starting a box selection), which doesn't
+    // apply inside a dialog anyway.
+    <div onContextMenu={(event) => event.stopPropagation()}>
+      <Dialog open={open} onOpenChange={changeOpen}>
+        <DialogContent className="nokey flex max-h-[85vh] flex-col gap-4 sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{COPY[kind].title}</DialogTitle>
+            <DialogDescription>{COPY[kind].description}</DialogDescription>
+          </DialogHeader>
+          <LibrarySearchInput value={query} onChange={setQuery} placeholder="Rechercher" label="Rechercher dans la bibliothèque" />
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              if (typeof value === "string") setTabId(value);
+            }}
+            className="min-h-0 flex-1"
+          >
+            <TabsList>
+              {tabs.map((tab) => (
+                <TabsTrigger key={tab.id} value={tab.id}>
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
             {tabs.map((tab) => (
-              <TabsTrigger key={tab.id} value={tab.id}>
-                {tab.label}
-              </TabsTrigger>
+              <TabsContent key={tab.id} value={tab.id} className="min-h-0 overflow-y-auto pr-1">
+                {tab.render({ query, onPick: pick })}
+              </TabsContent>
             ))}
-          </TabsList>
-          {tabs.map((tab) => (
-            <TabsContent key={tab.id} value={tab.id} className="min-h-0 overflow-y-auto pr-1">
-              {tab.render({ query, onPick: pick })}
-            </TabsContent>
-          ))}
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
