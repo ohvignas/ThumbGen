@@ -260,6 +260,15 @@ export default function AppSidebar() {
     return () => clearInterval(interval);
   }, []);
 
+  // The sidebar stays mounted across every /reglages section, so a saved
+  // YouTube channel in "Ma chaîne" (ChaineSection) wouldn't otherwise refresh
+  // this feed until the next 5-minute poll — refetch as soon as it's saved.
+  useEffect(() => {
+    const handler = () => fetchPlaylist();
+    window.addEventListener("youtube-channel-saved", handler);
+    return () => window.removeEventListener("youtube-channel-saved", handler);
+  }, []);
+
   const toggleTab = (tab: SidebarTab) => setActiveTab((prev) => (prev === tab ? null : tab));
 
   const addAtCenter = (type: string, data?: Record<string, unknown>) => {
