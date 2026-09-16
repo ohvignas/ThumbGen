@@ -1,4 +1,4 @@
-import { getSetting } from "@/lib/settings";
+import { getTypedSettings } from "@/lib/settings";
 
 /**
  * OpenRouter's web-search augmentation, opted in via the existing
@@ -11,7 +11,6 @@ import { getSetting } from "@/lib/settings";
  * is marked deprecated by OpenRouter).
  */
 export function webSearchProviderOptions(): { web_search_options: Record<string, never> } | undefined {
-  const enabled = getSetting("agentWebSearch") !== "0";
-  if (!enabled) return undefined;
+  if (!getTypedSettings().agentWebSearch) return undefined;
   return { web_search_options: {} };
 }
