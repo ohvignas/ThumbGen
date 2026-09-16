@@ -16,6 +16,9 @@ export type NodeData = {
   label?: string;
   imageUrl?: string;
   imageBase64?: string;
+  // swipeFile only: a logo plugs into the generator's logo-in, a reference
+  // image into ref-in. Older nodes have no kind (see catalogIdForNode).
+  kind?: "reference" | "logo";
   // Personnage: a reusable multi-angle face reference (front/left/right),
   // captured via webcam or uploaded. Populated instead of imageUrl/imageBase64
   // when the faceReference node represents a full persona rather than a
@@ -58,6 +61,20 @@ export type NodeData = {
 
 export type AppNode = Node<NodeData>;
 
+/**
+ * « Ajouter une étape » panel. `free`: any step, placed at `flowPos` or at the
+ * centre of the view. `connect`: only steps compatible with the handle the
+ * wire comes from; the new node is wired to it and placed at `flowPos`, or
+ * 320px left (target handle) / right (source handle) of that node.
+ */
+export type NodePickerState =
+  | { mode: "free"; flowPos?: { x: number; y: number } }
+  | {
+      mode: "connect";
+      flowPos?: { x: number; y: number };
+      from: { nodeId: string; handleId: string; handleType: "source" | "target" };
+    };
+
 type Snapshot = { nodes: AppNode[]; edges: Edge[] };
 
 interface CanvasState {
@@ -89,6 +106,11 @@ interface CanvasState {
   ) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
   removeNode: (nodeId: string) => void;
+  duplicateNode: (nodeId: string) => string;
+  setAllSelected: (selected: boolean) => void;
+  nodePicker: NodePickerState | null;
+  openNodePicker: (state: NodePickerState) => void;
+  closeNodePicker: () => void;
   getConnectedInputs: (nodeId: string) => {
     faceRefs: AppNode[];
     swipeRefs: AppNode[];
@@ -143,6 +165,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   currentProjectId: "default",
   history: [],
   historyIndex: -1,
+  nodePicker: null,
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
@@ -234,6 +257,37 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       debouncedSave(get(), set);
     }
   },
+
+  duplicateNode: (nodeId) => {
+    const source = get().nodes.find((n) => n.id === nodeId);
+    if (!source) return "";
+    const id = uuid();
+    const data = JSON.parse(JSON.stringify(source.data)) as NodeData;
+    delete data.isGenerating;
+    const copy: AppNode = {
+      id,
+      type: source.type,
+      position: { x: source.position.x + 40, y: source.position.y + 40 },
+      data,
+    };
+    set({ nodes: [...get().nodes, copy] });
+    if (get().loaded) {
+      pushHistory(get, set);
+      debouncedSave(get(), set);
+    }
+    return id;
+  },
+
+  // Selection is view state: no history entry, no save.
+  setAllSelected: (selected) => {
+    set({
+      nodes: get().nodes.map((n) => (Boolean(n.selected) === selected ? n : { ...n, selected })),
+      edges: selected ? get().edges : get().edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+    });
+  },
+
+  openNodePicker: (nodePicker) => set({ nodePicker }),
+  closeNodePicker: () => set({ nodePicker: null }),
 
   getConnectedInputs: (nodeId) => {
     const { nodes, edges } = get();
