@@ -16,7 +16,6 @@ describe("full registry", () => {
     const names = listTools().map((t) => t.name);
     const expected = [
       "list_logos",
-      "list_face_reactions",
       "list_personas",
       "list_swipe_files",
       "list_projects",
@@ -40,6 +39,14 @@ describe("full registry", () => {
       expect(tool.description, `${tool.name} missing description`).toBeTruthy();
       expect(tool.description.length, `${tool.name} description too short`).toBeGreaterThan(20);
       expect(tool.inputSchema, `${tool.name} missing inputSchema`).toBeTruthy();
+    }
+  });
+
+  it("no longer offers single face photos to the agent", () => {
+    const tools = listTools();
+    expect(tools.map((t) => t.name)).not.toContain("list_face_reactions");
+    for (const tool of tools) {
+      expect(tool.description, tool.name).not.toMatch(/list_face_reactions|stored:fr_/);
     }
   });
 });
