@@ -2,8 +2,9 @@
  * Static portion of the agent's system prompt — eligible for prompt caching
  * (cache_control: { type: "ephemeral" }) since it doesn't change across turns.
  *
- * The dynamic portion (canvas snapshot) is appended in buildSystemMessages
- * as a separate block without cache_control, so the cache hit rate stays high.
+ * The dynamic portions (reply language, channel profile, project id, canvas
+ * snapshot) are appended in buildSystemMessages as separate blocks without
+ * cache_control, so the cache hit rate on this static block stays high.
  *
  * The thumbnail prompt-engineering rubric is imported from a shared module so
  * the chat agent and /api/enhance-prompt use the same rules — no drift.

@@ -179,7 +179,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
   const provider = getOpenRouterProvider();
   if (!provider) {
     return new Response(
-      "Clé OpenRouter non configurée. Ajoute OPENROUTER_API_KEY dans Settings.",
+      "Clé OpenRouter non configurée. Ajoute-la dans Réglages → Connexions des modèles.",
       { status: 400 },
     );
   }

@@ -58,9 +58,11 @@ export function getCostPerImage(model: string): number {
  * gemini-2.5-flash-image (older, non-Gemini-3 model) isn't documented for
  * this — kept conservative.
  *
- * Shared between the nano-banana route (which enforces it) and GeneratorNode
- * (which warns in the UI *before* generating if the selected model can't use
- * a connected face reference at all — e.g. Flash Lite has a 0 budget).
+ * Used by GeneratorNode, which warns in the UI *before* generating if the
+ * selected model can't use a connected face reference at all — e.g. Flash
+ * Lite has a 0 budget. (The direct Gemini/nano-banana route that used to
+ * enforce this server-side is gone — OpenRouter's Unified Image API is now
+ * the only generation path, and doesn't expose a per-role reference cap.)
  */
 export const REFERENCE_CAPS: Record<string, { objects: number; characters: number; style: number }> = {
   "gemini-3-pro-image": { objects: 6, characters: 5, style: 3 },

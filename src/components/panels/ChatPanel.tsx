@@ -88,8 +88,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // the function's own doc comment) — ai's own
     // lastAssistantMessageIsCompleteWithToolCalls fires for ANY completed
     // tool call, which could otherwise trigger an unbounded auto-
-    // continuation loop when the server's MAX_STEPS cap lands on a step that
-    // happened to end with completed server-tool results.
+    // continuation loop when the server's « Étapes max » cap (agentMaxSteps
+    // setting) lands on a step that happened to end with completed
+    // server-tool results.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls,
   });
 

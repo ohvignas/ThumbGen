@@ -13,13 +13,14 @@ const CLIENT_TOOL_PART_TYPES = new Set(["tool-request_user_image", "tool-request
  * of the actual human-in-the-loop client tools. `lastAssistantMessageIsCompleteWithToolCalls`
  * fires for ANY completed tool call in the last step — including a SERVER
  * tool (list_logos, search_youtube, ...) whose completion just happens to
- * coincide with route-handler.ts's `MAX_STEPS` cap. In that case,
- * auto-continuation would resubmit, the server's tool-continuation branch
- * would find no client-tool part to resolve, persist nothing, and re-run
- * `streamText` for up to MAX_STEPS more steps — repeating until the model
- * happens to end a turn on plain text, with no user-visible cap and real
- * API cost. Scoping this to the specific tools `PendingUiAction` actually
- * resolves makes auto-continuation fire only for the case it exists for.
+ * coincide with route-handler.ts's « Étapes max » cap (the `agentMaxSteps`
+ * setting). In that case, auto-continuation would resubmit, the server's
+ * tool-continuation branch would find no client-tool part to resolve,
+ * persist nothing, and re-run `streamText` for up to `agentMaxSteps` more
+ * steps — repeating until the model happens to end a turn on plain text,
+ * with no user-visible cap and real API cost. Scoping this to the specific
+ * tools `PendingUiAction` actually resolves makes auto-continuation fire
+ * only for the case it exists for.
  */
 export function lastAssistantMessageIsCompleteWithClientToolCalls({ messages }: { messages: UIMessage[] }): boolean {
   const message = messages[messages.length - 1];
