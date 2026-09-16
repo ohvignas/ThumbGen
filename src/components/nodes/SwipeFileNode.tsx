@@ -42,7 +42,8 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
     [id, updateNodeData]
   );
 
-  const displayTitle = data.label || "Image";
+  const isLogo = data.kind === "logo";
+  const displayTitle = data.label || (isLogo ? "Logo" : "Image");
 
   const handleRemoveBg = async () => {
     const src = data.imageBase64 || data.imageUrl;
@@ -129,7 +130,7 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <path d="M3 15l5-5 4 4 4-6 5 7" />
           </svg>
-          <span className="text-xs">Ajouter une miniature de référence</span>
+          <span className="text-xs">{isLogo ? "Ajouter un logo" : "Ajouter une miniature de référence"}</span>
         </button>
       )}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />

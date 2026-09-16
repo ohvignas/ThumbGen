@@ -104,12 +104,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     useChatStore.getState().setActive(null);
   }, [projectId]);
 
-  // NOTE: auto-backfill of existing untagged faces was removed at the user's
-  // request (their 7 historical photos stay untagged). Only NEW uploads via
-  // POST /api/face-reactions are auto-tagged. The backfill endpoint
-  // /api/face-reactions/analyze-untagged is still available if anyone wants
-  // to retro-tag manually (e.g. via curl or a future UI button).
-
   // Load persisted history when active conversation changes, seeding
   // useChat's own message state directly via rowsToUIMessages (Task 4) —
   // this replaces the old history/setHistory adapter + rowToDisplay, which
@@ -334,6 +328,10 @@ function summarizeNode(type: string, data: Record<string, unknown>): Record<stri
       // Generator nodes use `count` — `numImages` was a documentation error.
       return { model: data.model, aspectRatio: data.aspectRatio, count: data.count ?? data.numImages };
     case "faceReference":
+      return {
+        persona: typeof data.personaId === "string" ? `stored:persona_${data.personaId}` : null,
+        label: data.label,
+      };
     case "swipeFile":
     case "sketch":
       return {

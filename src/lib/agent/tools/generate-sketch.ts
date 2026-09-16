@@ -12,8 +12,9 @@ const InputSchema = z.object({
   prompt: z.string().min(1),
   aspect_ratio: z.enum(["16x9", "9x16", "1x1"]).optional(),
   style: z.enum(["pencil_sketch", "polished"]).optional(),
-  // OPTIONAL: face image to bake the user's actual face into the sketch (so the
-  // sketched person resembles them, not a generic person). Pass `stored:fr_<id>`.
+  // OPTIONAL: the user's Personnage, to bake their actual face into the sketch
+  // (so the sketched person resembles them, not a generic person). Pass
+  // `stored:persona_<id>` — its front angle is used.
   face_source: z.string().optional(),
   // OPTIONAL: extra reference images (logo, swipe-file, prior thumbnail) to
   // condition composition / brand. Pass an array of stored:/generated:/uploaded: refs.
@@ -31,7 +32,7 @@ const PENCIL_SUFFIX =
 export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "generate_sketch",
   description:
-    "Generates a fast, cheap draft thumbnail using Gemini Flash Image. Defaults to a HAND-DRAWN PENCIL SKETCH style (rough strokes, monochrome graphite on paper) — perfect for proposing layout/angle ideas without committing to a polished design. Pass style='polished' for a finished thumbnail render. ALWAYS pass `face_source: stored:fr_<id>` when a face is involved, so the sketched person actually resembles the user (otherwise you get a generic stranger). Optionally pass `reference_sources: [stored:lg_<id>, stored:sf_<id>]` to condition logo placement / composition. Returns a `generated:<id>` reference usable as a sketch node's image_source in apply_workflow. Aspect ratio defaults to 16x9.",
+    "Generates a fast, cheap draft thumbnail using Gemini Flash Image. Defaults to a HAND-DRAWN PENCIL SKETCH style (rough strokes, monochrome graphite on paper) — perfect for proposing layout/angle ideas without committing to a polished design. Pass style='polished' for a finished thumbnail render. ALWAYS pass `face_source: stored:persona_<id>` (the chosen Personnage) when the user's face is involved, so the sketched person actually resembles the user (otherwise you get a generic stranger). Optionally pass `reference_sources: [stored:lg_<id>, stored:sf_<id>]` to condition logo placement / composition. Returns a `generated:<id>` reference usable as a sketch node's image_source in apply_workflow. Aspect ratio defaults to 16x9.",
   inputSchema: InputSchema,
   handler: async ({ prompt, aspect_ratio, style, face_source, reference_sources }) => {
     const start = Date.now();

@@ -1,27 +1,33 @@
 "use client";
 
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuGroup } from "@/components/ui/dropdown-menu";
-
-type MenuItem = { label: string; onClick: () => void; icon?: React.ReactNode; disabled?: boolean; hint?: string };
-type MenuSection = { title: string; items: MenuItem[] };
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { ContextMenuItem } from "@/lib/canvas/context-menus";
 
 export default function ContextMenu({
   x,
   y,
-  sections,
   items,
   onClose,
 }: {
   x: number;
   y: number;
-  sections?: MenuSection[];
-  items?: MenuItem[];
+  items: ContextMenuItem[];
   onClose: () => void;
 }) {
-  const allSections: MenuSection[] = sections ? sections : items ? [{ title: "", items }] : [];
-
   return (
-    <DropdownMenu open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <DropdownMenu
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       {/* Invisible 1x1 anchor at the captured click point. DropdownMenuContent
           positions itself against this anchor via Base UI's own Popper-style
           positioner (side/align/offset below) rather than a plain fixed style —
@@ -39,35 +45,28 @@ export default function ContextMenu({
         align="start"
         sideOffset={0}
         alignOffset={0}
-        className="min-w-[220px] max-h-[80vh] overflow-y-auto"
+        className="min-w-[240px]"
         finalFocus={false}
       >
-        {allSections.map((section, si) => (
-          <div key={si}>
-            {si > 0 && <DropdownMenuSeparator />}
-            {/* Base UI's GroupLabel requires a MenuGroupContext ancestor
-                (unlike Radix, where DropdownMenuLabel works standalone) —
-                wrap the label + its items in DropdownMenuGroup to provide it. */}
-            <DropdownMenuGroup>
-              {section.title && (
-                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">{section.title}</DropdownMenuLabel>
-              )}
-              {section.items.map((item, i) => (
-                <DropdownMenuItem
-                  key={i}
-                  disabled={item.disabled}
-                  title={item.disabled && item.hint ? item.hint : undefined}
-                  onClick={() => { if (!item.disabled) { item.onClick(); onClose(); } }}
-                  className="gap-3"
-                >
-                  {item.icon && <span className="shrink-0">{item.icon}</span>}
-                  <span className="flex-1">{item.label}</span>
-                  {item.disabled && item.hint && <span className="text-[10px] text-muted-foreground">inactif</span>}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </div>
-        ))}
+        {items.map((item, index) =>
+          item.type === "separator" ? (
+            <DropdownMenuSeparator key={`separator-${index}`} />
+          ) : (
+            <DropdownMenuItem
+              key={item.label}
+              disabled={item.disabled}
+              variant={item.destructive ? "destructive" : "default"}
+              onClick={() => {
+                if (item.disabled) return;
+                item.action();
+                onClose();
+              }}
+            >
+              <span>{item.label}</span>
+              {item.shortcut && <DropdownMenuShortcut>{item.shortcut}</DropdownMenuShortcut>}
+            </DropdownMenuItem>
+          ),
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

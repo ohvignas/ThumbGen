@@ -88,15 +88,17 @@ describe("generate_sketch", () => {
 
   it("wraps a face/reference image as a tagged input_references object, not a bare string", async () => {
     const bytes = Buffer.from(onePxPng, "base64");
-    getDb().prepare("INSERT OR REPLACE INTO face_reactions (id, label, mime_type, size, data) VALUES (?, ?, ?, ?, ?)")
-      .run("test1", "Test face", "image/png", bytes.length, bytes);
+    getDb().prepare("INSERT OR REPLACE INTO personas (id, label) VALUES (?, ?)").run("test1", "Test persona");
+    getDb()
+      .prepare("INSERT OR REPLACE INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("test1-front", "test1", "front", "image/png", bytes.length, bytes);
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({ data: [{ b64_json: onePxPng, media_type: "image/png" }] }),
     });
     const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
-    const r = await generateSketchTool.handler({ prompt: "x", face_source: "stored:fr_test1" });
+    const r = await generateSketchTool.handler({ prompt: "x", face_source: "stored:persona_test1" });
     expect(r.isError).toBeFalsy();
     const callBody = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(callBody.input_references).toHaveLength(1);

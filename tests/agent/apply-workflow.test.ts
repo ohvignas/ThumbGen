@@ -99,6 +99,7 @@ describe("apply_workflow", () => {
     const swipe = nodes[0];
     expect(swipe.data.imageBase64).toMatch(/^data:image\/png;base64,/);
     expect(swipe.data.label).toBe("Brand");
+    expect(swipe.data.kind).toBe("logo"); // lets the canvas wire a Logo to logo-in
     expect(swipe.data.image_source).toBe(`stored:lg_${logoId}`); // kept for re-resolve
   });
 
@@ -153,5 +154,32 @@ describe("apply_workflow", () => {
     const text = (r.content[0] as { text: string }).text;
     expect(text).toMatch(/1 created/);
     expect(text).toMatch(/1 deleted/);
+  });
+
+  it("stores a Personnage faceReference as its angle photos", async () => {
+    const personaId = uuid();
+    getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Antoine");
+    getDb()
+      .prepare("INSERT INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(uuid(), personaId, "front", "image/png", 1, Buffer.from([1]));
+    const bp = {
+      nodes: [{ id: "face-1", type: "faceReference", data: { image_source: `stored:persona_${personaId}` } }],
+      edges: [],
+    };
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
+    expect(r.isError).toBeFalsy();
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    const face = (JSON.parse(row.nodes) as Array<{ data: Record<string, unknown> }>)[0];
+    expect(face.data.personaId).toBe(personaId);
+    expect((face.data.personaAngles as Record<string, string>).front).toMatch(/^data:image\/png;base64,/);
+    expect(face.data.label).toBe("Antoine");
+    expect(face.data.imageBase64).toBeUndefined();
+  });
+
+  it("rejects a single face photo on a faceReference", async () => {
+    const bp = { nodes: [{ id: "face-1", type: "faceReference", data: { image_source: "stored:fr_legacy" } }], edges: [] };
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
+    expect(r.isError).toBe(true);
+    expect((r.content[0] as { text: string }).text).toContain("stored:persona_");
   });
 });

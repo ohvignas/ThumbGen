@@ -74,7 +74,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
 
   const applyOverlay = useCallback(async () => {
     if (!sourceImage) {
-      setError("Connecte une image (Aperçu, Visage ou Image/logo) à gauche.");
+      setError("Connecte une image (Aperçu ou Image/logo) à gauche.");
       return;
     }
     setError(null);
@@ -157,7 +157,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
       {!sourceImage && (
         <div className="w-full h-32 rounded-xl flex items-center justify-center mb-3" style={{ background: "var(--surface)" }}>
           <span className="text-xs text-center px-4" style={{ color: "var(--text-muted)" }}>
-            Connecte un Aperçu, Visage ou Image à gauche
+            Connecte un Aperçu ou une Image à gauche
           </span>
         </div>
       )}

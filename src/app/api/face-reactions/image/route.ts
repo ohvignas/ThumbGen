@@ -1,3 +1,9 @@
+// The only face_reactions route left. Single face photos are no longer a
+// library item (faces are Personnages), but canvases saved before that change
+// hold image nodes whose imageUrl points here (legacy faces are converted to
+// reference images on load, and the save strips their base64 because an
+// imageUrl exists) — so this read-only endpoint must keep serving them.
+
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 

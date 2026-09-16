@@ -47,6 +47,10 @@ function summarize(type: string, data: Record<string, unknown>): Record<string, 
     case "generator":
       return { model: data.model, aspectRatio: data.aspectRatio, count: data.count };
     case "faceReference":
+      return {
+        persona: typeof data.personaId === "string" ? `stored:persona_${data.personaId}` : null,
+        label: data.label,
+      };
     case "swipeFile":
     case "sketch":
       return {
