@@ -90,7 +90,7 @@ export function getProject(id: string): ProjectData | null {
   return { nodes, edges };
 }
 
-export function saveProject(id: string, nodes: FlowNode[], edges: FlowEdge[]): void {
+export function saveProject(id: string, nodes: FlowNode[], edges: FlowEdge[]): string {
   const db = getDb();
   const now = new Date().toISOString();
   db.transaction(() => {
@@ -106,4 +106,5 @@ export function saveProject(id: string, nodes: FlowNode[], edges: FlowEdge[]): v
       db.prepare("UPDATE projects_meta SET updated_at = ? WHERE id = ?").run(now, id);
     }
   })();
+  return now;
 }

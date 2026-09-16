@@ -20,8 +20,8 @@ export async function POST(request: NextRequest) {
       nodes: FlowNode[];
       edges: FlowEdge[];
     };
-    saveProject(projectId, nodes || [], edges || []);
-    return NextResponse.json({ success: true });
+    const updatedAt = saveProject(projectId, nodes || [], edges || []);
+    return NextResponse.json({ success: true, updatedAt });
   } catch (err) {
     console.error("Save project error:", err);
     return NextResponse.json({ error: "Failed to save project" }, { status: 500 });

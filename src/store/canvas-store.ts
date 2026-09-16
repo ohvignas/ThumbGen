@@ -89,6 +89,12 @@ interface CanvasState {
   // not-yet-saved server state (which visually looks like the edit "didn't
   // take" / snapped back).
   dirty: boolean;
+  // The `updated_at` the server returned from this app's own last successful
+  // save (see saveProject). useCanvasSync's poll compares an observed
+  // `updated_at` against this to tell "my own autosave landed" apart from
+  // "another client changed the project" — only the latter should trigger a
+  // reload (which resets the undo history).
+  lastSavedUpdatedAt: string | null;
   currentProjectId: string;
   history: Snapshot[];
   historyIndex: number;
@@ -164,6 +170,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   loaded: false,
   saving: false,
   dirty: false,
+  lastSavedUpdatedAt: null,
   currentProjectId: "default",
   history: [],
   historyIndex: -1,
@@ -428,15 +435,26 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         };
       });
 
-      await fetch("/api/project", {
+      const res = await fetch("/api/project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: pid, nodes: cleanNodes, edges }),
       });
+      // Record the updated_at the server assigned to this save, if it sent
+      // one back, so useCanvasSync's poll can recognize its own autosave
+      // landing and not mistake it for an external change.
+      let updatedAt: string | undefined;
+      try {
+        const body = (await res.json()) as { updatedAt?: string };
+        updatedAt = body.updatedAt;
+      } catch {
+        // Response wasn't JSON (e.g. a proxy error page) — keep the
+        // previous lastSavedUpdatedAt rather than fail the save.
+      }
       // Only clear dirty on a successful save — on failure, local state is
       // still ahead of the server, so useCanvasSync's poll should keep
       // skipping reloads rather than overwrite the edit that didn't persist.
-      set({ dirty: false });
+      set({ dirty: false, ...(updatedAt ? { lastSavedUpdatedAt: updatedAt } : {}) });
     } catch (err) {
       console.error("Failed to save project:", err);
     } finally {
