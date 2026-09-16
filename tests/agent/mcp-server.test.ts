@@ -23,13 +23,12 @@ describe("MCP server (in-memory)", () => {
     return { server, client };
   }
 
-  it("lists all 13 tools from the registry", async () => {
+  it("lists the registry tools", async () => {
     const { client } = await connectPair();
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name);
     [
       "list_logos",
-      "list_face_reactions",
       "list_personas",
       "list_swipe_files",
       "list_projects",
@@ -42,6 +41,7 @@ describe("MCP server (in-memory)", () => {
       "get_channel_videos",
       "import_youtube_thumbnail",
     ].forEach((n) => expect(names).toContain(n));
+    expect(names).not.toContain("list_face_reactions");
   });
 
   it("calls list_logos through the transport (returns text content)", async () => {

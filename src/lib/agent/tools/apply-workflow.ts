@@ -69,16 +69,11 @@ async function blueprintToCanvasData(
         // Keep the source ref in case a future tool needs to re-resolve.
         image_source: imageSource,
       };
-    case "faceReference":
-      return {
-        imageBase64,
-        label: data.label || "Visage",
-        image_source: imageSource,
-      };
     case "swipeFile":
       return {
         imageBase64,
         label: data.label || (data.kind === "logo" ? "Logo" : "Image"),
+        kind: data.kind,
         image_source: imageSource,
       };
     case "prompt":
