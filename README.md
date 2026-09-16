@@ -78,19 +78,15 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Environment Variables
 
-See `.env.example` for all available configuration. Only `GEMINI_API_KEY` or `IDEOGRAM_API_KEY` is required to start generating.
+See `.env.example` for all available configuration. Only `OPENROUTER_API_KEY` is required — everything else below is optional, and every other setting (models, default resolution/aspect ratio, channel profile, appearance, agent behaviour, MCP…) is configured from the in-app **Réglages** page instead of an env var.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GEMINI_API_KEY` | Yes* | Google Gemini API key ([get one](https://aistudio.google.com/apikey)) |
-| `IDEOGRAM_API_KEY` | Yes* | Ideogram v3 API key ([get one](https://ideogram.ai/manage-api)) |
-| `NOTION_API_KEY` | No | Import swipe files from Notion |
-| `YOUTUBE_API_KEY` | No | Import thumbnails from a YouTube playlist |
-| `SITE_PASSWORD` | No | Simple auth gate |
-| `R2_*` | No | Cloudflare R2 for persistent image storage |
-| `D1_DATABASE_ID` | No | Cloudflare D1 for persistent project storage |
-
-*At least one model API key is required.
+| `OPENROUTER_API_KEY` | Yes | Image generation (OpenRouter's Unified Image API) and the multi-model chat agent |
+| `OPENAI_API_KEY` | No | Voice dictation in the chat panel (Whisper transcription) |
+| `YOUTUBE_API_KEY` | No | Import thumbnails / inspirations feed from a YouTube channel |
+| `MCP_API_KEY` | No | MCP server bearer auth — auto-generated on first start if unset |
+| `SITE_PASSWORD` | No | Simple auth gate for the whole app |
 
 ### Deploy to Cloudflare
 
@@ -177,16 +173,15 @@ The chat-only tool `request_user_image` lets the agent ask for an upload interac
 
 ### Environment variables
 
-The chat agent and MCP server need a few extra env vars beyond the standard generation API keys (`GEMINI_API_KEY`, `IDEOGRAM_API_KEY`, `OPENAI_API_KEY`, `GROK_API_KEY`, `YOUTUBE_API_KEY`):
+The chat agent and MCP server reuse the standard `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `YOUTUBE_API_KEY` above, plus these infra-only overrides:
 
 | Var | Purpose |
 |---|---|
-| `ANTHROPIC_API_KEY` | The chat agent (Claude Sonnet 4.6). Settable via Settings UI too. |
-| `OPENAI_API_KEY` | Whisper transcription (`gpt-4o-mini-transcribe`). Reused if you already have it for OpenAI image gen. |
+| `MCP_API_KEY` | MCP server bearer token — auto-generated on first start if unset. Settable via Réglages too. |
 | `THUMBGEN_PUBLIC_HOST` | Hostname allowed by the MCP server's Origin check for remote use. |
 | `THUMBGEN_DB_PATH` | Override the SQLite file location. Used by tests; production defaults to `data/thumbgen.db`. |
 
-The MCP bearer token is auto-generated on first start and stored in the `settings` table — no env var needed.
+The MCP bearer token is auto-generated on first start and stored in the `settings` table if `MCP_API_KEY` isn't set.
 
 ## Importing a Swipe File from Notion
 
