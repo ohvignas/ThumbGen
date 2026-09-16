@@ -170,6 +170,11 @@ export function getDb(): Database.Database {
   return global.__thumbgen_db;
 }
 
+/** Absolute path of the SQLite file (THUMBGEN_DB_PATH or data/thumbgen.db). */
+export function getDbFilePath(): string {
+  return DB_FILE;
+}
+
 export type ImageMime = "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/svg+xml";
 
 export function extToMime(ext: string): string {
