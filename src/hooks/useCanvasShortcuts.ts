@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
-import { hasOpenOverlay, isEditableTarget, matchCanvasShortcut } from "@/lib/canvas/shortcuts";
+import { hasOpenOverlay, isEditableTarget, matchCanvasShortcut, resolveShortcutAction } from "@/lib/canvas/shortcuts";
 
 /**
  * N → step picker (view centre) · ⇧⌥T → ranger · ⌘A → tout sélectionner ·
@@ -17,17 +17,25 @@ export function useCanvasShortcuts({ onAutoLayout }: { onAutoLayout: () => void 
       if (!shortcut) return;
       const store = useCanvasStore.getState();
 
-      if (shortcut === "escape") {
-        if (store.nodePicker) {
+      const action = resolveShortcutAction(shortcut, {
+        repeat: event.repeat,
+        pickerOpen: store.nodePicker !== null,
+        editableTarget: isEditableTarget(event.target),
+        overlayOpen: hasOpenOverlay(document),
+      });
+
+      switch (action) {
+        case "close-picker":
           store.closeNodePicker();
           return;
-        }
-        if (isEditableTarget(event.target) || hasOpenOverlay(document)) return;
-        store.setAllSelected(false);
-        return;
+        case "deselect-all":
+          store.setAllSelected(false);
+          return;
+        case "ignore":
+          return;
+        case "run":
+          break;
       }
-
-      if (event.repeat || store.nodePicker || isEditableTarget(event.target) || hasOpenOverlay(document)) return;
 
       switch (shortcut) {
         case "add-step":
@@ -42,12 +50,15 @@ export function useCanvasShortcuts({ onAutoLayout }: { onAutoLayout: () => void 
           event.preventDefault();
           store.setAllSelected(true);
           return;
-        case "duplicate":
+        case "duplicate": {
           event.preventDefault();
-          for (const node of store.nodes.filter((candidate) => candidate.selected)) {
-            store.duplicateNode(node.id);
-          }
+          const newIds = store.nodes
+            .filter((candidate) => candidate.selected)
+            .map((node) => store.duplicateNode(node.id))
+            .filter((id) => id !== "");
+          if (newIds.length > 0) store.selectOnly(newIds);
           return;
+        }
       }
     };
 

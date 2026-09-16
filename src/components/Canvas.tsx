@@ -35,6 +35,7 @@ import { useGeneratorDefaults } from "@/hooks/useGeneratorDefaults";
 import { useAutoLayout } from "@/hooks/useAutoLayout";
 import { useCanvasShortcuts } from "@/hooks/useCanvasShortcuts";
 import { nodeMenuItems, paneMenuItems } from "@/lib/canvas/context-menus";
+import { isEditableTarget } from "@/lib/canvas/shortcuts";
 
 const nodeTypes = {
   faceReference: FaceReferenceNode,
@@ -127,7 +128,10 @@ function CanvasInner({ projectId }: { projectId?: string }) {
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
       // isValid is null only when the pointer was not over (or near) a handle.
-      if (connectionState.isValid !== null) return;
+      // But xyflow's getClosestHandle skips the handle the drag started from,
+      // so releasing back onto that same handle also gives isValid === null
+      // while still setting toHandle — that's not an empty-space release.
+      if (connectionState.isValid !== null || connectionState.toHandle) return;
       const fromHandle = connectionState.fromHandle;
       if (!fromHandle?.id) return;
       const point = "changedTouches" in event ? event.changedTouches[0] : event;
@@ -176,6 +180,11 @@ function CanvasInner({ projectId }: { projectId?: string }) {
   );
 
   const onNodeContextMenu: NodeMouseHandler<AppNode> = useCallback((event, node) => {
+    // Right-clicking a field (Prompt textarea, Texte overlay input, the node
+    // rename input) or a generated image must keep the browser's own menu
+    // (paste, spell-check, « Enregistrer l'image ») instead of ours.
+    const target = event.target as HTMLElement;
+    if (isEditableTarget(target) || target.closest?.("img")) return;
     event.preventDefault();
     setMenu({ kind: "node", x: event.clientX, y: event.clientY, nodeId: node.id });
   }, []);

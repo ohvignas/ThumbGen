@@ -102,6 +102,37 @@ describe("duplicateNode", () => {
     expect(useCanvasStore.getState().duplicateNode("missing")).toBe("");
     expect(useCanvasStore.getState().nodes).toHaveLength(1);
   });
+
+  it("strips a loading genStatus so no spinner is left with nothing to update it", () => {
+    const loadingPreview: AppNode = {
+      id: "prev",
+      type: "preview",
+      position: { x: 0, y: 0 },
+      data: { genStatus: "loading", genModel: "Nano Banana" },
+    };
+    seed([loadingPreview]);
+
+    const newId = useCanvasStore.getState().duplicateNode("prev");
+    const copy = useCanvasStore.getState().nodes.find((n) => n.id === newId)!;
+
+    expect("genStatus" in copy.data).toBe(false);
+    expect(copy.data.genModel).toBe("Nano Banana");
+  });
+
+  it("keeps a finished genStatus (done/error) on the copy", () => {
+    const donePreview: AppNode = {
+      id: "prev",
+      type: "preview",
+      position: { x: 0, y: 0 },
+      data: { genStatus: "done", generatedImages: ["/img/a.png"] },
+    };
+    seed([donePreview]);
+
+    const newId = useCanvasStore.getState().duplicateNode("prev");
+    const copy = useCanvasStore.getState().nodes.find((n) => n.id === newId)!;
+
+    expect(copy.data.genStatus).toBe("done");
+  });
 });
 
 describe("setAllSelected", () => {
@@ -123,6 +154,41 @@ describe("setAllSelected", () => {
 
     vi.advanceTimersByTime(3000);
     expect(useCanvasStore.getState().history).toHaveLength(1);
+  });
+});
+
+describe("selectOnly", () => {
+  it("selects exactly the given node ids and deselects everything else", () => {
+    seed(
+      [
+        { id: "a", type: "prompt", position: { x: 0, y: 0 }, data: {}, selected: true },
+        { id: "b", type: "prompt", position: { x: 0, y: 100 }, data: {} },
+        { id: "c", type: "prompt", position: { x: 0, y: 200 }, data: {} },
+      ],
+      [{ id: "e", source: "a", target: "b", selected: true }],
+    );
+
+    useCanvasStore.getState().selectOnly(["b", "c"]);
+
+    const { nodes, edges } = useCanvasStore.getState();
+    expect(nodes.find((n) => n.id === "a")!.selected).toBe(false);
+    expect(nodes.find((n) => n.id === "b")!.selected).toBe(true);
+    expect(nodes.find((n) => n.id === "c")!.selected).toBe(true);
+    expect(edges.every((e) => !e.selected)).toBe(true);
+  });
+
+  it("is view state: no history entry, no save", () => {
+    seed([{ id: "a", type: "prompt", position: { x: 0, y: 0 }, data: {} }]);
+    useCanvasStore.getState().selectOnly(["a"]);
+    vi.advanceTimersByTime(3000);
+    expect(useCanvasStore.getState().history).toHaveLength(1);
+    expect(useCanvasStore.getState().dirty).toBe(false);
+  });
+
+  it("selects nothing when given an empty list", () => {
+    seed([{ id: "a", type: "prompt", position: { x: 0, y: 0 }, data: {}, selected: true }]);
+    useCanvasStore.getState().selectOnly([]);
+    expect(useCanvasStore.getState().nodes.every((n) => !n.selected)).toBe(true);
   });
 });
 

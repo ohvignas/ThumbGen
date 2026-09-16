@@ -109,6 +109,7 @@ interface CanvasState {
   removeNode: (nodeId: string) => void;
   duplicateNode: (nodeId: string) => string;
   setAllSelected: (selected: boolean) => void;
+  selectOnly: (ids: string[]) => void;
   nodePicker: NodePickerState | null;
   openNodePicker: (state: NodePickerState) => void;
   closeNodePicker: () => void;
@@ -265,6 +266,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const id = uuid();
     const data = JSON.parse(JSON.stringify(source.data)) as NodeData;
     delete data.isGenerating;
+    // "loading" only ever clears via the in-flight generation call that
+    // targeted the original node's id — a copy stuck at "loading" would spin
+    // forever with nothing left to update it.
+    if (data.genStatus === "loading") delete data.genStatus;
     const copy: AppNode = {
       id,
       type: source.type,
@@ -284,6 +289,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({
       nodes: get().nodes.map((n) => (Boolean(n.selected) === selected ? n : { ...n, selected })),
       edges: selected ? get().edges : get().edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+    });
+  },
+
+  // Selects exactly the given node ids (e.g. the copies from a ⌘D) and
+  // deselects everything else, nodes and edges alike. View state: no
+  // history entry, no save.
+  selectOnly: (ids) => {
+    const idSet = new Set(ids);
+    set({
+      nodes: get().nodes.map((n) => {
+        const shouldSelect = idSet.has(n.id);
+        return Boolean(n.selected) === shouldSelect ? n : { ...n, selected: shouldSelect };
+      }),
+      edges: get().edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
     });
   },
 

@@ -16,7 +16,7 @@ describe("ImageSource", () => {
 
   it.each([
     "stored:fr_bbb",                // single face photos are gone: Personnages only
-    "stored:fc_abc",            // fc_ prefix removed; face_reactions uses fr_
+    "stored:fc_abc",            // fc_ has never been a recognized prefix
     "stored:invalid_prefix",
     "https://example.com/x.png",
     "fr_abc",                    // missing stored: prefix

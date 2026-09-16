@@ -95,7 +95,7 @@ export default function GeneratorNode({
       await Promise.all(
         inputs.faceRefs.map(async (n) => {
           const angles = n.data.personaAngles;
-          const label = n.data.label || "Visage";
+          const label = n.data.label || "Personnage";
           if (angles && (angles.front || angles.left || angles.right)) {
             const urls = [angles.front, angles.left, angles.right].filter(Boolean) as string[];
             const images = (await Promise.all(urls.map((url) => getImage({ data: { imageUrl: url } })))).filter(Boolean) as string[];
@@ -117,9 +117,10 @@ export default function GeneratorNode({
     const logoEntries = logoResults.filter(Boolean) as { image: string; label: string }[];
     const promptText = inputs.prompts.map((n) => n.data.prompt).filter(Boolean).join("\n");
     const negativePrompt = inputs.prompts.map((n) => n.data.negativePrompt).filter(Boolean).join("\n");
-    // Convert preview images (URLs) to base64
+    // Convert preview/text-overlay images (URLs) to base64. Both node types
+    // store their rendered output in data.generatedImages.
     const previewImageUrls = inputs.images
-      .filter((n) => n.type === "preview")
+      .filter((n) => n.type === "preview" || n.type === "textOverlay")
       .map((n) => {
         const imgs = n.data.generatedImages;
         const idx = n.data.selectedImageIndex || 0;

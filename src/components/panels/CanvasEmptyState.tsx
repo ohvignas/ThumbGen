@@ -21,10 +21,10 @@ export default function CanvasEmptyState() {
         onClick={() => openNodePicker({ mode: "free" })}
         className="group pointer-events-auto flex flex-col items-center gap-3 rounded-2xl p-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        <span className="flex size-20 items-center justify-center rounded-2xl border-2 border-dashed border-border text-muted-foreground transition-colors group-hover:border-primary group-hover:text-foreground">
+        <span className="flex size-20 items-center justify-center rounded-2xl border-2 border-dashed border-(--line-strong) text-(--text-tertiary) transition-colors group-hover:border-(--canvas-accent) group-hover:text-(--text-primary)">
           <Plus className="size-8" />
         </span>
-        <span className="text-sm text-muted-foreground transition-colors group-hover:text-foreground">
+        <span className="text-sm text-(--text-tertiary) transition-colors group-hover:text-(--text-primary)">
           Ajouter une première étape
         </span>
       </button>

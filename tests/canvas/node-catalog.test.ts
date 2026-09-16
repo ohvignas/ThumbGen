@@ -123,7 +123,9 @@ describe("compatibleEntries — wire dragged from an input (target) handle", () 
   });
 
   it("text overlay and preview inputs", () => {
-    expect(target("textOverlay", "image-in")).toEqual(["generateur:result", "apercu:preview-out"]);
+    // A generator has no image on itself (results land on new preview
+    // nodes), so Texte overlay's image-in only accepts an Aperçu.
+    expect(target("textOverlay", "image-in")).toEqual(["apercu:preview-out"]);
     expect(target("preview", "preview-in")).toEqual(["generateur:result", "texte:result"]);
   });
 
@@ -151,7 +153,8 @@ describe("compatibleEntries — wire dragged from an output (source) handle", ()
   });
 
   it("results feed the finishing steps", () => {
-    expect(source("generator", "result")).toEqual(["texte:image-in", "apercu:preview-in"]);
+    // A generator's result only reaches Texte overlay through an Aperçu.
+    expect(source("generator", "result")).toEqual(["apercu:preview-in"]);
     expect(source("textOverlay", "result")).toEqual(["generateur:ref-in", "apercu:preview-in"]);
     expect(source("preview", "preview-out")).toEqual(["generateur:ref-in", "texte:image-in"]);
   });

@@ -27,9 +27,48 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element.isContentEditable === true;
 }
 
-/** Open dialogs/sheets and menus (Base UI) and the full-screen sketch editor. */
-export const OVERLAY_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], .excalidraw';
+/**
+ * Open dialogs/sheets, menus and listboxes (Base UI) and the full-screen
+ * sketch editor. Covers an open Base UI `Select` (e.g. the Personnage
+ * picker) — it doesn't stop keydown from reaching the canvas, so without
+ * this a shortcut key typed while it's open (like the picker's « n ») would
+ * still fire.
+ *
+ * The listbox part is scoped to `[data-open] [role="listbox"]`, not a bare
+ * `[role="listbox"]`: Base UI keeps a Select's listbox mounted in the DOM
+ * (0×0, inert) after it closes instead of removing it — only its `[data-open]`
+ * wrapper flips to `data-closed`. A bare role selector would therefore stay
+ * "open" forever after the first time any Select is opened in the session,
+ * silently disabling every shortcut but Escape from then on.
+ */
+export const OVERLAY_SELECTOR =
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [data-open] [role="listbox"], .excalidraw';
 
 export function hasOpenOverlay(doc: { querySelector(selectors: string): Element | null }): boolean {
   return doc.querySelector(OVERLAY_SELECTOR) !== null;
+}
+
+export type ShortcutContext = {
+  repeat: boolean;
+  pickerOpen: boolean;
+  editableTarget: boolean;
+  overlayOpen: boolean;
+};
+
+export type ShortcutAction = "close-picker" | "deselect-all" | "run" | "ignore";
+
+/**
+ * Pure decision for what a matched shortcut should do, given the current
+ * context. Escape has its own order (close the picker first, even while
+ * typing or an overlay is open); every other shortcut is blocked by a key
+ * repeat, the picker being open, typing in a field, or an open overlay.
+ */
+export function resolveShortcutAction(shortcut: CanvasShortcut, context: ShortcutContext): ShortcutAction {
+  if (shortcut === "escape") {
+    if (context.pickerOpen) return "close-picker";
+    if (context.editableTarget || context.overlayOpen) return "ignore";
+    return "deselect-all";
+  }
+  if (context.repeat || context.pickerOpen || context.editableTarget || context.overlayOpen) return "ignore";
+  return "run";
 }
