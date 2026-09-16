@@ -51,7 +51,13 @@ export const AGENT_MODELS: AgentModel[] = [
   },
 ];
 
-export const DEFAULT_AGENT_MODEL = "google/gemini-3.8-flash";
+// Gemini models hit a "corrupted thought signature" failure on multi-image
+// tool results (e.g. search_youtube returning multiple thumbnails), which
+// blocks the agent's own research step — the exact feature this default
+// needs to support. The running instance's DB-stored setting was already
+// switched to Claude; this is the code-level fallback so a fresh deploy or
+// a wiped /app/data volume doesn't silently regress back to the broken model.
+export const DEFAULT_AGENT_MODEL = "anthropic/claude-sonnet-4.6";
 
 export function getModelById(id: string): AgentModel | undefined {
   // Strip the :online suffix used for web-search variants when looking up.

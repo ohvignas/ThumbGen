@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { AGENT_MODELS, getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
 
 describe("AGENT_MODELS", () => {
-  it("has gemini 3.8 flash as the default", () => {
-    expect(DEFAULT_AGENT_MODEL).toBe("google/gemini-3.8-flash");
+  it("has claude sonnet 4.6 as the default", () => {
+    // Gemini models hit a "corrupted thought signature" failure on
+    // multi-image tool results — see the comment above DEFAULT_AGENT_MODEL.
+    expect(DEFAULT_AGENT_MODEL).toBe("anthropic/claude-sonnet-4.6");
     expect(getModelById(DEFAULT_AGENT_MODEL)).toBeDefined();
   });
 
