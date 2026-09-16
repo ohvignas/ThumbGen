@@ -37,15 +37,10 @@ export default function UsageBadge() {
 
   return (
     <div
-      className="flex items-center gap-1.5 text-[10px] tabular-nums"
-      style={{
-        color: "var(--text-muted)",
-        fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-        letterSpacing: "0.04em",
-      }}
+      className="flex items-center gap-1.5 text-[10px] tabular-nums tracking-[0.04em] font-mono text-muted-foreground"
       title={`Aujourd'hui : chat ${fmt(usage.today.messages)} + générations ${fmt(usage.today.generations)}\nMois : chat ${fmt(usage.month.messages)} + générations ${fmt(usage.month.generations)}`}
     >
-      <span style={{ color: "var(--text-secondary)" }}>{fmt(usage.today.total)}</span>
+      <span className="text-foreground">{fmt(usage.today.total)}</span>
       <span>/</span>
       <span>{fmt(usage.month.total)}</span>
     </div>

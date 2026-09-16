@@ -107,13 +107,12 @@ export default function GeneratedImagePreview({ part }: { part: { output?: unkno
   };
 
   return (
-    <div className="relative rounded-md overflow-hidden" style={{ border: "1px solid var(--line)", maxWidth: 280 }}>
+    <div className="relative rounded-md overflow-hidden border border-border" style={{ maxWidth: 280 }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="généré" loading="lazy" onClick={() => openAnnotate(url)} className="w-full aspect-video object-cover" style={{ cursor: "zoom-in" }} />
+      <img src={url} alt="généré" loading="lazy" onClick={() => openAnnotate(url)} className="w-full aspect-video object-cover cursor-zoom-in" />
       {sketchId && (
         <button type="button" onClick={applyToCanvas} disabled={applied || applying}
-          className="absolute top-1.5 right-1.5 px-2 py-1 rounded text-[9px] uppercase"
-          style={{ background: "rgba(15,15,20,0.85)", color: "var(--bone)", border: "1px solid var(--brand)" }}>
+          className="absolute top-1.5 right-1.5 px-2 py-1 rounded text-[9px] uppercase bg-black/85 text-white border border-primary">
           {applied ? "Ajouté ✓" : applying ? "…" : "+ canvas"}
         </button>
       )}
