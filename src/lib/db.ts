@@ -140,6 +140,26 @@ function init(database: Database.Database) {
   if (!projectMetaColumns.some((c) => c.name === "description")) {
     database.exec("ALTER TABLE projects_meta ADD COLUMN description TEXT NOT NULL DEFAULT ''");
   }
+
+  pruneRemovedSettingsKeys(database);
+}
+
+const REMOVED_SETTINGS_KEYS = ["geminiApiKey", "ideogramApiKey", "grokApiKey", "anthropicApiKey", "sitePassword"];
+
+/**
+ * The Réglages rework (2026-09-16) dropped geminiApiKey/ideogramApiKey/
+ * grokApiKey/anthropicApiKey/sitePassword from the settings schema — the
+ * OpenRouter Unified Image API replaced the direct provider keys, and
+ * sitePassword is now env-only. Rows written before that change linger in
+ * an existing settings table (CREATE TABLE IF NOT EXISTS never removes a
+ * column/row) and get copied into every backup, including any leftover
+ * secret values. The DELETE is naturally idempotent, so this can run on
+ * every startup with no separate "already ran" guard needed — exported so
+ * tests can exercise it directly without needing to reopen the database.
+ */
+export function pruneRemovedSettingsKeys(database: Database.Database): void {
+  const placeholders = REMOVED_SETTINGS_KEYS.map(() => "?").join(",");
+  database.prepare(`DELETE FROM settings WHERE key IN (${placeholders})`).run(...REMOVED_SETTINGS_KEYS);
 }
 
 function backfillGeneratedImageProjects(database: Database.Database) {
