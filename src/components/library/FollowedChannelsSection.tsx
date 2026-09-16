@@ -24,6 +24,9 @@ type FeedState =
 export default function FollowedChannelsSection() {
   const [feed, setFeed] = useState<FeedState>({ status: "loading" });
 
+  // Shared by the mount effect below and the `youtube-channel-saved` handler
+  // — kept as a plain function (not called from the mount effect itself) so
+  // the effect body never calls setState synchronously (react-hooks/set-state-in-effect).
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/youtube/playlist", { cache: "no-store" });
@@ -37,8 +40,23 @@ export default function FollowedChannelsSection() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/youtube/playlist", { cache: "no-store" });
+        const body = (await res.json()) as PlaylistResponse;
+        if (cancelled) return;
+        if (body.configured === false) setFeed({ status: "unconfigured" });
+        else if (body.error || !res.ok) setFeed({ status: "error" });
+        else setFeed({ status: "ready", items: body.items ?? [] });
+      } catch {
+        if (!cancelled) setFeed({ status: "error" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Saving « Ma chaîne » in Réglages (ChaineSection) dispatches this event.
   useEffect(() => {

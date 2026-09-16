@@ -46,7 +46,7 @@ export type LogoSearchResponse = {
 };
 
 /** Answer of POST /api/logos/add. */
-export type AddedLogo = { filename: string; label: string; remote: boolean };
+export type AddedLogo = { filename: string; label: string };
 
 function joinFrench(items: string[]): string {
   if (items.length <= 1) return items.join("");

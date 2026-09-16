@@ -1,8 +1,8 @@
 /** Client-safe shapes and helpers for the library lists. */
 import { matchesSearch } from "@/lib/search-text";
 
-/** One row of GET /api/logos. `remote`: a Brandfetch reference fetched when used. */
-export type LibraryLogo = { filename: string; label: string; size: number; remote: boolean };
+/** One row of GET /api/logos. */
+export type LibraryLogo = { filename: string; label: string; size: number };
 
 /** One row of GET /api/swipe-files. */
 export type LibrarySwipe = { filename: string; title: string; size: number };

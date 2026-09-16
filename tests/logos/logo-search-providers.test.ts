@@ -9,7 +9,7 @@ import {
   svglCacheSize,
 } from "@/lib/logos/providers/svgl";
 import { commonsSearchUrl, isCommonsFileUrl, searchWikimedia } from "@/lib/logos/providers/wikimedia";
-import { brandfetchLogoUrl, isBrandfetchBrandId, searchBrandfetch } from "@/lib/logos/providers/brandfetch";
+import { isBrandfetchBrandId, searchBrandfetch } from "@/lib/logos/providers/brandfetch";
 
 const fetchMock = vi.fn<typeof fetch>();
 const signal = new AbortController().signal;
@@ -295,8 +295,7 @@ describe("Brandfetch", () => {
     await expect(searchBrandfetch("nike", "bf-client-1234", signal)).rejects.toThrow("Brandfetch HTTP 401");
   });
 
-  it("builds the CDN address of a brand icon without the client ID", () => {
-    expect(brandfetchLogoUrl("id_0dwKPKT")).toBe("https://cdn.brandfetch.io/id_0dwKPKT/w/1024/fallback/404/icon.png");
+  it("validates a Brandfetch brand id", () => {
     expect(isBrandfetchBrandId("id_0dwKPKT")).toBe(true);
     expect(isBrandfetchBrandId("../etc")).toBe(false);
   });

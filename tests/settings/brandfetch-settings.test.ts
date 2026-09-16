@@ -14,9 +14,6 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 }
 
-const pngResponse = () =>
-  new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { status: 200, headers: { "content-type": "image/png" } });
-
 beforeEach(() => {
   getDb().exec("DELETE FROM settings");
   savedEnv = process.env.BRANDFETCH_API_KEY;
@@ -55,40 +52,40 @@ describe("Brandfetch connection test", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("runs a minimal search, then checks the client ID on the logo CDN", async () => {
+  it("runs a single Brand Search request and reports the search is active — no image fetch", async () => {
     setSetting("brandfetchApiKey", KEY);
-    fetchMock
-      .mockResolvedValueOnce(json([{ brandId: "id_x", name: "Brandfetch", domain: "brandfetch.com", icon: "https://cdn.brandfetch.io/id_x/icon.webp" }]))
-      .mockResolvedValueOnce(pngResponse());
-    expect(await testProviderKey("brandfetch")).toEqual({ ok: true, detail: "Clé valide · recherche et logos disponibles" });
+    fetchMock.mockResolvedValueOnce(
+      json([{ brandId: "id_x", name: "Brandfetch", domain: "brandfetch.com", icon: "https://cdn.brandfetch.io/id_x/icon.webp" }]),
+    );
+    expect(await testProviderKey("brandfetch")).toEqual({
+      ok: true,
+      detail: "Client ID enregistré — la recherche Brandfetch est active.",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const [searchUrl, searchInit] = fetchMock.mock.calls[0];
     expect(String(searchUrl)).toBe(`https://api.brandfetch.io/v2/search/brandfetch?c=${KEY}`);
     expect((searchInit?.headers as Record<string, string>)["User-Agent"]).toMatch(/^ThumbGen\//);
-    const [logoUrl, logoInit] = fetchMock.mock.calls[1];
-    expect(String(logoUrl)).toBe(`https://cdn.brandfetch.io/brandfetch.com/w/64/fallback/404/icon.png?c=${KEY}`);
-    expect(logoInit?.redirect).toBe("manual");
-    expect(logoInit?.signal).toBeInstanceOf(AbortSignal);
+    // Never requests the image CDN: Brandfetch forbids programmatic/server-side image access.
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("cdn.brandfetch.io"))).toBe(false);
   });
 
-  it("reports a client ID the CDN rejects", async () => {
+  it("succeeds even on an empty result array (the search itself is what's being tested)", async () => {
     setSetting("brandfetchApiKey", KEY);
-    fetchMock
-      .mockResolvedValueOnce(json([]))
-      .mockResolvedValueOnce(json({ error: "client_id_invalid_signature" }, 403, { "x-bf-error": "client_id_invalid_signature" }));
+    fetchMock.mockResolvedValueOnce(json([]));
     expect(await testProviderKey("brandfetch")).toEqual({
-      ok: false,
-      detail: "Clé refusée par Brandfetch (client_id_invalid_signature)",
+      ok: true,
+      detail: "Client ID enregistré — la recherche Brandfetch est active.",
     });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("says when Brandfetch refuses server access to logos", async () => {
+  it("reports a non-200 search response through the masking failure() helper", async () => {
     setSetting("brandfetchApiKey", KEY);
-    fetchMock
-      .mockResolvedValueOnce(json([]))
-      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { "x-bf-error": "automated_traffic", location: "https://brandfetch.com/developers" } }));
+    fetchMock.mockResolvedValueOnce(json({ error: "client_id_invalid_signature" }, 403));
     const result = await testProviderKey("brandfetch");
     expect(result.ok).toBe(false);
-    expect(result.detail).toContain("automated_traffic");
+    expect(result.detail).toContain("HTTP 403");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("masks the key in a search error and stops there", async () => {

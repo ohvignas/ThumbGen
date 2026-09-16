@@ -18,17 +18,14 @@ export class LogoAddError extends Error {
 }
 
 export type AddLogoInput = { source: LogoSource; ref: string; name: string };
-// `remote` is kept in the shape (mirrored by the API's AddedLogo) even though
-// this task never sets it to true: logos.remote_url doesn't exist (see below).
-export type AddedLogoRow = { id: string; label: string; remote: boolean };
+export type AddedLogoRow = { id: string; label: string };
 
 const DOWNLOAD_TIMEOUT_MS = 10_000;
 const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 // Brandfetch's guidelines forbid storing or programmatically fetching their
-// logo images, so this project never persists a Brandfetch file or reference
-// (no `logos.remote_url` column, no client ID handling here).
+// logo images, so this project never persists a Brandfetch file or reference.
 const BRANDFETCH_MANUAL_MESSAGE =
   "Les logos Brandfetch ne s'ajoutent pas automatiquement : ouvre-le sur Brandfetch, télécharge le fichier puis importe-le.";
 
@@ -106,7 +103,7 @@ function insertLogo(label: string, png: Buffer): AddedLogoRow {
   getDb()
     .prepare("INSERT INTO logos (id, label, mime_type, size, data) VALUES (?, ?, ?, ?, ?)")
     .run(id, label, "image/png", png.length, png);
-  return { id, label, remote: false };
+  return { id, label };
 }
 
 /**

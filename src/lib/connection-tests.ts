@@ -77,6 +77,13 @@ async function testYouTube(apiKey: string, signal: AbortSignal): Promise<Connect
   return { ok: true, detail: "Clé valide · 1 unité de quota utilisée" };
 }
 
+/**
+ * Brandfetch forbids programmatic/server-side access to their logo images
+ * (search-preview only), so this only checks the Brand Search API — never
+ * the image CDN. A 200 with a JSON array doesn't verify the client ID (the
+ * search endpoint also answers unknown IDs), so the wording only claims the
+ * search itself is working, not that the ID was verified.
+ */
 async function testBrandfetch(clientId: string, signal: AbortSignal): Promise<ConnectionTestResult> {
   const c = encodeURIComponent(clientId);
   const search = await fetch(`https://api.brandfetch.io/v2/search/brandfetch?c=${c}`, {
@@ -84,24 +91,9 @@ async function testBrandfetch(clientId: string, signal: AbortSignal): Promise<Co
     signal,
   });
   if (!search.ok) return failure(search, clientId);
-  // The search endpoint also answers unknown client IDs (checked 2026-09-16);
-  // the logo CDN verifies the ID's signature, so one small icon tells them apart.
-  const logo = await fetch(`https://cdn.brandfetch.io/brandfetch.com/w/64/fallback/404/icon.png?c=${c}`, {
-    headers: { "User-Agent": THUMBGEN_USER_AGENT },
-    redirect: "manual",
-    signal,
-  });
-  if (logo.status === 200) return { ok: true, detail: "Clé valide · recherche et logos disponibles" };
-  const reason = logo.headers.get("x-bf-error");
-  if (reason === "automated_traffic") {
-    return {
-      ok: false,
-      detail:
-        "Recherche disponible, mais Brandfetch refuse l'accès serveur aux logos (automated_traffic) : les logos Brandfetch enregistrés ne pourront pas s'afficher.",
-    };
-  }
-  if (reason) return { ok: false, detail: `Clé refusée par Brandfetch (${reason})` };
-  return { ok: false, detail: `Logos Brandfetch : HTTP ${logo.status}` };
+  const body = await search.json().catch(() => null);
+  if (!Array.isArray(body)) return { ok: false, detail: "Réponse Brandfetch inattendue." };
+  return { ok: true, detail: "Client ID enregistré — la recherche Brandfetch est active." };
 }
 
 /** Tests the key the server would actually use (stored value, else env var). */

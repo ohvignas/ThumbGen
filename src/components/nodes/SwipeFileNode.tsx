@@ -22,7 +22,9 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
   useEffect(() => {
     if (data.imageUrl && !data.imageBase64) {
       const url = data.imageUrl;
-      fetch(url)
+      // no-cache: the image route serves a long-lived immutable Cache-Control,
+      // so a cached 200 would otherwise hide a 404 once the item is deleted.
+      fetch(url, { cache: "no-cache" })
         .then((r) => {
           if (r.status === 404) {
             setMissingUrl(url);

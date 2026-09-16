@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   try {
     const logo = await addLogoFromSearch(parsed.data);
-    const body: AddedLogo = { filename: logo.id, label: logo.label, remote: logo.remote };
+    const body: AddedLogo = { filename: logo.id, label: logo.label };
     return NextResponse.json(body);
   } catch (error) {
     if (error instanceof LogoAddError) return NextResponse.json({ error: error.message }, { status: error.status });

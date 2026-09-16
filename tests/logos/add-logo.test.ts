@@ -90,7 +90,7 @@ describe("svgToPng", () => {
 describe("addLogoFromSearch", () => {
   it("Simple Icons: stores the coloured icon as a 1024 px PNG without any request", async () => {
     const logo = await addLogoFromSearch({ source: "simple-icons", ref: "youtube", name: " YouTube " });
-    expect(logo).toMatchObject({ label: "YouTube", remote: false });
+    expect(logo).toMatchObject({ label: "YouTube" });
     const saved = row(logo.id);
     expect(saved.mime_type).toBe("image/png");
     expect(saved.size).toBe(saved.data.length);
@@ -241,8 +241,8 @@ describe("POST /api/logos/add", () => {
   it("adds a Simple Icons logo and returns its filename", async () => {
     const res = await add({ source: "simple-icons", ref: "nike", name: "Nike" });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { filename: string; label: string; remote: boolean };
-    expect(body).toMatchObject({ label: "Nike", remote: false });
+    const body = (await res.json()) as { filename: string; label: string };
+    expect(body).toMatchObject({ label: "Nike" });
     expect(row(body.filename).mime_type).toBe("image/png");
   });
 

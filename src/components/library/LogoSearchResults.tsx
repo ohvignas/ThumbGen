@@ -56,7 +56,7 @@ export default function LogoSearchResults({
         setError(body.error ?? `Ajout impossible (HTTP ${res.status}).`);
         return;
       }
-      const logo: AddedLogo = { filename: body.filename, label: body.label ?? result.name, remote: Boolean(body.remote) };
+      const logo: AddedLogo = { filename: body.filename, label: body.label ?? result.name };
       setAdded((previous) => ({ ...previous, [result.key]: logo }));
       onAdded(logo);
     } catch {

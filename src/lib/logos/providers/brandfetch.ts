@@ -9,11 +9,6 @@ export function isBrandfetchBrandId(value: string): boolean {
   return BRAND_ID_PATTERN.test(value);
 }
 
-/** CDN address of a brand icon as PNG, without the client ID (appended when fetched). */
-export function brandfetchLogoUrl(brandId: string): string {
-  return `https://cdn.brandfetch.io/${brandId}/w/1024/fallback/404/icon.png`;
-}
-
 type BrandfetchBrand = { brandId?: unknown; name?: unknown; domain?: unknown; icon?: unknown };
 
 /** Brand Search API. The `icon` URLs are signed by Brandfetch and must be hotlinked, never stored. */

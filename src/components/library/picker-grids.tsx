@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { cn } from "cn";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filterBySearch, logoImageUrl, swipeImageUrl, type LibraryLogo, type LibrarySwipe } from "@/lib/library/library-items";
 import { personaImageUrl, type PersonaSummary } from "@/lib/personas";
@@ -16,6 +17,7 @@ type PickerItem = { key: string; imageUrl: string; label: string };
 
 function PickerItemsGrid({
   items,
+  error,
   query,
   emptyLabel,
   aspect,
@@ -23,12 +25,20 @@ function PickerItemsGrid({
   onPick,
 }: {
   items: PickerItem[] | null;
+  error: string | null;
   query: string;
   emptyLabel: string;
   aspect: string;
   logo?: boolean;
   onPick: (item: LibraryPick) => void;
 }) {
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
   if (items === null) {
     return (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -68,7 +78,7 @@ function PickerItemsGrid({
 }
 
 export function PersonaPickerGrid({ query, onPick }: PickerGridProps) {
-  const { items } = useLibraryList<PersonaSummary>("/api/personas");
+  const { items, error } = useLibraryList<PersonaSummary>("/api/personas");
   const pickerItems =
     items === null
       ? null
@@ -78,17 +88,25 @@ export function PersonaPickerGrid({ query, onPick }: PickerGridProps) {
             : [],
         );
   return (
-    <PickerItemsGrid items={pickerItems} query={query} emptyLabel="Aucun personnage dans ta bibliothèque." aspect="aspect-square" onPick={onPick} />
+    <PickerItemsGrid
+      items={pickerItems}
+      error={error}
+      query={query}
+      emptyLabel="Aucun personnage dans ta bibliothèque."
+      aspect="aspect-square"
+      onPick={onPick}
+    />
   );
 }
 
 export function LogoPickerGrid({ query, onPick }: PickerGridProps) {
-  const { items } = useLibraryList<LibraryLogo>("/api/logos");
+  const { items, error } = useLibraryList<LibraryLogo>("/api/logos");
   const pickerItems =
     items === null ? null : items.map((logo) => ({ key: logo.filename, imageUrl: logoImageUrl(logo.filename), label: logo.label }));
   return (
     <PickerItemsGrid
       items={pickerItems}
+      error={error}
       query={query}
       emptyLabel="Aucun logo enregistré — cherche-le dans l'onglet « Chercher en ligne »."
       aspect="aspect-[4/3]"
@@ -99,12 +117,13 @@ export function LogoPickerGrid({ query, onPick }: PickerGridProps) {
 }
 
 export function SwipePickerGrid({ query, onPick }: PickerGridProps) {
-  const { items } = useLibraryList<LibrarySwipe>("/api/swipe-files");
+  const { items, error } = useLibraryList<LibrarySwipe>("/api/swipe-files");
   const pickerItems =
     items === null ? null : items.map((image) => ({ key: image.filename, imageUrl: swipeImageUrl(image.filename), label: image.title }));
   return (
     <PickerItemsGrid
       items={pickerItems}
+      error={error}
       query={query}
       emptyLabel="Aucune image importée — ajoute-en depuis la page Bibliothèque."
       aspect="aspect-video"
