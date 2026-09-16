@@ -37,16 +37,11 @@ export type NodeData = {
   prompt?: string;
   negativePrompt?: string;
   model?: string;
-  ideogramMode?: "generate" | "remix" | "edit";
   aspectRatio?: string;
   imageSize?: ImageResolution; // output resolution; unset → the defaultResolution setting
-  imageWeight?: number;
-  styleType?: string;
-  renderingSpeed?: string;
   isGenerating?: boolean;
   generatedImages?: string[];
   selectedImageIndex?: number;
-  maskDataUrl?: string;
   numImages?: number; // Number of images to generate per model
   favoriteModel?: string; // User's favorite model for quick access
   sketchElements?: string; // JSON string of Excalidraw elements
