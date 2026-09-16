@@ -167,6 +167,66 @@ describe("addLogoFromSearch", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(logoCount()).toBe(0);
   });
+
+  // Fix round: fetch() follows 3xx redirects to any host by default, which
+  // would bypass the SVGL/Wikimedia address allowlist. download() must ask
+  // for `redirect: "manual"` and refuse any 3xx outright rather than follow it.
+  it("asks fetch not to follow redirects, and refuses a leaked 3xx status", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(null, { status: 302, headers: { location: "https://evil.example/payload.svg" } }),
+    );
+    await expect(
+      addLogoFromSearch({ source: "svgl", ref: "https://svgl.app/library/notion.svg", name: "Notion" }),
+    ).rejects.toMatchObject({ name: "LogoAddError", status: 502 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://svgl.app/library/notion.svg");
+    expect(init?.redirect).toBe("manual");
+    expect(logoCount()).toBe(0);
+  });
+
+  // With `redirect: "manual"`, a real fetch implementation (undici/WHATWG)
+  // surfaces a redirect as an opaque response — status 0, type
+  // "opaqueredirect", the Location header hidden from JS — precisely so the
+  // caller can never see or follow the target host. Duck-typed here since a
+  // real Response can't be constructed with that type.
+  it("refuses an opaque redirect (the real redirect: manual behaviour) without following it", async () => {
+    const opaqueRedirect = {
+      type: "opaqueredirect",
+      status: 0,
+      ok: false,
+      headers: new Headers(),
+      body: null,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as Response;
+    fetchMock.mockResolvedValue(opaqueRedirect);
+    await expect(
+      addLogoFromSearch({ source: "svgl", ref: "https://svgl.app/library/notion.svg", name: "Notion" }),
+    ).rejects.toMatchObject({ name: "LogoAddError", status: 502 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(logoCount()).toBe(0);
+  });
+
+  // Fix round: the 5 MB cap must be enforced while reading the body, not only
+  // after buffering it all — a server that omits Content-Length could still
+  // stream an unbounded response otherwise.
+  it("enforces the size cap while streaming, without Content-Length, and cancels the reader", async () => {
+    const cancel = vi.fn();
+    const chunk = new Uint8Array(3 * 1024 * 1024);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+      },
+      cancel,
+    });
+    fetchMock.mockResolvedValue(new Response(stream, { status: 200, headers: { "content-type": "image/svg+xml" } }));
+    await expect(
+      addLogoFromSearch({ source: "svgl", ref: "https://svgl.app/library/notion.svg", name: "Notion" }),
+    ).rejects.toMatchObject({ name: "LogoAddError", status: 413 });
+    expect(cancel).toHaveBeenCalled();
+    expect(logoCount()).toBe(0);
+  });
 });
 
 describe("POST /api/logos/add", () => {

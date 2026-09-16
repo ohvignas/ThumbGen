@@ -32,17 +32,63 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const BRANDFETCH_MANUAL_MESSAGE =
   "Les logos Brandfetch ne s'ajoutent pas automatiquement : ouvre-le sur Brandfetch, télécharge le fichier puis importe-le.";
 
+/**
+ * Reads a response body accumulating chunks, aborting as soon as the total
+ * exceeds the cap — so an oversized download is rejected while it streams,
+ * not only after it has all been buffered in memory.
+ */
+async function readWithCap(res: Response): Promise<Buffer> {
+  if (!res.body) {
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length > MAX_DOWNLOAD_BYTES) throw new LogoAddError("Fichier trop lourd (5 Mo maximum).", 413);
+    return bytes;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_DOWNLOAD_BYTES) {
+      await reader.cancel();
+      throw new LogoAddError("Fichier trop lourd (5 Mo maximum).", 413);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function download(url: string): Promise<Buffer> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { "User-Agent": THUMBGEN_USER_AGENT }, signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+    res = await fetch(url, {
+      headers: { "User-Agent": THUMBGEN_USER_AGENT },
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      // Never follow a redirect: SVGL/Wikimedia addresses are validated
+      // before fetching, and a 3xx response could otherwise silently hand
+      // the download off to an unvalidated host (SSRF via redirect).
+      redirect: "manual",
+    });
   } catch {
     throw new LogoAddError("Téléchargement du logo impossible — réessaie.", 502);
   }
+  // With `redirect: "manual"`, a real fetch implementation surfaces a
+  // redirect as an opaque response (status 0, type "opaqueredirect", no
+  // Location exposed to JS). A leaked 3xx status (e.g. from a test double, or
+  // a runtime that doesn't honour the option) is refused the same way.
+  if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+    throw new LogoAddError("Téléchargement du logo impossible (redirection refusée).", 502);
+  }
   if (!res.ok) throw new LogoAddError(`Téléchargement du logo impossible (HTTP ${res.status}).`, 502);
-  const bytes = Buffer.from(await res.arrayBuffer());
+
+  const contentLength = res.headers.get("content-length");
+  if (contentLength !== null && Number(contentLength) > MAX_DOWNLOAD_BYTES) {
+    throw new LogoAddError("Fichier trop lourd (5 Mo maximum).", 413);
+  }
+
+  const bytes = await readWithCap(res);
   if (bytes.length === 0) throw new LogoAddError("Le fichier du logo est vide.", 502);
-  if (bytes.length > MAX_DOWNLOAD_BYTES) throw new LogoAddError("Fichier trop lourd (5 Mo maximum).", 413);
   return bytes;
 }
 
