@@ -59,7 +59,7 @@ const NodeDataByType = z.discriminatedUnion("type", [
     // equivalent) — see MODEL_ID_MAP in ../tools/apply-workflow.ts.
     model: z.enum(["nano-banana", "openai", "seedream"]),
     aspectRatio: z.enum(["16x9", "9x16", "1x1"]),
-    count: z.number().int().min(1).max(10).optional(),
+    count: z.number().int().min(1).max(4, "count must be at most 4 images (the UI's cap)").optional(),
     abTest: AbTestSchema.optional(),
   }),
 ]);

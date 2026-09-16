@@ -109,6 +109,26 @@ describe("Blueprint", () => {
     },
   );
 
+  it("accepts a generator count of 4 (the UI's cap)", () => {
+    const bp = {
+      nodes: [{ id: "gen-1", type: "generator", data: { model: "openai", aspectRatio: "16x9", count: 4 } }],
+      edges: [],
+    };
+    expect(BlueprintSchema.safeParse(bp).success).toBe(true);
+  });
+
+  it("rejects a generator count of 5 with a clear message (cost: the UI stops at 4)", () => {
+    const bp = {
+      nodes: [{ id: "gen-1", type: "generator", data: { model: "openai", aspectRatio: "16x9", count: 5 } }],
+      edges: [],
+    };
+    const result = BlueprintSchema.safeParse(bp);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(JSON.stringify(result.error.issues)).toContain("count must be at most 4 images");
+    }
+  });
+
   it("rejects duplicate node ids", () => {
     const bp = {
       nodes: [

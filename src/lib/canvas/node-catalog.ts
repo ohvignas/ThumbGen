@@ -125,8 +125,10 @@ export const NODE_CATALOG: CatalogEntry[] = [
     keywords: ["titre", "title", "text", "overlay", "accroche"],
     icon: Type,
     nodeType: "textOverlay",
-    // A generator never holds an image on itself (its results land on new
-    // Aperçu nodes) — only an Aperçu's output feeds Texte overlay.
+    // A generator's own node data also gets generatedImages written to it
+    // (variant A's images, for older code that reads it), but Texte overlay
+    // still can't be wired straight from Générateur → Texte overlay: only an
+    // Aperçu's output feeds Texte overlay.
     inputs: [{ handle: "image-in", accepts: ["apercu"] }],
     output: { handle: "result" },
   },

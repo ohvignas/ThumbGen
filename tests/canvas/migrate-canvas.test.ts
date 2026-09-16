@@ -68,10 +68,22 @@ describe("migrateCanvas", () => {
     expect(result.edges).toEqual(edges);
   });
 
-  it("still renames the legacy image-in handle to ref-in", () => {
+  it("still renames the legacy image-in handle to ref-in when the target is a generator", () => {
     const edges: Edge[] = [{ id: "e1", source: "ref", target: "gen", targetHandle: "image-in" }];
     const result = migrateCanvas([generator], edges);
     expect(result.changed).toBe(true);
     expect(result.edges[0].targetHandle).toBe("ref-in");
+  });
+
+  it("leaves an Aperçu → Texte overlay image-in edge untouched (bug found on main: Texte overlay's real input handle is image-in)", () => {
+    const preview: AppNode = { id: "prev", type: "preview", position: { x: 0, y: 0 }, data: {} };
+    const textOverlay: AppNode = { id: "overlay", type: "textOverlay", position: { x: 400, y: 0 }, data: {} };
+    const edges: Edge[] = [{ id: "e1", source: "prev", sourceHandle: "preview-out", target: "overlay", targetHandle: "image-in" }];
+
+    const result = migrateCanvas([preview, textOverlay], edges);
+
+    expect(result.changed).toBe(false);
+    expect(result.edges[0]).toBe(edges[0]);
+    expect(result.edges[0].targetHandle).toBe("image-in");
   });
 });

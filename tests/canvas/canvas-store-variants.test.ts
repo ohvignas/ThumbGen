@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Edge } from "@xyflow/react";
 import { useCanvasStore, type AppNode } from "@/store/canvas-store";
 
@@ -58,5 +58,65 @@ describe("canvas store — generator variants", () => {
     expect(generator().data.abTest).toEqual({ variants: ["A", "B"] });
     expect(generator().data.model).toBe("gpt-image-2");
     expect(edgeIds()).toEqual(["e-pA"]);
+  });
+});
+
+// Promoted from Task 5: pins that setGeneratorVariants participates in undo
+// history and autosave like every other store mutation, once the canvas is
+// loaded — not just the edge/abTest bookkeeping covered above.
+describe("canvas store — generator variants — undo/autosave", () => {
+  const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, json: async () => ({}) }));
+
+  const abGenerator: AppNode = { id: "gen", type: "generator", position: at, data: { model: "gpt-image-2", abTest: { variants: ["A", "B"] } } };
+  const pB: AppNode = { id: "pB", type: "prompt", position: at, data: { prompt: "B" } };
+  const edgeB: Edge = { id: "e-pB", source: "pB", target: "gen", targetHandle: "prompt-in-b" };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", fetchMock);
+    const nodes = structuredClone([abGenerator, pB]);
+    const edges = structuredClone([edgeB]);
+    useCanvasStore.setState({
+      nodes,
+      edges,
+      loaded: true,
+      saving: false,
+      dirty: false,
+      recentOwnSaveUpdatedAts: [],
+      currentProjectId: "variants-undo-test",
+      history: [{ nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }],
+      historyIndex: 0,
+      nodePicker: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    fetchMock.mockClear();
+  });
+
+  it("pins one history snapshot 300ms after removing B, autosaves the removal, and undo still restores abTest + the B edge", async () => {
+    useCanvasStore.getState().setGeneratorVariants("gen", ["A"]);
+
+    await vi.advanceTimersByTimeAsync(300);
+    const { history, historyIndex } = useCanvasStore.getState();
+    expect(historyIndex).toBe(1);
+    const removalSnapshot = history[historyIndex];
+    expect(removalSnapshot.nodes.find((n) => n.id === "gen")!.data.abTest).toBeUndefined();
+    expect(removalSnapshot.edges.some((e) => e.targetHandle === "prompt-in-b")).toBe(false);
+
+    // Completes the 2000ms autosave debounce started by setGeneratorVariants.
+    await vi.advanceTimersByTimeAsync(1700);
+    const save = fetchMock.mock.calls.find(([url, init]) => url === "/api/project" && init?.method === "POST");
+    expect(save).toBeDefined();
+    const savedGen = JSON.parse(String(save![1]!.body)).nodes.find((n: { id: string }) => n.id === "gen");
+    expect(savedGen.data.abTest).toBeUndefined();
+
+    useCanvasStore.getState().undo();
+    const restored = useCanvasStore.getState();
+    expect(restored.nodes.find((n) => n.id === "gen")!.data.abTest).toEqual({ variants: ["A", "B"] });
+    expect(restored.edges.some((e) => e.targetHandle === "prompt-in-b")).toBe(true);
   });
 });

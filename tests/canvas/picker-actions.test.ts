@@ -125,6 +125,17 @@ describe("planPickerAdd", () => {
     });
   });
 
+  it("wires a node created from a variant input handle (prompt-in-b) to that same handle", () => {
+    const plan = planPickerAdd({
+      state: { mode: "connect", from: { nodeId: "gen", handleId: "prompt-in-b", handleType: "target" } },
+      entry: entry("prompt"),
+      nodes,
+      viewCenter,
+      generatorDefaults,
+    });
+    expect(plan).toMatchObject({ connectTo: "gen", connectToHandle: "prompt-in-b", newNodeHandle: "prompt" });
+  });
+
   it("refuses an incompatible step or a vanished node", () => {
     const logoIn = { nodeId: "gen", handleId: "logo-in", handleType: "target" as const };
     expect(

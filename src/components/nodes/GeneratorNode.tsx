@@ -449,17 +449,30 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
           </Alert>
         )}
 
-        <ConfirmDialog
-          open={removalOpen}
-          onOpenChange={setRemovalOpen}
-          title={pendingRemoval?.copy.title ?? ""}
-          description={pendingRemoval?.copy.description ?? ""}
-          confirmLabel={pendingRemoval?.copy.confirmLabel ?? "Confirmer"}
-          onConfirm={() => {
-            if (pendingRemoval) setGeneratorVariants(id, pendingRemoval.variants);
-            setRemovalOpen(false);
-          }}
-        />
+        {/*
+          ConfirmDialog's content is a portal, but React still bubbles its
+          events through this React tree (not the DOM tree) up to React
+          Flow's node wrapper — Backspace/Delete on a focused dialog button
+          would otherwise delete this node, and a right-click inside the
+          dialog would otherwise open the canvas's node context menu.
+          `nokey` covers the delete key (React Flow's own convention, checked
+          against the real DOM); stopping the contextmenu here covers the
+          right-click, which Canvas.tsx has no such convention for.
+        */}
+        <div onContextMenu={(event) => event.stopPropagation()}>
+          <ConfirmDialog
+            open={removalOpen}
+            onOpenChange={setRemovalOpen}
+            title={pendingRemoval?.copy.title ?? ""}
+            description={pendingRemoval?.copy.description ?? ""}
+            confirmLabel={pendingRemoval?.copy.confirmLabel ?? "Confirmer"}
+            contentClassName="nokey"
+            onConfirm={() => {
+              if (pendingRemoval) setGeneratorVariants(id, pendingRemoval.variants);
+              setRemovalOpen(false);
+            }}
+          />
+        </div>
       </div>
     </NodeShell>
   );
