@@ -5,7 +5,7 @@ describe("ImageSource", () => {
   it.each([
     "stored:lg_xyz",
     "stored:sf_aaa",
-    "stored:fr_bbb",
+    "stored:persona_bbb",
     "stored:gi_ccc",
     "generated:sk_123",
     "uploaded:up_456",
@@ -15,6 +15,7 @@ describe("ImageSource", () => {
   });
 
   it.each([
+    "stored:fr_bbb",                // single face photos are gone: Personnages only
     "stored:fc_abc",            // fc_ prefix removed; face_reactions uses fr_
     "stored:invalid_prefix",
     "https://example.com/x.png",
@@ -87,6 +88,26 @@ describe("Blueprint", () => {
     };
     expect(BlueprintSchema.safeParse(bp).success).toBe(false);
   });
+
+  it("accepts a faceReference pointing at a Personnage", () => {
+    const bp = {
+      nodes: [{ id: "f-1", type: "faceReference", data: { image_source: "stored:persona_abc" } }],
+      edges: [],
+    };
+    expect(BlueprintSchema.safeParse(bp).success).toBe(true);
+  });
+
+  it.each(["stored:fr_abc", "stored:sf_abc", "uploaded:up_abc", "generated:sk_abc"])(
+    "rejects a faceReference whose image_source is %s (faces are Personnages only)",
+    (source) => {
+      const bp = { nodes: [{ id: "f-1", type: "faceReference", data: { image_source: source } }], edges: [] };
+      const result = BlueprintSchema.safeParse(bp);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(JSON.stringify(result.error.issues)).toContain("stored:persona_");
+      }
+    },
+  );
 
   it("rejects duplicate node ids", () => {
     const bp = {

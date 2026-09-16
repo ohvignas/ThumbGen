@@ -58,6 +58,10 @@ describe("resolveImageSource", () => {
     await expect(resolveImageSource("https://example.com/x.png")).rejects.toThrow();
   });
 
+  it("no longer resolves single face photos (stored:fr_)", async () => {
+    await expect(resolveImageSource("stored:fr_anything")).rejects.toThrow();
+  });
+
   it("resolves a stored:persona_ source to its front-angle photo", async () => {
     const personaId = uuid();
     getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Test Persona");
@@ -111,6 +115,10 @@ describe("imageExists (cheap existence check, no bytes loaded)", () => {
   it("returns false for unsupported schemes", () => {
     expect(imageExists("https://example.com/x.png")).toBe(false);
     expect(imageExists("stored:zz_xxx")).toBe(false);
+  });
+
+  it("returns false for single face photos (stored:fr_)", () => {
+    expect(imageExists("stored:fr_anything")).toBe(false);
   });
 });
 

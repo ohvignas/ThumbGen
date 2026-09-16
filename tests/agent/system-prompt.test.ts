@@ -98,6 +98,13 @@ describe("system prompt", () => {
     expect(english).toMatch(/translate their meaning into English/);
     expect(english).not.toMatch(/quoting them in English/);
   });
+
+  it("treats faces as Personnages only", () => {
+    expect(AGENT_SYSTEM_PROMPT).not.toContain("list_face_reactions");
+    expect(AGENT_SYSTEM_PROMPT).not.toContain("stored:fr_");
+    expect(AGENT_SYSTEM_PROMPT).toContain("Personnages only");
+    expect(AGENT_SYSTEM_PROMPT).toContain('face_source: "stored:persona_<id>"');
+  });
 });
 
 describe("<channel_profile>", () => {

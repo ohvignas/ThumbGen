@@ -6,7 +6,6 @@
  */
 export const TOOL_LABELS: Record<string, string> = {
   list_logos: "bibliothèque · logos",
-  list_face_reactions: "bibliothèque · visages",
   list_personas: "bibliothèque · personnages",
   list_swipe_files: "bibliothèque · références",
   list_projects: "liste projets",
