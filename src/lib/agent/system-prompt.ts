@@ -119,6 +119,11 @@ export function buildResponseLanguageBlock(prefs: Pick<AgentPromptPrefs, "respon
     "<response_language>",
     `Reply to the user in ${languageName(prefs.responseLanguage)} unless they explicitly switch language.`,
     `Write any text meant to appear on the thumbnails themselves (text overlays, hooks, titles inside image prompts) in ${languageName(prefs.thumbnailLanguage)}.`,
+    // The cached static prompt above (AGENT_SYSTEM_PROMPT) keeps its French
+    // example phrases in quotes verbatim — it must not be rewritten per reply
+    // language or every edit would bust the prompt cache. Instead, tell the
+    // model to translate their meaning rather than quoting the French.
+    `The instructions above include example phrases in French quotes (things to say to the user) — treat those as illustrative wording only, and translate their meaning into ${languageName(prefs.responseLanguage)} instead of quoting them in French.`,
     "</response_language>",
   ].join("\n");
 }

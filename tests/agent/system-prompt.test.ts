@@ -83,6 +83,21 @@ describe("system prompt", () => {
     expect(text).toContain("Reply to the user in English");
     expect(text).toMatch(/on the thumbnails themselves .* in Spanish\./);
   });
+
+  it("tells the model to translate the static prompt's French example phrases into the reply language (F8)", () => {
+    // AGENT_SYSTEM_PROMPT is cached and keeps its French example quotes
+    // verbatim regardless of responseLanguage — this per-turn block is what
+    // actually tells the model not to parrot them in French to e.g. an
+    // English-replying user.
+    const french = buildResponseLanguageBlock({ ...DEFAULT_AGENT_PROMPT_PREFS, responseLanguage: "fr" });
+    expect(french).toMatch(/French quotes/i);
+    expect(french).toMatch(/translate their meaning into French/);
+
+    const english = buildResponseLanguageBlock({ ...DEFAULT_AGENT_PROMPT_PREFS, responseLanguage: "en" });
+    expect(english).toMatch(/French quotes/i);
+    expect(english).toMatch(/translate their meaning into English/);
+    expect(english).not.toMatch(/quoting them in English/);
+  });
 });
 
 describe("<channel_profile>", () => {
