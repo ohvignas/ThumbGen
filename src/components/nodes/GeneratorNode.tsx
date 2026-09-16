@@ -2,36 +2,20 @@
 
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState } from "react";
+import { cn } from "cn";
 import NodeShell from "./NodeShell";
 import { MODEL_COSTS, INPUT_TYPE_COLORS, REFERENCE_CAPS } from "@/lib/model-costs";
+import { IMAGE_MODELS, IMAGE_RESOLUTIONS } from "@/lib/image-models";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// All image generation now routes exclusively through OpenRouter's Unified
-// Image API (one key, one endpoint) — direct Gemini/OpenAI keys, Ideogram,
-// and Grok are no longer used. Ideogram and Grok have no OpenRouter image
-// equivalent (verified live against the real API) so they're dropped
-// entirely rather than left as permanently "(inactif)" dead options.
-// gpt-image-1.5 has no OpenRouter slug either — dropped for the same reason.
-const GEMINI_MODELS = [
-  { id: "gemini-3-pro-image", label: "Gemini 3 Pro", provider: "openrouter" },
-  { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash", provider: "openrouter" },
-  { id: "gemini-3.1-flash-lite-image", label: "Gemini 3.1 Flash Lite", provider: "openrouter" },
-  { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", provider: "openrouter" },
-];
-
-const OPENAI_MODELS = [
-  { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst (précis)", provider: "openrouter" },
-  { id: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare (rapide)", provider: "openrouter" },
-  { id: "gpt-image-2", label: "GPT Image 2 (4K)", provider: "openrouter" },
-  { id: "gpt-image-1", label: "GPT Image 1", provider: "openrouter" },
-];
-
-const OPENROUTER_MODELS = [
-  { id: "bytedance-seed/seedream-4.5", label: "Seedream 4.5 (ByteDance)", provider: "openrouter" },
-];
-
-const ALL_MODELS = [...GEMINI_MODELS, ...OPENAI_MODELS, ...OPENROUTER_MODELS];
+// Every model routes through OpenRouter's Unified Image API (one key, one
+// endpoint). The catalogue lives in src/lib/image-models.ts, shared with the
+// server route and the Réglages page.
+const ALL_MODELS = IMAGE_MODELS.map((m) => ({ id: m.id, label: m.label, group: m.group, provider: "openrouter" }));
+const GEMINI_MODELS = ALL_MODELS.filter((m) => m.group === "Gemini");
+const OPENAI_MODELS = ALL_MODELS.filter((m) => m.group === "OpenAI");
+const OPENROUTER_MODELS = ALL_MODELS.filter((m) => m.group === "ByteDance");
 
 function getModelLabel(modelId: string): string {
   return ALL_MODELS.find((m) => m.id === modelId)?.label || modelId;
@@ -57,22 +41,6 @@ export default function GeneratorNode({
   const [error, setError] = useState<string | null>(null);
   const [compareModels, setCompareModels] = useState<Set<string>>(new Set());
   const [comparing, setComparing] = useState(false);
-  const [availableProviders, setAvailableProviders] = useState<Record<string, boolean>>({ gemini: true });
-
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((s) => {
-        setAvailableProviders({
-          gemini: !!s.hasGemini,
-          ideogram: !!s.hasIdeogram,
-          openai: !!s.hasOpenai,
-          grok: !!s.hasGrok,
-          openrouter: !!s.hasOpenrouter,
-        });
-      })
-      .catch(() => {});
-  }, []);
 
   const model = data.model || "gemini-3-pro-image";
   const aspectRatio = data.aspectRatio || "16x9";
@@ -194,6 +162,8 @@ export default function GeneratorNode({
       sketchImages: inputs.sketchImages,
       aspectRatio,
       model: targetModel,
+      // Unset on older and agent-built nodes: the route then uses defaultResolution.
+      imageSize: data.imageSize,
       // Ties the stored image to the project that produced it — the unit the
       // miniatures gallery groups by.
       projectId: useCanvasStore.getState().currentProjectId,
@@ -446,34 +416,28 @@ export default function GeneratorNode({
           <div className="flex gap-1">
           <select
             value={model}
-            onChange={(e) => {
-              const selected = e.target.value;
-              const prov = getProvider(selected);
-              if (availableProviders[prov]) {
-                updateNodeData(id, { model: selected });
-              }
-            }}
+            onChange={(e) => updateNodeData(id, { model: e.target.value })}
             className="flex-1 rounded-xl px-3 py-2 text-xs focus:outline-none nopan nodrag"
             style={selectStyle}
           >
             <optgroup label="Gemini">
               {GEMINI_MODELS.map((m) => (
-                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
-                  {m.label} — {getModelPriceLabel(m.id)}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                <option key={m.id} value={m.id}>
+                  {m.label} — {getModelPriceLabel(m.id)}
                 </option>
               ))}
             </optgroup>
             <optgroup label="OpenAI">
               {OPENAI_MODELS.map((m) => (
-                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
-                  {m.label} — {getModelPriceLabel(m.id)}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                <option key={m.id} value={m.id}>
+                  {m.label} — {getModelPriceLabel(m.id)}
                 </option>
               ))}
             </optgroup>
             <optgroup label="ByteDance">
               {OPENROUTER_MODELS.map((m) => (
-                <option key={m.id} value={m.id} disabled={!availableProviders[m.provider]}>
-                  {m.label} — {getModelPriceLabel(m.id)}{!availableProviders[m.provider] ? " (inactif)" : ""}
+                <option key={m.id} value={m.id}>
+                  {m.label} — {getModelPriceLabel(m.id)}
                 </option>
               ))}
             </optgroup>
@@ -537,26 +501,26 @@ export default function GeneratorNode({
           </select>
         </div>
 
-        {provider === "gemini" && (
-          <div>
-            <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Résolution</label>
-            <div className="flex gap-1">
-              {(["2K", "4K"] as const).map((size) => (
-                <button
-                  key={size}
-                  onClick={() => updateNodeData(id, { imageSize: size })}
-                  className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
-                  style={{
-                    background: (data.imageSize || "2K") === size ? "var(--canvas-accent)" : "var(--surface)",
-                    color: (data.imageSize || "2K") === size ? "var(--canvas-bg)" : "var(--text-muted)",
-                  }}
-                >
-                  {size}{size === "4K" ? " (Pro)" : ""}
-                </button>
-              ))}
-            </div>
+        <div>
+          <label className="text-xs block mb-1.5 text-(--text-muted)">
+            Résolution{data.imageSize ? "" : " · réglage par défaut"}
+          </label>
+          <div className="flex gap-1">
+            {IMAGE_RESOLUTIONS.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => updateNodeData(id, { imageSize: size })}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag",
+                  data.imageSize === size ? "bg-(--canvas-accent) text-(--canvas-bg)" : "bg-(--surface) text-(--text-muted)",
+                )}
+              >
+                {size}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
         <div>
           <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Images par modèle</label>
@@ -612,36 +576,26 @@ export default function GeneratorNode({
             Comparer avec d'autres modèles (optionnel)
           </label>
           <div className="space-y-1 mb-3">
-            {ALL_MODELS.filter((m) => m.id !== model).map((m) => {
-              const isAvailable = !!availableProviders[m.provider];
-              return (
-                <label
-                  key={m.id}
-                  className="flex items-center gap-2 px-2 py-1 rounded-lg text-xs transition-all nopan nodrag"
-                  style={{
-                    color: !isAvailable ? "var(--text-muted)" : compareModels.has(m.id) ? "var(--text-primary)" : "var(--text-muted)",
-                    background: compareModels.has(m.id) && isAvailable ? "var(--surface)" : "transparent",
-                    opacity: isAvailable ? 1 : 0.4,
-                    cursor: isAvailable ? "pointer" : "not-allowed",
-                  }}
-                  title={!isAvailable ? "Clé API non configurée — va dans Réglages" : ""}
-                >
-                  <input
-                    type="checkbox"
-                    checked={compareModels.has(m.id)}
-                    onChange={() => isAvailable && toggleCompareModel(m.id)}
-                    disabled={!isAvailable}
-                    className="nopan nodrag"
-                    style={{ accentColor: "var(--canvas-accent)" }}
-                  />
-                  {m.label} <span style={{ color: "var(--text-muted)" }}>— {getModelPriceLabel(m.id)}</span>
-                  {!isAvailable && <span style={{ color: "var(--bone-faint)", fontSize: 10 }}>(inactif)</span>}
-                  {isAvailable && connectedFaceCount > 0 && m.provider === "gemini" && REFERENCE_CAPS[m.id]?.characters === 0 && (
-                    <span style={{ color: "var(--ember)", fontSize: 10 }}>(ignore le visage)</span>
-                  )}
-                </label>
-              );
-            })}
+            {ALL_MODELS.filter((m) => m.id !== model).map((m) => (
+              <label
+                key={m.id}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-xs transition-all nopan nodrag",
+                  compareModels.has(m.id) ? "bg-(--surface) text-(--text-primary)" : "bg-transparent text-(--text-muted)",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={compareModels.has(m.id)}
+                  onChange={() => toggleCompareModel(m.id)}
+                  className="accent-(--canvas-accent) nopan nodrag"
+                />
+                {m.label} <span className="text-(--text-muted)">— {getModelPriceLabel(m.id)}</span>
+                {connectedFaceCount > 0 && m.provider === "gemini" && REFERENCE_CAPS[m.id]?.characters === 0 && (
+                  <span className="text-[10px] text-(--ember)">(ignore le visage)</span>
+                )}
+              </label>
+            ))}
           </div>
         </div>
 

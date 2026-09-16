@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ImageResolution } from "@/lib/image-models";
 import {
   Node,
   Edge,
@@ -26,7 +27,7 @@ export type NodeData = {
   model?: string;
   ideogramMode?: "generate" | "remix" | "edit";
   aspectRatio?: string;
-  imageSize?: "2K" | "4K"; // Gemini output resolution
+  imageSize?: ImageResolution; // output resolution; unset → the defaultResolution setting
   imageWeight?: number;
   styleType?: string;
   renderingSpeed?: string;

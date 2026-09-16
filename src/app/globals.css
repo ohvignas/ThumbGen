@@ -80,8 +80,6 @@
 }
 
 body {
-  background: var(--canvas-bg);
-  color: var(--text-primary);
   overflow: hidden;
 }
 

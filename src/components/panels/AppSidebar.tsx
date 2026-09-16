@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useReactFlow } from "@xyflow/react";
+import { useGeneratorDefaults } from "@/hooks/useGeneratorDefaults";
 import {
   Sidebar,
   SidebarHeader,
@@ -23,7 +24,6 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import SettingsPanel from "./SettingsPanel";
 import WebcamCaptureModal from "./WebcamCaptureModal";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
 import { Users, Image as ImageIcon, LayoutGrid, Shapes, BarChart3, Settings as SettingsIcon, Search, Plus, X, Camera, Upload, Film } from "lucide-react";
@@ -57,7 +57,6 @@ const MODELS = [
 export default function AppSidebar() {
   const { state: sidebarState } = useSidebar();
   const [activeTab, setActiveTab] = useState<SidebarTab>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [swipeEntries, setSwipeEntries] = useState<SwipeEntry[]>([]);
   const [youtubeItems, setYoutubeItems] = useState<YouTubeItem[]>([]);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
@@ -78,6 +77,7 @@ export default function AppSidebar() {
   const faceInputRef = useRef<HTMLInputElement>(null);
   const swipeInputRef = useRef<HTMLInputElement>(null);
   const addNode = useCanvasStore((s) => s.addNode);
+  const generatorDefaults = useGeneratorDefaults();
   const { screenToFlowPosition } = useReactFlow();
   const pathname = usePathname();
   const router = useRouter();
@@ -260,8 +260,6 @@ export default function AppSidebar() {
     return () => clearInterval(interval);
   }, []);
 
-  const onSettingsSaved = () => { fetchPlaylist(); };
-
   const toggleTab = (tab: SidebarTab) => setActiveTab((prev) => (prev === tab ? null : tab));
 
   const addAtCenter = (type: string, data?: Record<string, unknown>) => {
@@ -399,7 +397,11 @@ export default function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Réglages" onClick={() => setSettingsOpen(true)}>
+              <SidebarMenuButton
+                tooltip="Réglages"
+                isActive={pathname.startsWith("/reglages")}
+                onClick={() => { setActiveTab(null); router.push("/reglages"); }}
+              >
                 <SettingsIcon />
                 <span>Réglages</span>
               </SidebarMenuButton>
@@ -665,7 +667,7 @@ export default function AppSidebar() {
                   {MODELS.map((m) => (
                     <button
                       key={m.id}
-                      onClick={() => addAtCenter("generator", { model: m.id })}
+                      onClick={() => addAtCenter("generator", { ...generatorDefaults, model: m.id })}
                       draggable
                       onDragStart={(e) => onDragStart(e, "generator", { model: m.id })}
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer bg-card border border-transparent hover:border-muted text-muted-foreground"
@@ -754,15 +756,6 @@ export default function AppSidebar() {
       )}
 
       {showWebcamCapture && <WebcamCaptureModal onClose={() => setShowWebcamCapture(false)} onComplete={handlePersonaCaptured} />}
-
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Réglages</DialogTitle>
-          </DialogHeader>
-          <SettingsPanel onClose={() => setSettingsOpen(false)} onSaved={onSettingsSaved} />
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={newVisageOpen} onOpenChange={setNewVisageOpen}>
         <DialogContent className="sm:max-w-sm">

@@ -9,6 +9,7 @@
  * the chat agent and /api/enhance-prompt use the same rules — no drift.
  */
 import { buildAgentRubric } from "@/lib/prompt-engineering";
+import { EMPTY_CHANNEL_PROFILE, LANGUAGES, type ChannelProfile, type LanguageCode } from "@/lib/settings-schema";
 
 export const AGENT_SYSTEM_PROMPT = `You are ThumbGen Brainstorm, an expert YouTube thumbnail strategist embedded in a node-based canvas editor.
 
@@ -38,7 +39,6 @@ Rules:
 - If the canvas already has a workflow and the user wants to "modify" or "iterate", call apply_workflow with a new blueprint that retains existing node IDs you want to keep
 - If the user wants a "new thumbnail", build a fresh workflow alongside the existing one (different positions)
 - Always announce what you're about to do before calling a tool ("Je vais générer un croquis…")
-- French is the user's preferred language unless they switch
 - Be concise. The user is creative, not technical. Don't dump JSON in chat.
 - Cost-aware: prefer generate_sketch (cheap) for exploration, trigger_generation only after validation
 - Cite web sources when the web_search tool returns results
@@ -74,7 +74,7 @@ WHEN THE USER PICKS AN ANGLE (replies "B", "le second", "celui du milieu", "ÇA 
       - swipeFile (kind="logo") with image_source = stored:lg_<id> for any logo (Claude logo, brand logo) the angle uses
       - swipeFile (kind="reference") with image_source = stored:sf_<id> if a reference inspiration applies
       - sketch with image_source = the chosen generated:sk_<id> from your prior generate_sketch
-      - prompt with the actual prompt text describing the thumbnail (in the language of the user's video — usually French)
+      - prompt with the actual prompt text describing the thumbnail (thumbnail text in the language given in <response_language>)
       - generator with model — DEFAULT to "nano-banana" (Gemini 3.1 Flash : rapide, économique, excellent avec les visages et la composition naturelle). Use "openai" (GPT Image) when the design depends heavily on sharp, readable bold text overlays (titles, hooks) — it renders text more reliably than the other models. Use "seedream" when a Personnage (multi-angle face reference) is connected and identity consistency across the whole shot matters most. ("ideogram" and "grok" no longer exist as options — the app migrated to OpenRouter-only image generation and neither has an OpenRouter equivalent; never propose them.) Plus aspectRatio "16x9" + count 1-3 (default 1)
     edges connecting each input node to the generator via the right targetHandle:
       - face → generator on "face-in"
@@ -89,14 +89,88 @@ MULTI-SELECT FOR A/B TESTING — if the user picks MORE THAN ONE angle ("A et C"
 
 This is the core loop: gather → propose 3 visual options → user picks (one, or several for A/B) → SHIP the full workflow → user clicks Generate on each.`;
 
+// ── Per-turn system blocks (built from Réglages) ──
+
+/** What the agent's per-turn system blocks need from the settings. */
+export type AgentPromptPrefs = {
+  responseLanguage: LanguageCode;
+  thumbnailLanguage: LanguageCode;
+  youtubeChannel: string;
+  channelProfile: ChannelProfile;
+  /** The profile's default persona; null when unset or deleted since. */
+  defaultPersona: { id: string; label: string } | null;
+};
+
+export const DEFAULT_AGENT_PROMPT_PREFS: AgentPromptPrefs = {
+  responseLanguage: "fr",
+  thumbnailLanguage: "fr",
+  youtubeChannel: "",
+  channelProfile: EMPTY_CHANNEL_PROFILE,
+  defaultPersona: null,
+};
+
+function languageName(code: LanguageCode): string {
+  return LANGUAGES.find((language) => language.code === code)?.englishName ?? code;
+}
+
+export function buildResponseLanguageBlock(prefs: Pick<AgentPromptPrefs, "responseLanguage" | "thumbnailLanguage">): string {
+  return [
+    "<response_language>",
+    `Reply to the user in ${languageName(prefs.responseLanguage)} unless they explicitly switch language.`,
+    `Write any text meant to appear on the thumbnails themselves (text overlays, hooks, titles inside image prompts) in ${languageName(prefs.thumbnailLanguage)}.`,
+    "</response_language>",
+  ].join("\n");
+}
+
 /**
- * Returns the Anthropic Messages API "system" parameter as an array of blocks.
- * The first block is the static persona+rules with cache_control set, so it's
- * cached across turns. The second block is the per-turn canvas snapshot.
+ * Neutralizes angle brackets so a value the creator typed (or pasted from
+ * elsewhere) can't fake a tag boundary — e.g. close `<channel_profile>` early
+ * or open a spoofed `<project_id>`/`<canvas_state>` block that would read to
+ * the model as a real system block instead of quoted creator text.
+ */
+function neutralizeTags(value: string): string {
+  return value.replace(/</g, "‹").replace(/>/g, "›");
+}
+
+/** The creator's channel profile from Réglages → Ma chaîne, or null when nothing is filled in. */
+export function buildChannelProfileBlock(
+  prefs: Pick<AgentPromptPrefs, "youtubeChannel" | "channelProfile" | "defaultPersona">,
+): string | null {
+  const profile = prefs.channelProfile;
+  const lines: string[] = [];
+  if (profile.name) lines.push(`- Channel name: ${neutralizeTags(profile.name)}`);
+  if (prefs.youtubeChannel) lines.push(`- YouTube channel: ${neutralizeTags(prefs.youtubeChannel)}`);
+  if (profile.niche) lines.push(`- Niche / topic: ${neutralizeTags(profile.niche)}`);
+  if (profile.audience) lines.push(`- Target audience: ${neutralizeTags(profile.audience)}`);
+  if (profile.tone) lines.push(`- Tone and style: ${neutralizeTags(profile.tone)}`);
+  if (profile.brandColors.length > 0)
+    lines.push(`- Brand colors: ${profile.brandColors.map(neutralizeTags).join(", ")}`);
+  if (prefs.defaultPersona) {
+    lines.push(
+      `- Default character: "${neutralizeTags(prefs.defaultPersona.label)}". Use stored:persona_${prefs.defaultPersona.id} as the default faceReference image_source unless the user asks for someone else or no face.`,
+    );
+  }
+  if (profile.agentInstructions)
+    lines.push(`- Standing instructions from the creator:\n${neutralizeTags(profile.agentInstructions)}`);
+  if (lines.length === 0) return null;
+  return [
+    "<channel_profile>",
+    "The creator described their channel in Réglages → Ma chaîne. Use it to ground audience, tone and branding; explicit requests in the conversation take precedence.",
+    ...lines,
+    "</channel_profile>",
+  ].join("\n");
+}
+
+/**
+ * Returns the "system" parameter as an array of blocks. The first block is the
+ * static persona+rules with cache_control set, so it's cached across turns.
+ * The following blocks are per-turn: reply language, channel profile, project
+ * id, canvas snapshot.
  */
 export function buildSystemMessages(
   canvasSnapshot: unknown,
   projectId?: string,
+  prefs: AgentPromptPrefs = DEFAULT_AGENT_PROMPT_PREFS,
 ): Array<{
   type: "text";
   text: string;
@@ -108,7 +182,10 @@ export function buildSystemMessages(
       text: AGENT_SYSTEM_PROMPT,
       cache_control: { type: "ephemeral" },
     },
+    { type: "text", text: buildResponseLanguageBlock(prefs) },
   ];
+  const channelProfile = buildChannelProfileBlock(prefs);
+  if (channelProfile) blocks.push({ type: "text", text: channelProfile });
   if (projectId) {
     blocks.push({
       type: "text",

@@ -27,6 +27,7 @@ import { DragEvent } from "react";
 import { useReactFlow, OnConnectStart } from "@xyflow/react";
 import { useRouter } from "next/navigation";
 import { useCanvasSync } from "@/hooks/useCanvasSync";
+import { useGeneratorDefaults } from "@/hooks/useGeneratorDefaults";
 
 const nodeTypes = {
   faceReference: FaceReferenceNode,
@@ -58,15 +59,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
   const router = useRouter();
-  const [providers, setProviders] = useState<Record<string, boolean>>({ gemini: true });
-  const [favoriteModel, setFavoriteModel] = useState("gemini-3.1-flash-image");
-
-  useEffect(() => {
-    fetch("/api/settings").then((r) => r.json()).then((s) => {
-      setProviders({ gemini: !!s.hasGemini, ideogram: !!s.hasIdeogram, openai: !!s.hasOpenai, grok: !!s.hasGrok });
-      if (s.favoriteModel) setFavoriteModel(s.favoriteModel);
-    }).catch(() => {});
-  }, []);
+  const generatorDefaults = useGeneratorDefaults();
 
   // A projectId from the route wins: /m/<id> is a direct link to one
   // miniature, so it also becomes the "current" project everything else
@@ -217,9 +210,11 @@ function CanvasInner({ projectId }: { projectId?: string }) {
       const rawData = event.dataTransfer.getData("application/reactflow-data");
       const data = rawData ? JSON.parse(rawData) : {};
 
-      addNode(type, position, data);
+      // A generator dragged from the sidebar carries only its model; the
+      // Génération settings fill in format, count and resolution.
+      addNode(type, position, type === "generator" ? { ...generatorDefaults, ...data } : data);
     },
-    [screenToFlowPosition, addNode]
+    [screenToFlowPosition, addNode, generatorDefaults]
   );
 
   const onPaneContextMenu = useCallback(
@@ -267,7 +262,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
         {
           title: "",
           items: [
-            { label: "Générateur", icon: STAR_ICON("var(--canvas-accent-yellow)", true), onClick: () => addNode("generator", contextMenu.flowPos, { model: favoriteModel }) },
+            { label: "Générateur", icon: STAR_ICON("var(--canvas-accent-yellow)", true), onClick: () => addNode("generator", contextMenu.flowPos, { ...generatorDefaults }) },
             {
               label: "Texte overlay",
               icon: (
@@ -283,7 +278,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     : [];
 
   return (
-    <div className="w-full h-screen" style={{ background: "var(--canvas-bg)" }}>
+    <div className="w-full h-screen text-(--text-primary)" style={{ background: "var(--canvas-bg)" }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -365,7 +360,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
             {
               title: "",
               items: [
-                { label: "Générateur", icon: STAR_ICON("var(--canvas-accent-yellow)", true), onClick: () => addConnectedNode("generator", { model: favoriteModel }) },
+                { label: "Générateur", icon: STAR_ICON("var(--canvas-accent-yellow)", true), onClick: () => addConnectedNode("generator", { ...generatorDefaults }) },
               ],
             },
             {
