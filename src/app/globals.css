@@ -173,7 +173,7 @@ body {
 /* Chat markdown — theme-aware tones for ReactMarkdown output (renders inside
    ChatPanel's shadcn Card, which flips between Clair/Sombre, so these use
    the shared --foreground/--muted-foreground/--border tokens rather than the
-   canvas-only --bone*/--ink* tokens, which stay dark in every theme). */
+   canvas-only --bone* / --ink* tokens, which stay dark in every theme). */
 .chat-md > * + * { margin-top: 0.85em; }
 .chat-md p { margin: 0; }
 .chat-md strong { color: var(--foreground); font-weight: 600; }
