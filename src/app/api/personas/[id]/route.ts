@@ -5,8 +5,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const { id } = await params;
     const { label } = (await request.json()) as { label?: string };
-    if (!label || !label.trim()) return NextResponse.json({ error: "Missing label" }, { status: 400 });
-    const result = getDb().prepare("UPDATE personas SET label = ? WHERE id = ?").run(label.trim(), id);
+    const trimmed = label?.trim();
+    if (!trimmed) return NextResponse.json({ error: "Missing label" }, { status: 400 });
+    if (trimmed.length > 100) return NextResponse.json({ error: "Label too long (max 100 characters)" }, { status: 400 });
+    const result = getDb().prepare("UPDATE personas SET label = ? WHERE id = ?").run(trimmed, id);
     if (result.changes === 0) return NextResponse.json({ error: "Persona not found" }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (err) {
