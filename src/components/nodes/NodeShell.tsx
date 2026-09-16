@@ -59,7 +59,7 @@ export default function NodeShell({
 
   return (
     <div
-      className="node-card rounded-xl border transition-all"
+      className="node-card rounded-xl border transition-all text-(--text-primary)"
       style={{
         width,
         background: "var(--node-bg)",
