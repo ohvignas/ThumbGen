@@ -46,6 +46,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/bindings ./node_modules/bindings
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
+# resvg (logo SVG → PNG) loads @resvg/resvg-js-linux-*-gnu through a runtime
+# require the standalone trace can miss — same reason as better-sqlite3 above
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@resvg ./node_modules/@resvg
 
 # Create data directory for local persistence
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data

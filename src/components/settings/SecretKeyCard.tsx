@@ -15,12 +15,14 @@ import FieldError from "./FieldError";
 import { describeSecretStatus } from "./secret-status";
 
 export type ProviderKeyConfig = {
-  key: "openrouterApiKey" | "openaiApiKey" | "youtubeApiKey";
+  key: "openrouterApiKey" | "openaiApiKey" | "youtubeApiKey" | "brandfetchApiKey";
   provider: TestableProvider;
   title: string;
   usage: string;
   placeholder: string;
   helpHref: string;
+  /** Text of the help link, « Obtenir une clé » when absent. */
+  helpLabel?: string;
 };
 
 export default function SecretKeyCard({
@@ -158,7 +160,7 @@ export default function SecretKeyCard({
               rel="noopener noreferrer"
               className="w-fit text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
-              Obtenir une clé
+              {config.helpLabel ?? "Obtenir une clé"}
             </a>
           </div>
           {status?.source === "env" && (

@@ -1,15 +1,17 @@
 import { getTypedSettings } from "@/lib/settings";
+import { THUMBGEN_USER_AGENT } from "@/lib/user-agent";
 
-export const TESTABLE_PROVIDERS = ["openrouter", "openai", "youtube"] as const;
+export const TESTABLE_PROVIDERS = ["openrouter", "openai", "youtube", "brandfetch"] as const;
 export type TestableProvider = (typeof TESTABLE_PROVIDERS)[number];
 export type ConnectionTestResult = { ok: boolean; detail: string };
 
 const TIMEOUT_MS = 10_000;
 
-const KEY_FOR: Record<TestableProvider, "openrouterApiKey" | "openaiApiKey" | "youtubeApiKey"> = {
+const KEY_FOR: Record<TestableProvider, "openrouterApiKey" | "openaiApiKey" | "youtubeApiKey" | "brandfetchApiKey"> = {
   openrouter: "openrouterApiKey",
   openai: "openaiApiKey",
   youtube: "youtubeApiKey",
+  brandfetch: "brandfetchApiKey",
 };
 
 export function isTestableProvider(value: unknown): value is TestableProvider {
@@ -75,6 +77,33 @@ async function testYouTube(apiKey: string, signal: AbortSignal): Promise<Connect
   return { ok: true, detail: "Clé valide · 1 unité de quota utilisée" };
 }
 
+async function testBrandfetch(clientId: string, signal: AbortSignal): Promise<ConnectionTestResult> {
+  const c = encodeURIComponent(clientId);
+  const search = await fetch(`https://api.brandfetch.io/v2/search/brandfetch?c=${c}`, {
+    headers: { "User-Agent": THUMBGEN_USER_AGENT },
+    signal,
+  });
+  if (!search.ok) return failure(search, clientId);
+  // The search endpoint also answers unknown client IDs (checked 2026-09-16);
+  // the logo CDN verifies the ID's signature, so one small icon tells them apart.
+  const logo = await fetch(`https://cdn.brandfetch.io/brandfetch.com/w/64/fallback/404/icon.png?c=${c}`, {
+    headers: { "User-Agent": THUMBGEN_USER_AGENT },
+    redirect: "manual",
+    signal,
+  });
+  if (logo.status === 200) return { ok: true, detail: "Clé valide · recherche et logos disponibles" };
+  const reason = logo.headers.get("x-bf-error");
+  if (reason === "automated_traffic") {
+    return {
+      ok: false,
+      detail:
+        "Recherche disponible, mais Brandfetch refuse l'accès serveur aux logos (automated_traffic) : les logos Brandfetch enregistrés ne pourront pas s'afficher.",
+    };
+  }
+  if (reason) return { ok: false, detail: `Clé refusée par Brandfetch (${reason})` };
+  return { ok: false, detail: `Logos Brandfetch : HTTP ${logo.status}` };
+}
+
 /** Tests the key the server would actually use (stored value, else env var). */
 export async function testProviderKey(provider: TestableProvider): Promise<ConnectionTestResult> {
   const apiKey = getTypedSettings()[KEY_FOR[provider]];
@@ -83,7 +112,8 @@ export async function testProviderKey(provider: TestableProvider): Promise<Conne
   try {
     if (provider === "openrouter") return await testOpenRouter(apiKey, signal);
     if (provider === "openai") return await testOpenAi(apiKey, signal);
-    return await testYouTube(apiKey, signal);
+    if (provider === "youtube") return await testYouTube(apiKey, signal);
+    return await testBrandfetch(apiKey, signal);
   } catch (err) {
     const name = (err as { name?: unknown } | null)?.name;
     if (name === "TimeoutError" || name === "AbortError") return { ok: false, detail: "Délai dépassé (10 s)" };
