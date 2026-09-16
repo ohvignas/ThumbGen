@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useMediaRecorder } from "@/hooks/useMediaRecorder";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { InputGroupButton } from "@/components/ui/input-group";
 
 /**
  * Atelier Nocturne mic button.
@@ -46,12 +47,14 @@ export default function MicButton({ onTranscribed }: { onTranscribed: (text: str
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <InputGroupButton
             type="button"
+            variant="outline"
+            size="icon-sm"
             onClick={onClick}
             aria-label={isRecording ? "Arrêter l'enregistrement" : "Enregistrer"}
             disabled={busy || state === "stopping"}
-            className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 nopan nodrag ${tone}`}
+            className={`nopan nodrag ${tone}`}
           >
             {busy ? (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
@@ -66,7 +69,7 @@ export default function MicButton({ onTranscribed }: { onTranscribed: (text: str
                 <path d="M12 18v3" />
               </svg>
             )}
-          </button>
+          </InputGroupButton>
         }
       />
       <TooltipContent>

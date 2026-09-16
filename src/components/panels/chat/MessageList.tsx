@@ -10,14 +10,12 @@ export default function MessageList({ messages, status }: { messages: UIMessage[
     return (
       <Empty className="flex-1 border-none">
         <EmptyHeader>
-          <EmptyMedia variant="icon" className="w-11 h-11 rounded-xl bg-primary/10 border border-border">
-            <Sparkles size={18} className="text-primary" strokeWidth={1.75} />
+          <EmptyMedia variant="icon">
+            <Sparkles />
           </EmptyMedia>
-          <EmptyTitle className="italic text-[28px] font-normal tracking-[-0.015em] leading-tight text-foreground">
-            on commence <br />par quoi ?
-          </EmptyTitle>
-          <EmptyDescription className="text-[11px] mt-1 tracking-[0.18em] uppercase font-mono text-muted-foreground">
-            Texte · Image · Vocal
+          <EmptyTitle>On commence par quoi ?</EmptyTitle>
+          <EmptyDescription>
+            Décris ta miniature, joins une image ou enregistre un vocal.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -28,7 +26,7 @@ export default function MessageList({ messages, status }: { messages: UIMessage[
     <MessageScrollerProvider>
       <MessageScroller className="flex-1 border-t border-border">
         <MessageScrollerViewport>
-          <MessageScrollerContent>
+          <MessageScrollerContent className="p-(--card-spacing)">
             {messages.map((m, idx) => (
               <MessageScrollerItem key={m.id} scrollAnchor={m.role === "user"}>
                 <Message message={m} isStreaming={status === "streaming" && idx === messages.length - 1} />

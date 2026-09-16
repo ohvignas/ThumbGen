@@ -67,10 +67,8 @@ export default function ConversationList({ projectId }: { projectId: string }) {
     <div className="px-3 py-2.5 relative border-b border-border">
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between gap-2 text-left transition-colors nopan nodrag text-foreground">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[9px] uppercase tracking-[0.22em] shrink-0 font-mono text-muted-foreground">
-            <span className="text-primary">{count}</span> Conv.
-          </span>
-          <span className={`italic truncate text-sm tracking-[-0.01em] ${active ? "text-foreground" : "text-muted-foreground"}`}>
+          <span className="shrink-0 text-xs text-muted-foreground">{count}</span>
+          <span className={`truncate text-sm ${active ? "text-foreground" : "text-muted-foreground"}`}>
             {active?.title ?? "—"}
           </span>
         </div>
@@ -86,12 +84,12 @@ export default function ConversationList({ projectId }: { projectId: string }) {
             onClick={create}
             className="w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-colors border-b border-border text-muted-foreground hover:bg-muted"
           >
-            <Plus className="size-2.5" />
-            <span className="font-mono tracking-[0.18em] uppercase text-[10px]">Nouvelle</span>
+            <Plus className="size-3.5" />
+            <span>Nouvelle conversation</span>
           </button>
 
           <div className="max-h-64 overflow-y-auto py-1">
-            {convs.length === 0 && !loading && <p className="text-[11px] italic px-3 py-2 text-muted-foreground">Aucune conversation.</p>}
+            {convs.length === 0 && !loading && <p className="px-3 py-2 text-xs text-muted-foreground">Aucune conversation.</p>}
 
             {convs.map((c) => {
               const isActive = activeConversationId === c.id;
@@ -102,7 +100,7 @@ export default function ConversationList({ projectId }: { projectId: string }) {
                   onClick={() => { setActive(c.id); setOpen(false); }}
                 >
                   {isActive ? <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-primary" /> : <span className="w-1.5 h-1.5 shrink-0" />}
-                  <span className={`flex-1 truncate text-xs italic ${isActive ? "text-foreground" : "text-muted-foreground"}`} title={c.title}>
+                  <span className={`flex-1 truncate text-xs ${isActive ? "text-foreground" : "text-muted-foreground"}`} title={c.title}>
                     {c.title}
                   </span>
                   <button

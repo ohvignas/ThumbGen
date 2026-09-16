@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import LibraryPickerModal from "./LibraryPickerModal";
 import { useChatStore } from "@/store/chat-store";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { InputGroupButton } from "@/components/ui/input-group";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -19,14 +20,16 @@ function IconButton({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <InputGroupButton
             type="button"
+            variant="outline"
+            size="icon-sm"
             onClick={onClick}
             aria-label={title}
-            className="p-1.5 rounded-lg transition-colors nopan nodrag text-muted-foreground hover:text-foreground"
+            className="nopan nodrag"
           >
             {children}
-          </button>
+          </InputGroupButton>
         }
       />
       <TooltipContent>

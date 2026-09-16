@@ -24,7 +24,7 @@ export default function Composer({
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !streaming;
 
   return (
-    <div className="px-3 py-3 space-y-2 border-t border-border">
+    <div className="w-full space-y-2 p-(--card-spacing)">
       {attachments.length > 0 && (
         <div className="flex gap-1.5 overflow-x-auto pb-1 nopan nodrag">
           {attachments.map((a) => (
@@ -42,8 +42,8 @@ export default function Composer({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Décris ta miniature, ou enregistre un vocal…"
-          className="text-foreground"
-          style={{ minHeight: "32px", maxHeight: "160px" }}
+          className="h-14 min-h-14 px-3 py-2.5 text-foreground"
+          style={{ maxHeight: "160px" }}
           rows={2}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && canSend) {
@@ -59,7 +59,7 @@ export default function Composer({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <InputGroupButton onClick={onStop} aria-label="Arrêter" className="ml-auto text-destructive">
+                  <InputGroupButton onClick={onStop} aria-label="Arrêter" variant="outline" size="icon-sm" className="ml-auto text-destructive">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                       <rect x="6" y="6" width="12" height="12" rx="1" />
                     </svg>
@@ -78,7 +78,9 @@ export default function Composer({
                     onClick={onSend}
                     disabled={!canSend}
                     aria-label="Envoyer"
-                    className={`ml-auto ${canSend ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                    variant={canSend ? "default" : "outline"}
+                    size="icon-sm"
+                    className="ml-auto rounded-full"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="12" y1="19" x2="12" y2="5" />

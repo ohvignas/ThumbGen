@@ -17,6 +17,8 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,7 @@ const MODELS = [
 ];
 
 export default function AppSidebar() {
+  const { state: sidebarState } = useSidebar();
   const [activeTab, setActiveTab] = useState<SidebarTab>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [swipeEntries, setSwipeEntries] = useState<SwipeEntry[]>([]);
@@ -322,9 +325,16 @@ export default function AppSidebar() {
     <>
       <Sidebar collapsible="icon">
         <SidebarHeader>
-          <Link href="/" className="flex items-center justify-center h-11 w-11 rounded-xl mx-auto" aria-label="ThumbGen home">
-            <Image src="/illith.svg" alt="" width={26} height={26} priority />
-          </Link>
+          <div className="flex items-center gap-2 group-data-[collapsible=icon]:flex-col">
+            <Link href="/" className="flex size-9 shrink-0 items-center justify-center rounded-xl" aria-label="ThumbGen home">
+              <Image src="/illith.svg" alt="" width={24} height={24} priority />
+            </Link>
+            <div className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+              <span className="truncate text-sm font-medium leading-tight">ThumbGen</span>
+              <span className="truncate text-xs text-sidebar-foreground/60 leading-tight">Illith Studio</span>
+            </div>
+            <SidebarTrigger className="shrink-0" />
+          </div>
         </SidebarHeader>
 
         <SidebarContent>
@@ -384,8 +394,13 @@ export default function AppSidebar() {
           plain fixed-position sibling, positioned right at the icon rail's edge. */}
       {activeTab && (
         <div
-          className="fixed top-0 bottom-0 z-10 overflow-y-auto bg-sidebar border-r border-sidebar-border"
-          style={{ left: "var(--sidebar-width-icon, 4rem)", width: activeTab === "swipe" || activeTab === "faces" || activeTab === "logos" ? 300 : 240 }}
+          className="fixed top-0 bottom-0 z-10 overflow-y-auto bg-sidebar border-r border-sidebar-border transition-[left] duration-200 ease-linear"
+          style={{
+            // Follows the real rail width so the flyout never lands under an
+            // expanded sidebar (the rail is 4rem collapsed, --sidebar-width open).
+            left: sidebarState === "collapsed" ? "var(--sidebar-width-icon, 4rem)" : "var(--sidebar-width)",
+            width: activeTab === "swipe" || activeTab === "faces" || activeTab === "logos" ? 300 : 240,
+          }}
         >
           <div className="p-4">
             {(activeTab === "faces" || activeTab === "logos") && (

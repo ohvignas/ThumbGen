@@ -27,9 +27,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <TooltipProvider>
-          {/* --sidebar-width-icon overridden to 4rem (64px) to match the
-              old fixed-rail's exact width — zero layout shift. */}
-          <SidebarProvider defaultOpen={false} style={{ "--sidebar-width-icon": "4rem" } as React.CSSProperties}>
+          {/* Opens expanded so the nav labels and group headings are actually
+              visible; the SidebarTrigger in AppSidebar's header collapses it
+              back to the 4rem icon rail (width matched to the old fixed rail). */}
+          <SidebarProvider style={{ "--sidebar-width-icon": "4rem" } as React.CSSProperties}>
             {children}
           </SidebarProvider>
         </TooltipProvider>
