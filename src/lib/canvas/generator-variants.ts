@@ -222,3 +222,55 @@ export function variantRemovalCopy(
     confirmLabel: "Retirer",
   };
 }
+
+export type GenerationTask<I> = { variant: VariantId; model: string; count: number; inputs: I };
+
+export type GenerationSettings = {
+  model: string;
+  numImages?: number;
+  abTest?: unknown;
+  /** « Avancé › Comparer des modèles » — ignored in A/B mode. */
+  compareModels?: readonly string[];
+};
+
+export function imageCount(numImages: number | undefined): number {
+  return typeof numImages === "number" && Number.isFinite(numImages) && numImages >= 1 ? Math.floor(numImages) : 1;
+}
+
+/**
+ * Normal mode: one task per model (main model first, then compared models).
+ * A/B mode: one task per active variant, main model only. `count` images each.
+ */
+export function planGeneration<I>(
+  settings: GenerationSettings,
+  inputsByVariant: Partial<Record<VariantId, I>>,
+): GenerationTask<I>[] {
+  const count = imageCount(settings.numImages);
+  const inputsFor = (variant: VariantId): I => {
+    const inputs = inputsByVariant[variant];
+    if (inputs === undefined) throw new Error(`planGeneration: no inputs for variant ${variant}`);
+    return inputs;
+  };
+
+  const variants = activeVariants(settings.abTest);
+  if (variants.length > 1) {
+    return variants.map((variant): GenerationTask<I> => ({ variant, model: settings.model, count, inputs: inputsFor(variant) }));
+  }
+
+  const inputs = inputsFor("A");
+  const models = Array.from(new Set([settings.model, ...(settings.compareModels ?? [])]));
+  return models.map((model): GenerationTask<I> => ({ variant: "A", model, count, inputs }));
+}
+
+function images(n: number): string {
+  return `${n} image${n > 1 ? "s" : ""}`;
+}
+
+/** Text under « Générer »: « 3 images », « 2 modèles × 2 images », « 2 variantes × 2 images · 4 images ». */
+export function generationSummary(tasks: readonly { count: number }[], abTestActive: boolean): string {
+  const perTask = tasks[0]?.count ?? 0;
+  const total = tasks.reduce((sum, task) => sum + task.count, 0);
+  if (abTestActive) return `${tasks.length} variantes × ${images(perTask)} · ${images(total)}`;
+  if (tasks.length > 1) return `${tasks.length} modèles × ${images(perTask)}`;
+  return images(total);
+}
