@@ -278,7 +278,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     : [];
 
   return (
-    <div className="w-full h-screen" style={{ background: "var(--canvas-bg)" }}>
+    <div className="w-full h-screen text-(--text-primary)" style={{ background: "var(--canvas-bg)" }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
