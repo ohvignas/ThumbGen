@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import fs from "fs";
 import { backupsDir } from "@/lib/data-admin";
 import { GET as statsGet } from "@/app/api/data/stats/route";
@@ -53,6 +53,23 @@ describe("/api/data routes", () => {
         new Request(`http://localhost/api/data/backups?name=${encodeURIComponent(name)}`, { method: "DELETE" }),
       );
       expect(deleted.status).toBe(400);
+    }
+  });
+
+  it("returns 500 with an error message when the backup lookup fails", async () => {
+    const readdirSpy = vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+      throw new Error("EIO: i/o error");
+    });
+    try {
+      const download = await downloadGet(
+        new Request("http://localhost/api/data/backups/download?name=thumbgen-20260101-000000.db"),
+      );
+      expect(download.status).toBe(500);
+      const body = (await download.json()) as { error: string };
+      expect(typeof body.error).toBe("string");
+      expect(body.error.length).toBeGreaterThan(0);
+    } finally {
+      readdirSpy.mockRestore();
     }
   });
 

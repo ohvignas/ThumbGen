@@ -7,9 +7,9 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const name = new URL(request.url).searchParams.get("name") ?? "";
-  const filePath = resolveBackupPath(name);
-  if (!filePath) return NextResponse.json({ error: "Sauvegarde inconnue" }, { status: 400 });
   try {
+    const filePath = resolveBackupPath(name);
+    if (!filePath) return NextResponse.json({ error: "Sauvegarde inconnue" }, { status: 400 });
     const size = fs.statSync(filePath).size;
     const stream = Readable.toWeb(fs.createReadStream(filePath)) as unknown as ReadableStream<Uint8Array>;
     return new Response(stream, {
