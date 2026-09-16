@@ -11,6 +11,7 @@ import {
   EdgeChange,
 } from "@xyflow/react";
 import { v4 as uuid } from "uuid";
+import { migrateCanvas } from "@/lib/canvas/migrate-canvas";
 
 export type NodeData = {
   label?: string;
@@ -354,25 +355,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         return;
       }
       const data = await res.json();
-      const initialNodes = data.nodes || [];
-      // Lazy migration: legacy projects stored edges with targetHandle "image-in"
-      // before the generator handle was renamed to "ref-in". Rewrite on load so
-      // React Flow stops complaining and references actually attach visually.
-      const initialEdges = (data.edges || []).map((e: Edge) =>
-        e.targetHandle === "image-in" ? { ...e, targetHandle: "ref-in" } : e,
-      );
+      // Lazy migrations (legacy "image-in" handle, single-photo face nodes →
+      // reference images) — see migrateCanvas. When anything changed, the
+      // normal debounced autosave persists the converted canvas.
+      const migrated = migrateCanvas(data.nodes || [], data.edges || []);
       const initialSnapshot: Snapshot = {
-        nodes: JSON.parse(JSON.stringify(initialNodes)),
-        edges: JSON.parse(JSON.stringify(initialEdges)),
+        nodes: JSON.parse(JSON.stringify(migrated.nodes)),
+        edges: JSON.parse(JSON.stringify(migrated.edges)),
       };
       set({
-        nodes: initialNodes,
-        edges: initialEdges,
+        nodes: migrated.nodes,
+        edges: migrated.edges,
         loaded: true,
         currentProjectId: projectId,
         history: [initialSnapshot],
         historyIndex: 0,
       });
+      if (migrated.changed) debouncedSave(get(), set);
     } catch (err) {
       console.error("Failed to load project:", err);
       set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });

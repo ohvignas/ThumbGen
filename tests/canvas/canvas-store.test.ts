@@ -125,3 +125,50 @@ describe("setAllSelected", () => {
     expect(useCanvasStore.getState().history).toHaveLength(1);
   });
 });
+
+describe("loadProject migrations", () => {
+  const legacyProject = {
+    nodes: [
+      { id: "face", type: "faceReference", position: { x: 0, y: 0 }, data: { imageUrl: "/api/face-reactions/image?f=abc", label: "Choqué" } },
+      { id: "gen", type: "generator", position: { x: 400, y: 0 }, data: { model: "m" } },
+    ],
+    edges: [{ id: "e1", source: "face", sourceHandle: "face", target: "gen", targetHandle: "face-in" }],
+  };
+
+  function stubProject(project: unknown) {
+    const mock = vi.fn(async (url: string, _init?: RequestInit) => ({
+      ok: true,
+      json: async () => (String(url).startsWith("/api/project?id=") ? project : {}),
+    }));
+    vi.stubGlobal("fetch", mock);
+    return mock;
+  }
+
+  it("converts single-photo faces on load and autosaves the result", async () => {
+    const mock = stubProject(legacyProject);
+    useCanvasStore.setState({ loaded: false, dirty: false, saving: false });
+
+    await useCanvasStore.getState().loadProject("legacy");
+
+    const { nodes, edges, dirty, history } = useCanvasStore.getState();
+    expect(nodes[0]).toMatchObject({ type: "swipeFile", data: { kind: "reference", label: "Choqué" } });
+    expect(edges[0]).toMatchObject({ sourceHandle: "image", targetHandle: "ref-in" });
+    expect(history[0].nodes[0].type).toBe("swipeFile");
+    expect(dirty).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    const save = mock.mock.calls.find(([url, init]) => url === "/api/project" && init?.method === "POST");
+    expect(save).toBeDefined();
+    expect(JSON.parse(String(save![1]!.body)).nodes[0].type).toBe("swipeFile");
+  });
+
+  it("does not schedule a save when nothing needed converting", async () => {
+    stubProject({ nodes: [legacyProject.nodes[1]], edges: [] });
+    useCanvasStore.setState({ loaded: false, dirty: false, saving: false });
+
+    await useCanvasStore.getState().loadProject("clean");
+
+    expect(useCanvasStore.getState().nodes).toHaveLength(1);
+    expect(useCanvasStore.getState().dirty).toBe(false);
+  });
+});
