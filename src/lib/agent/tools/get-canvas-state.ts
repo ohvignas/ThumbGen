@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { ToolDefinition } from "./types";
 import { registerTool } from "./index";
+import { summarizeAbTest } from "@/lib/canvas/generator-variants";
 
 const InputSchema = z.object({ project_id: z.string() });
 
@@ -45,7 +46,13 @@ function summarize(type: string, data: Record<string, unknown>): Record<string, 
     case "prompt":
       return { prompt: data.prompt, negativePrompt: data.negativePrompt };
     case "generator":
-      return { model: data.model, aspectRatio: data.aspectRatio, count: data.count };
+      return {
+        model: data.model,
+        aspectRatio: data.aspectRatio,
+        // Canvas nodes store numImages; blueprints say count.
+        count: data.count ?? data.numImages,
+        abTest: summarizeAbTest(data.abTest),
+      };
     case "faceReference":
       return {
         persona: typeof data.personaId === "string" ? `stored:persona_${data.personaId}` : null,

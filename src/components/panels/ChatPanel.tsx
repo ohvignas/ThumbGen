@@ -16,6 +16,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { rowsToUIMessages } from "./chat/history-to-ui-messages";
+import { snapshotCanvas } from "./chat/canvas-snapshot";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
 const OPEN_STORAGE_KEY = "thumbgen.chat.open";
@@ -305,40 +306,4 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       )}
     </>
   );
-}
-
-// --- Helpers ---
-
-function snapshotCanvas(nodes: Array<{ id: string; type?: string; data?: Record<string, unknown> }>, edges: Array<{ source: string; target: string; targetHandle?: string | null }>): unknown {
-  return {
-    nodes: nodes.map((n) => ({
-      id: n.id,
-      type: n.type,
-      summary: summarizeNode(n.type ?? "", n.data ?? {}),
-    })),
-    edges: edges.map((e) => ({ source: e.source, target: e.target, targetHandle: e.targetHandle })),
-  };
-}
-
-function summarizeNode(type: string, data: Record<string, unknown>): Record<string, unknown> {
-  switch (type) {
-    case "prompt":
-      return { prompt: data.prompt, negativePrompt: data.negativePrompt };
-    case "generator":
-      // Generator nodes use `count` — `numImages` was a documentation error.
-      return { model: data.model, aspectRatio: data.aspectRatio, count: data.count ?? data.numImages };
-    case "faceReference":
-      return {
-        persona: typeof data.personaId === "string" ? `stored:persona_${data.personaId}` : null,
-        label: data.label,
-      };
-    case "swipeFile":
-    case "sketch":
-      return {
-        hasImage: Boolean(data.imageBase64 || data.imageUrl),
-        label: data.label,
-      };
-    default:
-      return {};
-  }
 }
