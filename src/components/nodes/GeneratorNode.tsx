@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import { cn } from "cn";
 import NodeShell from "./NodeShell";
 import { MODEL_COSTS, INPUT_TYPE_COLORS, REFERENCE_CAPS } from "@/lib/model-costs";
-import { IMAGE_MODELS } from "@/lib/image-models";
+import { IMAGE_MODELS, IMAGE_RESOLUTIONS } from "@/lib/image-models";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Every model routes through OpenRouter's Unified Image API (one key, one
@@ -162,6 +162,8 @@ export default function GeneratorNode({
       sketchImages: inputs.sketchImages,
       aspectRatio,
       model: targetModel,
+      // Unset on older and agent-built nodes: the route then uses defaultResolution.
+      imageSize: data.imageSize,
       // Ties the stored image to the project that produced it — the unit the
       // miniatures gallery groups by.
       projectId: useCanvasStore.getState().currentProjectId,
@@ -499,26 +501,26 @@ export default function GeneratorNode({
           </select>
         </div>
 
-        {provider === "gemini" && (
-          <div>
-            <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Résolution</label>
-            <div className="flex gap-1">
-              {(["2K", "4K"] as const).map((size) => (
-                <button
-                  key={size}
-                  onClick={() => updateNodeData(id, { imageSize: size })}
-                  className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag"
-                  style={{
-                    background: (data.imageSize || "2K") === size ? "var(--canvas-accent)" : "var(--surface)",
-                    color: (data.imageSize || "2K") === size ? "var(--canvas-bg)" : "var(--text-muted)",
-                  }}
-                >
-                  {size}{size === "4K" ? " (Pro)" : ""}
-                </button>
-              ))}
-            </div>
+        <div>
+          <label className="text-xs block mb-1.5 text-(--text-muted)">
+            Résolution{data.imageSize ? "" : " · réglage par défaut"}
+          </label>
+          <div className="flex gap-1">
+            {IMAGE_RESOLUTIONS.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => updateNodeData(id, { imageSize: size })}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-medium transition-all nopan nodrag",
+                  data.imageSize === size ? "bg-(--canvas-accent) text-(--canvas-bg)" : "bg-(--surface) text-(--text-muted)",
+                )}
+              >
+                {size}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
         <div>
           <label className="text-xs block mb-1.5" style={{ color: "var(--text-muted)" }}>Images par modèle</label>

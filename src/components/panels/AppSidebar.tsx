@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useReactFlow } from "@xyflow/react";
+import { useGeneratorDefaults } from "@/hooks/useGeneratorDefaults";
 import {
   Sidebar,
   SidebarHeader,
@@ -76,6 +77,7 @@ export default function AppSidebar() {
   const faceInputRef = useRef<HTMLInputElement>(null);
   const swipeInputRef = useRef<HTMLInputElement>(null);
   const addNode = useCanvasStore((s) => s.addNode);
+  const generatorDefaults = useGeneratorDefaults();
   const { screenToFlowPosition } = useReactFlow();
   const pathname = usePathname();
   const router = useRouter();
@@ -665,7 +667,7 @@ export default function AppSidebar() {
                   {MODELS.map((m) => (
                     <button
                       key={m.id}
-                      onClick={() => addAtCenter("generator", { model: m.id })}
+                      onClick={() => addAtCenter("generator", { ...generatorDefaults, model: m.id })}
                       draggable
                       onDragStart={(e) => onDragStart(e, "generator", { model: m.id })}
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer bg-card border border-transparent hover:border-muted text-muted-foreground"

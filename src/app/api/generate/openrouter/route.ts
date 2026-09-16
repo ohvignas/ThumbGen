@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSetting } from "@/lib/settings";
-import { MODEL_SLUGS } from "@/lib/image-models";
+import { getTypedSettings } from "@/lib/settings";
+import { isImageResolution, MODEL_SLUGS } from "@/lib/image-models";
 import { saveGeneratedImage } from "@/lib/generated-images";
 import { logGeneration } from "@/lib/generations-log";
 
@@ -34,7 +34,8 @@ export async function POST(request: NextRequest) {
   let modelUsed = DEFAULT_MODEL;
   let promptForLog: string | null = null;
   try {
-    const OPENROUTER_API_KEY = getSetting("openrouterApiKey");
+    const settings = getTypedSettings();
+    const OPENROUTER_API_KEY = settings.openrouterApiKey;
     if (!OPENROUTER_API_KEY) {
       return NextResponse.json(
         { error: "Clé API OpenRouter non configurée. Ajoute-la dans Réglages." },
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       referenceImages = [],
       aspectRatio = "16x9",
       model: requestedModel,
+      imageSize,
       projectId = null,
     } = body;
 
@@ -57,6 +59,9 @@ export async function POST(request: NextRequest) {
     const orSlug = MODEL_SLUGS[model];
     modelUsed = model;
     promptForLog = prompt || null;
+    // A node without its own resolution (older nodes, agent-built workflows)
+    // uses the Réglages default instead of a hard-coded 2K.
+    const resolution = isImageResolution(imageSize) ? imageSize : settings.defaultResolution;
 
     const inputReferences: string[] = [...faceImages, ...referenceImages];
 
@@ -81,7 +86,7 @@ export async function POST(request: NextRequest) {
         prompt: fullPrompt,
         n: 1,
         aspect_ratio: mapAspectRatio(aspectRatio),
-        resolution: "2K",
+        resolution,
         ...(inputReferences.length > 0
           ? { input_references: inputReferences.map((url) => ({ type: "image_url", image_url: { url } })) }
           : {}),
