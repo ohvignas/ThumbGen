@@ -64,6 +64,12 @@ interface CanvasState {
   edges: Edge[];
   loaded: boolean;
   saving: boolean;
+  // True from the moment a local edit happens until it's been persisted —
+  // useCanvasSync's poll checks this before reloading from the server, so an
+  // in-flight drag/delete/etc can't get clobbered by a reload of the
+  // not-yet-saved server state (which visually looks like the edit "didn't
+  // take" / snapped back).
+  dirty: boolean;
   currentProjectId: string;
   history: Snapshot[];
   historyIndex: number;
@@ -100,7 +106,8 @@ interface CanvasState {
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
-function debouncedSave(state: CanvasState) {
+function debouncedSave(state: CanvasState, set: (s: Partial<CanvasState>) => void) {
+  set({ dirty: true });
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     state.saveProject();
@@ -131,6 +138,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   edges: [],
   loaded: false,
   saving: false,
+  dirty: false,
   currentProjectId: "default",
   history: [],
   historyIndex: -1,
@@ -139,7 +147,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ nodes: applyNodeChanges(changes, get().nodes) });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
@@ -147,7 +155,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ edges: applyEdgeChanges(changes, get().edges) });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
@@ -157,7 +165,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
@@ -167,7 +175,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ nodes: [...get().nodes, newNode] });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
     return id;
   },
@@ -198,7 +206,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
     return id;
   },
@@ -211,7 +219,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
@@ -222,7 +230,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
@@ -263,7 +271,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: JSON.parse(JSON.stringify(snapshot.edges)),
       historyIndex: newIndex,
     });
-    debouncedSave(get());
+    debouncedSave(get(), set);
   },
 
   redo: () => {
@@ -276,7 +284,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: JSON.parse(JSON.stringify(snapshot.edges)),
       historyIndex: newIndex,
     });
-    debouncedSave(get());
+    debouncedSave(get(), set);
   },
 
   canUndo: () => get().historyIndex > 0,
@@ -352,6 +360,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: pid, nodes: cleanNodes, edges }),
       });
+      // Only clear dirty on a successful save — on failure, local state is
+      // still ahead of the server, so useCanvasSync's poll should keep
+      // skipping reloads rather than overwrite the edit that didn't persist.
+      set({ dirty: false });
     } catch (err) {
       console.error("Failed to save project:", err);
     } finally {
