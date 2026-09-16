@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
 
 const POLL_MS = 2000;
@@ -18,25 +18,40 @@ const POLL_MS = 2000;
  * - Skips the reload while the store's `dirty` flag is set (a local edit is
  *   still waiting on its debounced save) so an in-flight drag/delete can't
  *   be overwritten by a reload of the not-yet-saved server state.
- * - Skips the reload when the new `updated_at` matches the store's
- *   `lastSavedUpdatedAt` (set by `saveProject` from the server's response):
- *   that's this app's OWN debounced autosave landing, not an external
- *   change, and reloading would wipe the local undo history for no reason
- *   (see canvas-store.ts's `loadProject`, which resets `history` to a single
- *   snapshot). The baseline is still advanced so this same value isn't
- *   re-evaluated on the next tick.
+ * - Skips the reload when the new `updated_at` is one of the store's
+ *   `recentOwnSaveUpdatedAts` (populated by `saveProject` from the server's
+ *   response): that's this app's OWN debounced autosave landing, not an
+ *   external change, and reloading would wipe the local undo history for no
+ *   reason (see canvas-store.ts's `loadProject`, which resets `history` to a
+ *   single snapshot). The baseline is still advanced so this same value
+ *   isn't re-evaluated on the next tick. A bounded set (not just the latest
+ *   value) is checked because a poll's GET can be answered, after a second
+ *   self-save has already landed, with an earlier self-save's timestamp —
+ *   still legitimately our own.
+ * - Stops touching the store once `stop()` has been called: a tick's fetch
+ *   can still be in flight when the caller (useCanvasSync's effect cleanup)
+ *   unmounts or switches to a different project. Without this, a late
+ *   response would call `loadProject(oldProjectId)` against the *current*
+ *   (now different) store, silently swapping the canvas back to the old
+ *   project's content.
  */
 export function createProjectSyncPoller(
   projectId: string,
   loadProject: (projectId: string) => Promise<void>,
 ) {
   let lastUpdatedAt: string | null = null;
+  let stopped = false;
+
+  function stop() {
+    stopped = true;
+  }
 
   async function tick() {
     try {
       const res = await fetch(`/api/project/${encodeURIComponent(projectId)}/updated-at`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { updated_at: string | null };
+      if (stopped) return;
 
       // First poll: just record the baseline
       if (lastUpdatedAt === null) {
@@ -53,10 +68,10 @@ export function createProjectSyncPoller(
           // until the debounced save lands and dirty clears, then reload.
           return;
         }
-        if (data.updated_at === state.lastSavedUpdatedAt) {
-          // This tick is observing the app's own autosave landing (see the
-          // doc comment above) — not an external mutation. Re-baseline so
-          // it isn't re-detected, but don't reload.
+        if (state.recentOwnSaveUpdatedAts.includes(data.updated_at)) {
+          // This tick is observing one of the app's own recent autosaves
+          // landing (see the doc comment above) — not an external mutation.
+          // Re-baseline so it isn't re-detected, but don't reload.
           lastUpdatedAt = data.updated_at;
           return;
         }
@@ -69,18 +84,16 @@ export function createProjectSyncPoller(
     }
   }
 
-  return { tick };
+  return { tick, stop };
 }
 
 export function useCanvasSync(projectId: string) {
   const loadProject = useCanvasStore((s) => s.loadProject);
-  const pollerRef = useRef<ReturnType<typeof createProjectSyncPoller> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const poller = createProjectSyncPoller(projectId, loadProject);
-    pollerRef.current = poller;
 
     const loop = async () => {
       await poller.tick();
@@ -91,6 +104,7 @@ export function useCanvasSync(projectId: string) {
 
     return () => {
       cancelled = true;
+      poller.stop();
       if (timer) clearTimeout(timer);
     };
   }, [projectId, loadProject]);

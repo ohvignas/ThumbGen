@@ -11,6 +11,7 @@ function seed(nodes: AppNode[], edges: Edge[] = []) {
     loaded: true,
     saving: false,
     dirty: false,
+    recentOwnSaveUpdatedAts: [],
     currentProjectId: "store-test",
     history: [{ nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }],
     historyIndex: 0,
@@ -236,5 +237,26 @@ describe("loadProject migrations", () => {
 
     expect(useCanvasStore.getState().nodes).toHaveLength(1);
     expect(useCanvasStore.getState().dirty).toBe(false);
+  });
+});
+
+describe("saveProject", () => {
+  it("keeps only the MAX_RECENT_SELF_SAVES most recent self-save updated_at values, so useCanvasSync's poll can still recognize an older-but-still-own one without unbounded growth", async () => {
+    let n = 0;
+    const saveMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/project" && init?.method === "POST") {
+        n++;
+        return { ok: true, json: async () => ({ success: true, updatedAt: `S${n}` }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", saveMock);
+    seed([]);
+
+    for (let i = 0; i < 7; i++) {
+      await useCanvasStore.getState().saveProject();
+    }
+
+    expect(useCanvasStore.getState().recentOwnSaveUpdatedAts).toEqual(["S3", "S4", "S5", "S6", "S7"]);
   });
 });
