@@ -31,11 +31,11 @@ export async function resolveImageSource(source: string): Promise<ResolvedImage>
   // blueprintToCanvasData that resolves all 3 angles for the real generation.
   if (source.startsWith("stored:persona_")) {
     const personaId = source.slice("stored:persona_".length);
-    const photos = getDb()
+    const photo = getDb()
       .prepare("SELECT angle, mime_type, data FROM persona_photos WHERE persona_id = ? ORDER BY CASE angle WHEN 'front' THEN 0 WHEN 'left' THEN 1 ELSE 2 END LIMIT 1")
       .get(personaId) as { angle: string; mime_type: string; data: Buffer } | undefined;
-    if (!photos) throw new Error(`Persona not found or has no photos: ${source}`);
-    return { mimeType: photos.mime_type, bytes: photos.data };
+    if (!photo) throw new Error(`Persona not found or has no photos: ${source}`);
+    return { mimeType: photo.mime_type, bytes: photo.data };
   }
 
   // stored:<prefix>_<id>
