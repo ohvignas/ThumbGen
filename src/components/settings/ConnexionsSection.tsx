@@ -29,6 +29,16 @@ const PROVIDERS: ProviderKeyConfig[] = [
     placeholder: "AIza…",
     helpHref: "https://console.cloud.google.com/apis/credentials",
   },
+  {
+    key: "brandfetchApiKey",
+    provider: "brandfetch",
+    title: "Brandfetch",
+    usage:
+      "Optionnelle. Ajoute les logos Brandfetch à la recherche de la Bibliothèque : colle le « Client ID » de ton compte développeur gratuit. Sans clé, la recherche utilise Simple Icons, SVGL et Wikimedia.",
+    placeholder: "Client ID",
+    helpHref: "https://developers.brandfetch.com/register",
+    helpLabel: "Obtenir une clé gratuite",
+  },
 ];
 
 export default function ConnexionsSection() {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ReactFlowProvider } from "@xyflow/react";
 import AppSidebar from "@/components/panels/AppSidebar";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
@@ -361,11 +360,5 @@ function UsageInner() {
 }
 
 export default function UsageView() {
-  // ReactFlowProvider lets AppSidebar mount safely on this page (it calls
-  // useReactFlow() internally for its addAtCenter helper).
-  return (
-    <ReactFlowProvider>
-      <UsageInner />
-    </ReactFlowProvider>
-  );
+  return <UsageInner />;
 }

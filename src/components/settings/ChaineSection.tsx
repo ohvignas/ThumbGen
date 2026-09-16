@@ -20,11 +20,9 @@ const NEW_BRAND_COLOR = "#E6007E";
 type PersonaOption = { id: string; label: string };
 
 export default function ChaineSection() {
-  // AppSidebar stays mounted across every /reglages section and only
-  // refetches the Inspirations feed on its own 5-minute timer, so saving the
-  // YouTube channel here would otherwise leave that feed stale for up to
-  // 5 minutes. Every save from this form includes youtubePlaylistId (it's
-  // always in KEYS), so nudge the sidebar to refresh right away.
+  // Every save from this form includes youtubePlaylistId (it's always in
+  // KEYS): tell listeners — the Bibliothèque's « Chaînes suivies » section
+  // (FollowedChannelsSection) — to refetch the channel feed.
   const form = useSettingsForm(KEYS, {
     onSaved: () => window.dispatchEvent(new Event("youtube-channel-saved")),
   });

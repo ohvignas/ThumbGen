@@ -17,7 +17,7 @@ describe("PATCH /api/personas/:id (rename)", () => {
   it("renames an existing persona", async () => {
     const { POST } = await import("@/app/api/personas/route");
     const created = (await (
-      await call(POST as never, { method: "POST", url: "http://localhost/api/personas", body: { label: "Old name", photos: {} } })
+      await call(POST as never, { method: "POST", url: "http://localhost/api/personas", body: { label: "Old name", photos: { front: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9ZkqfO0AAAAASUVORK5CYII=" } } })
     ).json()) as { id: string };
 
     const { PATCH } = await import("@/app/api/personas/[id]/route");

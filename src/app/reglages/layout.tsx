@@ -1,15 +1,13 @@
 "use client";
 
-import { ReactFlowProvider } from "@xyflow/react";
 import AppSidebar from "@/components/panels/AppSidebar";
 import SettingsNav from "@/components/settings/SettingsNav";
 import { SidebarInset } from "@/components/ui/sidebar";
 
-// AppSidebar calls useReactFlow(), so it needs a provider even without a canvas.
 // The body never scrolls (globals.css), so the inset is the scroll container.
 export default function ReglagesLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ReactFlowProvider>
+    <>
       <AppSidebar />
       <SidebarInset className="h-svh overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-8">
@@ -25,6 +23,6 @@ export default function ReglagesLayout({ children }: { children: React.ReactNode
           </div>
         </div>
       </SidebarInset>
-    </ReactFlowProvider>
+    </>
   );
 }
