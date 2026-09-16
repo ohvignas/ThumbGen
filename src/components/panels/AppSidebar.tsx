@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import SettingsPanel from "./SettingsPanel";
 import WebcamCaptureModal from "./WebcamCaptureModal";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
-import { Users, Image as ImageIcon, LayoutGrid, Shapes, BarChart3, Settings as SettingsIcon, Search, Plus, X, Camera, Upload } from "lucide-react";
+import { Users, Image as ImageIcon, LayoutGrid, Shapes, BarChart3, Settings as SettingsIcon, Search, Plus, X, Camera, Upload, Film } from "lucide-react";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -81,7 +81,8 @@ export default function AppSidebar() {
   const { screenToFlowPosition } = useReactFlow();
   const pathname = usePathname();
   const router = useRouter();
-  const onCanvas = pathname === "/";
+  // The canvas now lives at /m/<projectId>; "/" only redirects to the gallery.
+  const onCanvas = pathname.startsWith("/m/");
 
   const loadFaces = () => {
     fetch("/api/face-reactions").then((r) => r.json()).then(setFaceReactions).catch(() => {});
@@ -265,7 +266,8 @@ export default function AppSidebar() {
 
   const addAtCenter = (type: string, data?: Record<string, unknown>) => {
     if (!onCanvas) {
-      router.push("/");
+      // No canvas mounted here — send them to pick one first.
+      router.push("/miniatures");
       return;
     }
     const pos = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
@@ -339,7 +341,24 @@ export default function AppSidebar() {
 
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Miniatures</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Mes miniatures"
+                    isActive={pathname === "/miniatures"}
+                    onClick={() => { setActiveTab(null); router.push("/miniatures"); }}
+                  >
+                    <Film />
+                    <span>Mes miniatures</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Bibliothèque</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
@@ -374,7 +393,7 @@ export default function AppSidebar() {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Usage et coûts" isActive={!onCanvas} onClick={() => router.push("/usage")}>
+              <SidebarMenuButton tooltip="Usage et coûts" isActive={pathname === "/usage"} onClick={() => router.push("/usage")}>
                 <BarChart3 />
                 <span>Usage</span>
               </SidebarMenuButton>

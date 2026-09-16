@@ -194,6 +194,9 @@ export default function GeneratorNode({
       sketchImages: inputs.sketchImages,
       aspectRatio,
       model: targetModel,
+      // Ties the stored image to the project that produced it — the unit the
+      // miniatures gallery groups by.
+      projectId: useCanvasStore.getState().currentProjectId,
     };
 
     const res = await fetch(endpoint, {

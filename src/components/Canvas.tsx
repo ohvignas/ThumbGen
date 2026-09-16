@@ -52,7 +52,7 @@ const STAR_ICON = (color: string, fill = false) => (
   </svg>
 );
 
-function CanvasInner() {
+function CanvasInner({ projectId }: { projectId?: string }) {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, addNodeAndConnect, loadProject, saving, currentProjectId } =
     useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
@@ -66,13 +66,25 @@ function CanvasInner() {
     }).catch(() => {});
   }, []);
 
-  // Load last-opened project on mount (falls back to "default" when none was saved)
+  // A projectId from the route wins: /m/<id> is a direct link to one
+  // miniature, so it also becomes the "current" project everything else
+  // (ProjectBar, chat, agent) reads from settings. Without one, fall back to
+  // the last-opened project.
   useEffect(() => {
+    if (projectId) {
+      loadProject(projectId);
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentProjectId: projectId }),
+      }).catch(() => {});
+      return;
+    }
     fetch("/api/settings")
       .then((r) => r.json())
       .then((s) => loadProject(s.currentProjectId || "default"))
       .catch(() => loadProject());
-  }, [loadProject]);
+  }, [loadProject, projectId]);
 
   // Poll for external mutations (agent / MCP client) and refresh the canvas
   useCanvasSync(currentProjectId);
@@ -361,6 +373,6 @@ function CanvasInner() {
 // crash — no provider at all — or silently desync screenToFlowPosition from
 // the canvas's real pan/zoom). The provider is therefore lifted one level up,
 // to page.tsx, wrapping both AppSidebar and Canvas together.
-export default function Canvas() {
-  return <CanvasInner />;
+export default function Canvas({ projectId }: { projectId?: string }) {
+  return <CanvasInner projectId={projectId} />;
 }

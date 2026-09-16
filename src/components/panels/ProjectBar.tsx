@@ -11,7 +11,10 @@ type ProjectMeta = { id: string; name: string; createdAt: string; updatedAt: str
 
 export default function ProjectBar() {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
-  const [currentId, setCurrentId] = useState("default");
+  // The canvas store is the source of truth: /m/<id> loads a project straight
+  // into it, so reading settings here instead would race that route load and
+  // leave the bar naming the previously-opened project.
+  const currentId = useCanvasStore((s) => s.currentProjectId);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -24,10 +27,6 @@ export default function ProjectBar() {
 
   useEffect(() => {
     loadProjects();
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((s) => { if (s.currentProjectId) setCurrentId(s.currentProjectId); })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -38,7 +37,6 @@ export default function ProjectBar() {
   }, [renaming]);
 
   const switchProject = async (projectId: string) => {
-    setCurrentId(projectId);
     setMenuOpen(false);
     await loadProject(projectId);
     fetch("/api/settings", {

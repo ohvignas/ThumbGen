@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
       referenceImages = [],
       aspectRatio = "16x9",
       model: requestedModel,
+      projectId = null,
     } = body;
 
     const model = requestedModel && MODEL_SLUGS[requestedModel] ? requestedModel : DEFAULT_MODEL;
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
     for (const item of result.data || []) {
       if (item.b64_json) {
         const mime = item.media_type || "image/png";
-        const { id, url } = saveGeneratedImage(`data:${mime};base64,${item.b64_json}`);
+        const { id, url } = saveGeneratedImage(`data:${mime};base64,${item.b64_json}`, projectId);
         images.push(url);
         imageIds.push(id);
       }

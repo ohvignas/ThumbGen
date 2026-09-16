@@ -123,6 +123,33 @@ function init(database: Database.Database) {
   if (!faceReactionsColumns.some((c) => c.name === "tags")) {
     database.exec("ALTER TABLE face_reactions ADD COLUMN tags TEXT");
   }
+
+  // Generated images predate the miniatures gallery and were stored with no
+  // link back to the project they belong to. Add the column, then backfill it
+  // once from the canvases themselves: a generator node keeps its results as
+  // /api/generated-images/image?id=<uuid> URLs, so the canvas is the only
+  // existing record of which project produced which image.
+  const generatedImageColumns = database.prepare("PRAGMA table_info(generated_images)").all() as { name: string }[];
+  if (!generatedImageColumns.some((c) => c.name === "project_id")) {
+    database.exec("ALTER TABLE generated_images ADD COLUMN project_id TEXT");
+    database.exec("CREATE INDEX IF NOT EXISTS idx_generated_images_project ON generated_images(project_id)");
+    backfillGeneratedImageProjects(database);
+  }
+}
+
+function backfillGeneratedImageProjects(database: Database.Database) {
+  const projects = database.prepare("SELECT id, nodes FROM projects").all() as Array<{ id: string; nodes: string }>;
+  const link = database.prepare("UPDATE generated_images SET project_id = ? WHERE id = ? AND project_id IS NULL");
+  const run = database.transaction(() => {
+    for (const project of projects) {
+      const ids = new Set<string>();
+      for (const match of project.nodes.matchAll(/generated-images\/image\?id=([0-9a-f-]{36})/g)) {
+        ids.add(match[1]);
+      }
+      for (const imageId of ids) link.run(project.id, imageId);
+    }
+  });
+  run();
 }
 
 function open(): Database.Database {
