@@ -1,14 +1,13 @@
 "use client";
 
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import FollowedChannelsSection from "./FollowedChannelsSection";
+import MyImagesSection from "./MyImagesSection";
 
 export default function InspirationsTab() {
   return (
-    <Empty className="border border-dashed">
-      <EmptyHeader>
-        <EmptyTitle>Inspirations</EmptyTitle>
-        <EmptyDescription>Cet onglet arrive bientôt.</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
+    <div className="grid gap-10">
+      <MyImagesSection />
+      <FollowedChannelsSection />
+    </div>
   );
 }
