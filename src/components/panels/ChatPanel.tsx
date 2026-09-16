@@ -14,7 +14,6 @@ import ImageAnnotateModal from "./chat/ImageAnnotateModal";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { PlusIcon } from "lucide-react";
 import UsageBadge from "./chat/UsageBadge";
 import { rowsToUIMessages } from "./chat/history-to-ui-messages";
 
