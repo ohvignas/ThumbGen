@@ -19,6 +19,7 @@ export function migrateCanvas(
 ): { nodes: AppNode[]; edges: Edge[]; changed: boolean } {
   let changed = false;
   const converted = new Set<string>();
+  const nodeTypeById = new Map(nodes.map((n) => [n.id, n.type]));
 
   const nextNodes = nodes.map((node) => {
     if (node.type !== "faceReference") return node;
@@ -39,7 +40,11 @@ export function migrateCanvas(
 
   const nextEdges = edges.map((edge) => {
     let next = edge;
-    if (next.targetHandle === "image-in") {
+    // Only generators had an "image-in" handle before the rename (now
+    // "ref-in") — Texte overlay's real input handle has always been called
+    // "image-in", so rewriting it there would strand an Aperçu → Texte
+    // overlay wire on a handle Texte overlay doesn't have.
+    if (next.targetHandle === "image-in" && nodeTypeById.get(next.target) === "generator") {
       next = { ...next, targetHandle: "ref-in" };
       changed = true;
     }

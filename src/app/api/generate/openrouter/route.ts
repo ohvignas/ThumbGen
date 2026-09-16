@@ -73,6 +73,8 @@ export async function POST(request: NextRequest) {
       negativePrompt,
       faceImages = [],
       referenceImages = [],
+      logos: rawLogos = [],
+      sketchImages: rawSketchImages = [],
       aspectRatio = "16x9",
       model: requestedModel,
       imageSize,
@@ -87,7 +89,22 @@ export async function POST(request: NextRequest) {
     // uses the Réglages default instead of a hard-coded 2K.
     const resolution = isImageResolution(imageSize) ? imageSize : settings.defaultResolution;
 
-    const inputReferences: string[] = [...faceImages, ...referenceImages];
+    const logos = (Array.isArray(rawLogos) ? rawLogos : []).filter(
+      (logo: unknown): logo is { image: string; label?: string } =>
+        typeof logo === "object" && logo !== null && typeof (logo as { image?: unknown }).image === "string",
+    );
+    // One composition sketch at most: it is a layout guide, not a style or identity reference.
+    const sketchImages: string[] = (Array.isArray(rawSketchImages) ? rawSketchImages : [])
+      .filter((sketch: unknown): sketch is string => typeof sketch === "string")
+      .slice(0, 1);
+
+    // Order matters: the prompt below points at images by position.
+    const inputReferences: string[] = [
+      ...faceImages,
+      ...logos.map((logo) => logo.image),
+      ...referenceImages,
+      ...sketchImages,
+    ];
 
     if (!prompt && inputReferences.length === 0) {
       return NextResponse.json({ error: "Connect a prompt, face reference, or reference thumbnail" }, { status: 400 });
@@ -96,6 +113,16 @@ export async function POST(request: NextRequest) {
     let fullPrompt = prompt || "Generate a YouTube thumbnail image.";
     if (faceImages.length > 0) {
       fullPrompt += `\n\nIMPORTANT: The first ${faceImages.length} reference image(s) show the person's face — the generated thumbnail must feature this exact person, same facial structure and features across all provided angles.`;
+    }
+    if (logos.length > 0) {
+      const first = faceImages.length + 1;
+      const last = faceImages.length + logos.length;
+      const which = first === last ? `Reference image ${first} is a logo` : `Reference images ${first} to ${last} are logos`;
+      const names = logos.map((logo) => logo.label || "Logo").join(", ");
+      fullPrompt += `\n\nIMPORTANT: ${which} to include in the thumbnail: ${names}. Place each logo visibly and keep it recognizable — not distorted or blended into the background.`;
+    }
+    if (sketchImages.length > 0) {
+      fullPrompt += `\n\nIMPORTANT: The last reference image is a rough COMPOSITION SKETCH. Match its layout and where elements are placed, not its hand-drawn style — the result must look polished and professional.`;
     }
     if (negativePrompt) fullPrompt += `\n\nAvoid: ${negativePrompt}`;
 

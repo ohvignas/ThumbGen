@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
+import { isPromptInputHandle } from "@/lib/canvas/generator-variants";
 import NodeShell from "./NodeShell";
 
 export default function PromptNode({ id, data }: NodeProps<AppNode>) {
@@ -14,7 +15,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
   // Collect workflow context: find what's connected to the same Generator as this Prompt
   const getWorkflowContext = () => {
     const connectedGenerators = allEdges
-      .filter((e) => e.source === id && e.targetHandle === "prompt-in")
+      .filter((e) => e.source === id && isPromptInputHandle(e.targetHandle))
       .map((e) => e.target);
 
     if (connectedGenerators.length === 0) {

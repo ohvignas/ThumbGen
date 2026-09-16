@@ -9,6 +9,7 @@ import {
   Type,
   UserRound,
 } from "lucide-react";
+import { baseGeneratorHandle, parseGeneratorHandle } from "./generator-variants";
 
 /**
  * Single source of truth for what the canvas UI can add (« Ajouter une
@@ -124,8 +125,10 @@ export const NODE_CATALOG: CatalogEntry[] = [
     keywords: ["titre", "title", "text", "overlay", "accroche"],
     icon: Type,
     nodeType: "textOverlay",
-    // A generator never holds an image on itself (its results land on new
-    // Aperçu nodes) — only an Aperçu's output feeds Texte overlay.
+    // A generator's own node data also gets generatedImages written to it
+    // (variant A's images, for older code that reads it), but Texte overlay
+    // still can't be wired straight from Générateur → Texte overlay: only an
+    // Aperçu's output feeds Texte overlay.
     inputs: [{ handle: "image-in", accepts: ["apercu"] }],
     output: { handle: "result" },
   },
@@ -158,7 +161,9 @@ export const HANDLE_LABELS: Record<string, string> = {
 };
 
 export function handleLabel(handleId: string): string {
-  return HANDLE_LABELS[handleId] ?? handleId;
+  const base = HANDLE_LABELS[baseGeneratorHandle(handleId)] ?? handleId;
+  const variant = parseGeneratorHandle(handleId)?.variant;
+  return variant && variant !== "A" ? `${base} · variante ${variant}` : base;
 }
 
 /** Lower-case, accent-free, trimmed — « Aperçu » and « apercu » compare equal. */
@@ -210,10 +215,14 @@ export function compatibleEntries(from: {
   handleType: "source" | "target";
   data?: Record<string, unknown>;
 }): Array<{ entry: CatalogEntry; newNodeHandle: string }> {
-  if (from.handleType === "source") {
-    const sourceId = catalogIdForNode({ type: from.nodeType, data: from.data });
+  // The A/B/C generator's variant handles (prompt-in-b, result-c…) accept and
+  // offer exactly what their variant A counterparts do.
+  const lookup = from.nodeType === "generator" ? { ...from, handleId: baseGeneratorHandle(from.handleId) } : from;
+
+  if (lookup.handleType === "source") {
+    const sourceId = catalogIdForNode({ type: lookup.nodeType, data: lookup.data });
     const sourceEntry = NODE_CATALOG.find((entry) => entry.id === sourceId);
-    if (!sourceEntry || sourceEntry.output?.handle !== from.handleId) return [];
+    if (!sourceEntry || sourceEntry.output?.handle !== lookup.handleId) return [];
     const matches: Array<{ entry: CatalogEntry; newNodeHandle: string }> = [];
     for (const entry of NODE_CATALOG) {
       const input = entry.inputs.find((candidate) => candidate.accepts.includes(sourceEntry.id));
@@ -223,9 +232,9 @@ export function compatibleEntries(from: {
   }
 
   const targetEntry = NODE_CATALOG.find(
-    (entry) => entry.nodeType === from.nodeType && entry.inputs.some((input) => input.handle === from.handleId),
+    (entry) => entry.nodeType === lookup.nodeType && entry.inputs.some((input) => input.handle === lookup.handleId),
   );
-  const input = targetEntry?.inputs.find((candidate) => candidate.handle === from.handleId);
+  const input = targetEntry?.inputs.find((candidate) => candidate.handle === lookup.handleId);
   if (!input) return [];
   const matches: Array<{ entry: CatalogEntry; newNodeHandle: string }> = [];
   for (const entry of NODE_CATALOG) {

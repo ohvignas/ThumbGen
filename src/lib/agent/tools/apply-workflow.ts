@@ -86,6 +86,8 @@ async function blueprintToCanvasData(
         model: MODEL_ID_MAP[data.model as string] ?? data.model,
         aspectRatio: data.aspectRatio,
         numImages: data.count ?? 1,
+        // A/B/C test: count stays per variant.
+        ...(data.abTest ? { abTest: data.abTest } : {}),
       };
     default:
       return data;
@@ -95,7 +97,7 @@ async function blueprintToCanvasData(
 export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "apply_workflow",
   description:
-    "Builds or replaces the canvas workflow for a project — this is how you SHIP a chosen design. Provide a complete Blueprint with all nodes (faceReference, swipeFile for logos/refs, sketch, prompt, generator) AND all edges connecting them to the generator. The tool resolves every image_source to a data URL so nodes render correctly on the canvas, maps blueprint fields to canvas shape, and auto-layouts. Edge handles for the generator are: face-in, ref-in, logo-in, sketch-in, prompt-in. After successful apply, tell the user the workflow is ready and they can click Generate on the generator node — or you can hint them to that step.",
+    "Builds or replaces the canvas workflow for a project — this is how you SHIP a chosen design. Provide a complete Blueprint with all nodes (faceReference, swipeFile for logos/refs, sketch, prompt, generator) AND all edges connecting them to the generator. The tool resolves every image_source to a data URL so nodes render correctly on the canvas, maps blueprint fields to canvas shape, and auto-layouts. Edge handles for the generator are: face-in, ref-in, logo-in, sketch-in, prompt-in. For an A/B/C test set the generator's data.abTest = { variants: [\"A\",\"B\"] } or { variants: [\"A\",\"B\",\"C\"] }: variant B's own inputs go to prompt-in-b / sketch-in-b / ref-in-b, variant C's to prompt-in-c / sketch-in-c / ref-in-c, while face-in and logo-in are shared by every variant. After successful apply, tell the user the workflow is ready and they can click Generate on the generator node — or you can hint them to that step.",
   inputSchema: InputSchema,
   handler: async ({ project_id, blueprint }) => {
     // Some models serialize this generically-typed (z.unknown()) argument as

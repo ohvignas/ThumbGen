@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { activeVariants, baseGeneratorHandle, parseGeneratorHandle } from "@/lib/canvas/generator-variants";
 
 // Stored prefixes map 1:1 to DB tables :
 //   lg_ → logos, sf_ → swipe_files, gi_ → generated_images,
@@ -21,6 +22,14 @@ const PersonaSourceSchema = z
     /^stored:persona_[\w-]+$/,
     "faceReference only accepts a Personnage: image_source must be stored:persona_<id> (see list_personas)",
   );
+
+// Générateur A/B/C test: ["A","B"] or ["A","B","C"], nothing else.
+const AbTestSchema = z.object({
+  variants: z.union([
+    z.tuple([z.literal("A"), z.literal("B")]),
+    z.tuple([z.literal("A"), z.literal("B"), z.literal("C")]),
+  ]),
+});
 
 const NodeDataByType = z.discriminatedUnion("type", [
   z.object({
@@ -50,7 +59,8 @@ const NodeDataByType = z.discriminatedUnion("type", [
     // equivalent) — see MODEL_ID_MAP in ../tools/apply-workflow.ts.
     model: z.enum(["nano-banana", "openai", "seedream"]),
     aspectRatio: z.enum(["16x9", "9x16", "1x1"]),
-    count: z.number().int().min(1).max(10).optional(),
+    count: z.number().int().min(1).max(4, "count must be at most 4 images (the UI's cap)").optional(),
+    abTest: AbTestSchema.optional(),
   }),
 ]);
 
@@ -71,6 +81,7 @@ const KNOWN_DATA_KEYS = new Set([
   "model",
   "aspectRatio",
   "count",
+  "abTest",
 ]);
 const RESERVED_NODE_KEYS = new Set(["id", "type", "position", "data"]);
 
@@ -149,6 +160,33 @@ export const BlueprintSchema = z
           code: "custom",
           path: ["edges", i, "target"],
           message: `Unknown node id: ${e.target}`,
+        });
+      }
+    });
+
+    // Variant handles (prompt-in-b, sketch-in-c, …) only exist on a generator
+    // whose abTest includes that variant.
+    const nodesById = new Map(bp.nodes.map((n) => [n.id, n]));
+    bp.edges.forEach((e, i) => {
+      const handle = parseGeneratorHandle(e.targetHandle);
+      if (handle?.kind !== "input" || handle.variant === "A") return;
+      const target = nodesById.get(e.target);
+      if (!target) return; // already reported as an unknown node id
+      const base = baseGeneratorHandle(e.targetHandle);
+      if (target.type !== "generator") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["edges", i, "targetHandle"],
+          message: `Handle "${e.targetHandle}" only exists on generator nodes; node "${e.target}" is a ${target.type}. Use "${base}" instead.`,
+        });
+        return;
+      }
+      if (!activeVariants(target.data.abTest).includes(handle.variant)) {
+        const variants = handle.variant === "C" ? '["A","B","C"]' : '["A","B"]';
+        ctx.addIssue({
+          code: "custom",
+          path: ["edges", i, "targetHandle"],
+          message: `Edge to "${e.targetHandle}" needs variant ${handle.variant} active on generator "${e.target}": set its data.abTest = { variants: ${variants} }, or connect to "${base}".`,
         });
       }
     });

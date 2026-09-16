@@ -19,6 +19,7 @@ export default function ConfirmDialog({
   busy = false,
   destructive = true,
   onConfirm,
+  contentClassName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -28,10 +29,15 @@ export default function ConfirmDialog({
   busy?: boolean;
   destructive?: boolean;
   onConfirm: () => void;
+  // Passed through to DialogContent — e.g. "nokey" so React Flow's own
+  // delete-key handler (which checks `.closest('.nokey')` in the real DOM)
+  // ignores Backspace/Delete pressed while a button in this dialog has
+  // focus. Undefined by default: no behaviour change for other callers.
+  contentClassName?: string;
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => onOpenChange(next)}>
-      <DialogContent>
+      <DialogContent className={contentClassName}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

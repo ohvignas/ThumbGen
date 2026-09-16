@@ -12,6 +12,14 @@ import {
 } from "@xyflow/react";
 import { v4 as uuid } from "uuid";
 import { migrateCanvas } from "@/lib/canvas/migrate-canvas";
+import {
+  edgesToRemoveForVariants,
+  normalizeVariants,
+  resolveVariantInputs,
+  type AbTest,
+  type ResolvedVariantInputs,
+  type VariantId,
+} from "@/lib/canvas/generator-variants";
 
 export type NodeData = {
   label?: string;
@@ -29,16 +37,11 @@ export type NodeData = {
   prompt?: string;
   negativePrompt?: string;
   model?: string;
-  ideogramMode?: "generate" | "remix" | "edit";
   aspectRatio?: string;
   imageSize?: ImageResolution; // output resolution; unset → the defaultResolution setting
-  imageWeight?: number;
-  styleType?: string;
-  renderingSpeed?: string;
   isGenerating?: boolean;
   generatedImages?: string[];
   selectedImageIndex?: number;
-  maskDataUrl?: string;
   numImages?: number; // Number of images to generate per model
   favoriteModel?: string; // User's favorite model for quick access
   sketchElements?: string; // JSON string of Excalidraw elements
@@ -58,6 +61,10 @@ export type NodeData = {
   genTokens?: number;
   genCost?: string;
   genWarning?: string;
+  // Générateur — test A/B/C. Absent or fewer than 2 variants = normal mode.
+  abTest?: AbTest;
+  // Images of the last generation per variant; generatedImages keeps variant A's.
+  generatedImagesByVariant?: Partial<Record<VariantId, string[]>>;
 };
 
 export type AppNode = Node<NodeData>;
@@ -131,6 +138,11 @@ interface CanvasState {
     sketches: AppNode[];
     images: AppNode[];
   };
+  // Inputs of one variant of a generator (common + per-variant, B/C inheriting A).
+  getVariantInputs: (nodeId: string, variant: VariantId) => ResolvedVariantInputs<AppNode>;
+  // Sets a generator's variants (["A"] = normal mode) and removes, in the same
+  // history step, the edges plugged into handles of the variants dropped.
+  setGeneratorVariants: (nodeId: string, variants: VariantId[]) => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
@@ -349,6 +361,26 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         (n) => n.type === "preview" || n.type === "swipeFile" || n.type === "faceReference" || n.type === "textOverlay"
       ),
     };
+  },
+
+  getVariantInputs: (nodeId, variant) => {
+    const { nodes, edges } = get();
+    return resolveVariantInputs(edges, nodes, nodeId, variant);
+  },
+
+  setGeneratorVariants: (nodeId, variants) => {
+    const kept = normalizeVariants(variants);
+    const { nodes, edges } = get();
+    const dropped = new Set(edgesToRemoveForVariants(edges, nodeId, kept));
+    const abTest: AbTest | undefined = kept.length >= 2 ? { variants: kept } : undefined;
+    set({
+      edges: edges.filter((edge) => !dropped.has(edge)),
+      nodes: nodes.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, abTest } } : node)),
+    });
+    if (get().loaded) {
+      pushHistory(get, set);
+      debouncedSave(get(), set);
+    }
   },
 
   undo: () => {
