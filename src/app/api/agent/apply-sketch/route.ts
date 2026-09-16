@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       id: createdGenId,
       type: "generator",
       position: { x: refPos.x + 200, y: refPos.y },
-      data: { model: "ideogram", aspectRatio: "16x9", numImages: 1 },
+      data: { model: "gemini-3.1-flash-image", aspectRatio: "16x9", numImages: 1 },
     });
     edges.push({
       id: `e-${uuid().slice(0, 8)}`,
