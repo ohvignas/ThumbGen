@@ -2,10 +2,11 @@ import { getDb } from "@/lib/db";
 
 export type ResolvedImage = { mimeType: string; bytes: Buffer };
 
+// fr_ (single face photos) is intentionally absent: faces are Personnages
+// only (stored:persona_<id>, handled below).
 const TABLE_BY_PREFIX = {
   lg: "logos",
   sf: "swipe_files",
-  fr: "face_reactions",
   gi: "generated_images",
 } as const;
 
@@ -40,7 +41,7 @@ export async function resolveImageSource(source: string): Promise<ResolvedImage>
 
   // stored:<prefix>_<id>
   if (source.startsWith("stored:")) {
-    const m = source.match(/^stored:(lg|sf|fr|gi)_(.+)$/);
+    const m = source.match(/^stored:(lg|sf|gi)_(.+)$/);
     if (!m) throw new Error(`Invalid stored source: ${source}`);
     const [, prefix, id] = m as [string, StoredPrefix, string];
     const table = TABLE_BY_PREFIX[prefix];
@@ -88,7 +89,7 @@ export function imageExists(source: string): boolean {
   }
 
   if (source.startsWith("stored:")) {
-    const m = source.match(/^stored:(lg|sf|fr|gi)_(.+)$/);
+    const m = source.match(/^stored:(lg|sf|gi)_(.+)$/);
     if (!m) return false;
     const [, prefix, id] = m as [string, StoredPrefix, string];
     const table = TABLE_BY_PREFIX[prefix];

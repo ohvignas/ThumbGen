@@ -1,22 +1,31 @@
 import { z } from "zod";
 
 // Stored prefixes map 1:1 to DB tables :
-//   lg_ → logos, sf_ → swipe_files, fr_ → face_reactions, gi_ → generated_images,
+//   lg_ → logos, sf_ → swipe_files, gi_ → generated_images,
 //   persona_ → personas (resolves to up to 3 angle images, not one — see
-//   blueprintToCanvasData's special-case handling in apply-workflow.ts)
+//   blueprintToCanvasData's special-case handling in apply-workflow.ts).
+// Single face photos (fr_) are no longer a source: faces are Personnages
+// only.
 export const ImageSourceSchema = z.string().refine(
   (s) =>
-    /^stored:(lg|sf|fr|gi|persona)_[\w-]+$/.test(s) ||
+    /^stored:(lg|sf|gi|persona)_[\w-]+$/.test(s) ||
     /^generated:[\w-]+$/.test(s) ||
     /^uploaded:[\w-]+$/.test(s) ||
     /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]{4,}$/.test(s),
   { message: "Invalid ImageSource" }
 );
 
+const PersonaSourceSchema = z
+  .string()
+  .regex(
+    /^stored:persona_[\w-]+$/,
+    "faceReference only accepts a Personnage: image_source must be stored:persona_<id> (see list_personas)",
+  );
+
 const NodeDataByType = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("faceReference"),
-    image_source: ImageSourceSchema,
+    image_source: PersonaSourceSchema,
     label: z.string().optional(),
   }),
   z.object({

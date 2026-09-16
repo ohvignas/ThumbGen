@@ -334,6 +334,10 @@ function summarizeNode(type: string, data: Record<string, unknown>): Record<stri
       // Generator nodes use `count` — `numImages` was a documentation error.
       return { model: data.model, aspectRatio: data.aspectRatio, count: data.count ?? data.numImages };
     case "faceReference":
+      return {
+        persona: typeof data.personaId === "string" ? `stored:persona_${data.personaId}` : null,
+        label: data.label,
+      };
     case "swipeFile":
     case "sketch":
       return {
