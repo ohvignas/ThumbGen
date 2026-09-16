@@ -1,83 +1,57 @@
 "use client";
 
 import { Handle, Position, NodeProps } from "@xyflow/react";
+import { useCallback, useEffect, useState } from "react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useLibraryStore } from "@/store/library-store";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PERSONA_ANGLES, PERSONA_ANGLE_LABELS, personaNodeData, type PersonaSummary } from "@/lib/personas";
 import NodeShell from "./NodeShell";
 
+/* eslint-disable @next/next/no-img-element */
+
+/**
+ * Personnage (node type "faceReference", kept for saved data). Faces are
+ * Personnages only: pick one from the library, or go create one. A former
+ * single-photo face node is converted to a reference image on load
+ * (see migrateCanvas).
+ */
 export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const removeNode = useCanvasStore((s) => s.removeNode);
-  const [removingBg, setRemovingBg] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const setLibraryTab = useLibraryStore((s) => s.setActiveTab);
+  const [personas, setPersonas] = useState<PersonaSummary[] | null>(null);
 
-  // Auto-convert URL images to base64 so the generator pipeline works
+  const loadPersonas = useCallback(() => {
+    fetch("/api/personas")
+      .then((res) => (res.ok ? (res.json() as Promise<PersonaSummary[]>) : []))
+      .then((rows) => setPersonas(rows))
+      .catch(() => setPersonas([]));
+  }, []);
+
   useEffect(() => {
-    if (data.imageUrl && !data.imageBase64) {
-      fetch(data.imageUrl)
-        .then((r) => r.blob())
-        .then((blob) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            updateNodeData(id, { imageBase64: reader.result as string });
-          };
-          reader.readAsDataURL(blob);
-        })
-        .catch(() => {});
-    }
-  }, [data.imageUrl, data.imageBase64, id, updateNodeData]);
-
-  const handleFile = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        updateNodeData(id, {
-          imageBase64: reader.result as string,
-          label: file.name,
-        });
-      };
-      reader.readAsDataURL(file);
-    },
-    [id, updateNodeData]
-  );
-
-  const handleRemoveBg = async () => {
-    const src = data.imageBase64 || data.imageUrl;
-    if (!src) return;
-    setRemovingBg(true);
-    try {
-      let dataUrl = src;
-      if (!src.startsWith("data:")) {
-        const res = await fetch(src);
-        const blob = await res.blob();
-        dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-      }
-      const { removeBackground } = await import("@/lib/remove-bg");
-      const result = await removeBackground(dataUrl);
-      updateNodeData(id, { imageBase64: result });
-    } catch (err) {
-      console.error("Remove BG error:", err);
-    } finally {
-      setRemovingBg(false);
-    }
-  };
+    loadPersonas();
+  }, [loadPersonas]);
 
   const angles = data.personaAngles;
-  const hasPersona = !!(angles && (angles.front || angles.left || angles.right));
+  const hasPersona = Boolean(data.personaId || (angles && (angles.front || angles.left || angles.right)));
+
+  const items = (personas ?? []).map((persona) => ({ value: persona.id, label: persona.label }));
+  if (data.personaId && !items.some((item) => item.value === data.personaId)) {
+    items.unshift({ value: data.personaId, label: data.label || "Personnage" });
+  }
+
+  const choosePersona = (value: string | null) => {
+    if (!value) return;
+    const persona = personas?.find((candidate) => candidate.id === value);
+    if (persona) updateNodeData(id, personaNodeData(persona));
+  };
 
   return (
     <NodeShell
       title={data.label || "Personnage"}
       onDelete={() => removeNode(id)}
       onRename={(newName) => updateNodeData(id, { label: newName })}
-      onRemoveBg={!hasPersona && (data.imageBase64 || data.imageUrl) ? handleRemoveBg : undefined}
-      removingBg={removingBg}
       width={280}
       icon={
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ember)" strokeWidth="1.5" strokeLinecap="round">
@@ -85,76 +59,60 @@ export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
         </svg>
       }
     >
-      {hasPersona ? (
-        <div className="grid grid-cols-3 gap-1.5">
-          {(["front", "left", "right"] as const).map((angle) => (
-            <div key={angle} className="rounded-lg overflow-hidden" style={{ background: "var(--surface)" }}>
-              {angles![angle] ? (
-                <img
-                  src={angles![angle]}
-                  alt={angle}
-                  className="w-full aspect-square object-cover"
-                />
-              ) : (
-                <div className="w-full aspect-square flex items-center justify-center">
-                  <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>—</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (data.imageBase64 || data.imageUrl) ? (
-        <div className="relative group rounded-xl overflow-hidden">
-          <img
-            src={data.imageBase64 || data.imageUrl}
-            alt="Face reference"
-            className="w-full object-cover"
-            style={{ maxHeight: 180, opacity: removingBg ? 0.3 : 1, transition: "opacity 0.3s" }}
-          />
-          {removingBg && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <svg className="animate-spin" width="32" height="32" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.2)" strokeWidth="3" />
-                <path d="M12 2a10 10 0 019.95 9" stroke="var(--ember)" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-              <span className="text-xs font-medium" style={{ color: "var(--ember)" }}>
-                Suppression du fond…
-              </span>
-            </div>
-          )}
-          {!removingBg && (
-            <button
-              onClick={() => inputRef.current?.click()}
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-sm rounded-xl"
-              style={{ background: "rgba(15, 15, 20, 0.6)", color: "var(--bone)" }}
-            >
-              Remplacer
-            </button>
-          )}
-        </div>
-      ) : (
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="w-full h-48 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-3 transition-colors nopan nodrag"
-          style={{
-            borderColor: "var(--surface)",
-            color: "var(--text-muted)",
+      <div className="flex flex-col gap-2">
+        {hasPersona && (
+          <div className="grid grid-cols-3 gap-1.5">
+            {PERSONA_ANGLES.map((angle) => (
+              <div key={angle} className="overflow-hidden rounded-lg bg-(--surface)">
+                {angles?.[angle] ? (
+                  <img src={angles[angle]} alt={PERSONA_ANGLE_LABELS[angle]} className="aspect-square w-full object-cover" />
+                ) : (
+                  <div className="flex aspect-square w-full items-center justify-center text-[9px] text-(--text-muted)">—</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Select
+          items={items}
+          value={data.personaId ?? null}
+          onValueChange={choosePersona}
+          onOpenChange={(open) => {
+            if (open) loadPersonas();
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--ember)")}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--surface)")}
         >
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
-          </svg>
-          <span className="text-xs">Importer une référence de visage</span>
-        </button>
-      )}
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-      {hasPersona && (
-        <p className="text-[10px] mt-2 text-center" style={{ color: "var(--text-muted)" }}>
-          Gère ce personnage depuis l&apos;onglet Personnages
-        </p>
-      )}
+          <SelectTrigger
+            size="sm"
+            aria-label="Personnage"
+            className="nodrag nopan w-full border-(--line) bg-(--surface) text-(--text-primary) data-placeholder:text-(--text-muted)"
+          >
+            <SelectValue placeholder="Choisir un personnage" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            {items.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {!hasPersona && (
+          <>
+            {personas?.length === 0 && (
+              <p className="text-[11px] text-(--text-muted)">Aucun personnage dans ta bibliothèque.</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setLibraryTab("faces")}
+              className="nodrag nopan self-start text-xs text-(--canvas-accent) hover:underline"
+            >
+              Créer un personnage
+            </button>
+          </>
+        )}
+      </div>
       <Handle type="source" position={Position.Right} id="face" />
     </NodeShell>
   );

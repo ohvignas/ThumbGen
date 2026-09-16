@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useLibraryStore } from "@/store/library-store";
 import { useReactFlow } from "@xyflow/react";
 import { useGeneratorDefaults } from "@/hooks/useGeneratorDefaults";
 import {
@@ -25,22 +26,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import WebcamCaptureModal from "./WebcamCaptureModal";
+import PersonaImportDialog from "./PersonaImportDialog";
+import { personaImageUrl, personaNodeData, type PersonaAngle, type PersonaSummary } from "@/lib/personas";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
 import { Users, Image as ImageIcon, LayoutGrid, Shapes, BarChart3, Settings as SettingsIcon, Search, Plus, X, Camera, Upload, Film } from "lucide-react";
 
 /* eslint-disable @next/next/no-img-element */
 
-type SidebarTab = "models" | "faces" | "logos" | "swipe" | null;
-
 type LogoEntry = { filename: string; label: string; size: number };
 type SwipeEntry = { title: string; filename: string; size: number };
 type YouTubeItem = { videoId: string; title: string; thumbnailUrl: string; addedAt: string };
-type FaceReaction = { filename: string; label: string; size: number };
-type Persona = { id: string; label: string; angles: ("front" | "left" | "right")[] };
-
-type VisageEntry =
-  | { kind: "persona"; id: string; label: string; angles: ("front" | "left" | "right")[] }
-  | { kind: "legacy"; filename: string; label: string };
 
 const MODELS = [
   { id: "gemini-3-pro-image", label: "Gemini 3 Pro", color: PROVIDER_COLORS.gemini },
@@ -56,25 +51,25 @@ const MODELS = [
 
 export default function AppSidebar() {
   const { state: sidebarState } = useSidebar();
-  const [activeTab, setActiveTab] = useState<SidebarTab>(null);
+  const activeTab = useLibraryStore((s) => s.activeTab);
+  const setActiveTab = useLibraryStore((s) => s.setActiveTab);
+  const toggleTab = useLibraryStore((s) => s.toggleTab);
   const [swipeEntries, setSwipeEntries] = useState<SwipeEntry[]>([]);
   const [youtubeItems, setYoutubeItems] = useState<YouTubeItem[]>([]);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [swipeSearch, setSwipeSearch] = useState("");
-  const [faceReactions, setFaceReactions] = useState<FaceReaction[]>([]);
-  const [faceUploading, setFaceUploading] = useState(false);
-  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [showWebcamCapture, setShowWebcamCapture] = useState(false);
   const [savingPersona, setSavingPersona] = useState(false);
   const [uploadedSwipes, setUploadedSwipes] = useState<SwipeEntry[]>([]);
   const [swipeUploading, setSwipeUploading] = useState(false);
   const [logos, setLogos] = useState<LogoEntry[]>([]);
   const [logoUploading, setLogoUploading] = useState(false);
-  const [visagesSearch, setVisagesSearch] = useState("");
+  const [personasSearch, setPersonasSearch] = useState("");
   const [logosSearch, setLogosSearch] = useState("");
-  const [newVisageOpen, setNewVisageOpen] = useState(false);
+  const [newPersonaOpen, setNewPersonaOpen] = useState(false);
+  const [personaImportOpen, setPersonaImportOpen] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const faceInputRef = useRef<HTMLInputElement>(null);
   const swipeInputRef = useRef<HTMLInputElement>(null);
   const addNode = useCanvasStore((s) => s.addNode);
   const generatorDefaults = useGeneratorDefaults();
@@ -84,17 +79,13 @@ export default function AppSidebar() {
   // The canvas now lives at /m/<projectId>; "/" only redirects to the gallery.
   const onCanvas = pathname.startsWith("/m/");
 
-  const loadFaces = () => {
-    fetch("/api/face-reactions").then((r) => r.json()).then(setFaceReactions).catch(() => {});
-  };
   const loadPersonas = () => {
     fetch("/api/personas").then((r) => r.json()).then(setPersonas).catch(() => {});
   };
 
-  // WebcamCaptureModal's naming step (added in this task — see that file) hands back
-  // the name the user typed after capturing all 3 angles; fall back to the old default
-  // label when it's left blank.
-  const handlePersonaCaptured = async (photos: Record<"front" | "left" | "right", string>, name: string) => {
+  // Shared by the webcam wizard (3 angles + name) and the per-angle import
+  // dialog (front required). A blank name falls back to « Personnage N ».
+  const savePersona = async (photos: Partial<Record<PersonaAngle, string>>, name: string) => {
     setSavingPersona(true);
     try {
       const res = await fetch("/api/personas", {
@@ -109,6 +100,7 @@ export default function AppSidebar() {
       }
       loadPersonas();
       setShowWebcamCapture(false);
+      setPersonaImportOpen(false);
     } catch {
       window.alert("Échec de l'enregistrement du personnage — vérifie ta connexion et réessaie.");
     } finally {
@@ -134,7 +126,6 @@ export default function AppSidebar() {
   useEffect(() => {
     fetch("/swipe-file/manifest.json").then((r) => r.json()).then(setSwipeEntries).catch(() => {});
   }, []);
-  useEffect(() => { loadFaces(); }, []);
   useEffect(() => { loadPersonas(); }, []);
   useEffect(() => { loadUploadedSwipes(); }, []);
 
@@ -157,26 +148,6 @@ export default function AppSidebar() {
       };
       img.src = URL.createObjectURL(file);
     });
-  };
-
-  const handleFaceUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setFaceUploading(true);
-    for (const file of Array.from(files)) {
-      const dataUrl = await fileToDataUrl(file);
-      await fetch("/api/face-reactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataUrl, label: file.name.replace(/\.[^.]+$/, ""), ext: "jpg" }),
-      });
-    }
-    setFaceUploading(false);
-    loadFaces();
-  };
-
-  const handleDeleteFace = async (filename: string) => {
-    await fetch(`/api/face-reactions?filename=${encodeURIComponent(filename)}`, { method: "DELETE" });
-    loadFaces();
   };
 
   const handleSwipeUpload = async (files: FileList | null) => {
@@ -269,8 +240,6 @@ export default function AppSidebar() {
     return () => window.removeEventListener("youtube-channel-saved", handler);
   }, []);
 
-  const toggleTab = (tab: SidebarTab) => setActiveTab((prev) => (prev === tab ? null : tab));
-
   const addAtCenter = (type: string, data?: Record<string, unknown>) => {
     if (!onCanvas) {
       // No canvas mounted here — send them to pick one first.
@@ -298,18 +267,7 @@ export default function AppSidebar() {
   const filteredSwipe = swipeEntries.filter((e) => e.title.toLowerCase().includes(swipeSearch.toLowerCase()));
   const filteredYoutube = youtubeItems.filter((e) => e.title.toLowerCase().includes(swipeSearch.toLowerCase()));
 
-  // Personas arrive newest-first from GET /api/personas (ORDER BY created_at
-  // DESC); face-reactions arrive oldest-first from GET /api/face-reactions
-  // (ORDER BY created_at ASC — an existing, unrelated API contract this task
-  // does not touch) — reversed here to newest-first to match. Neither
-  // response carries created_at, so a true chronological interleave across
-  // both types isn't possible without a backend change (out of scope) —
-  // personas group first (newest-first), then legacy faces (newest-first).
-  const visageEntries: VisageEntry[] = [
-    ...personas.map((p): VisageEntry => ({ kind: "persona", id: p.id, label: p.label, angles: p.angles })),
-    ...[...faceReactions].reverse().map((f): VisageEntry => ({ kind: "legacy", filename: f.filename, label: f.label })),
-  ];
-  const filteredVisages = visageEntries.filter((e) => e.label.toLowerCase().includes(visagesSearch.toLowerCase()));
+  const filteredPersonas = personas.filter((p) => p.label.toLowerCase().includes(personasSearch.toLowerCase()));
   const filteredLogos = logos.filter((l) => l.label.toLowerCase().includes(logosSearch.toLowerCase()));
 
   const renamePersona = async (id: string, label: string) => {
@@ -319,15 +277,6 @@ export default function AppSidebar() {
       body: JSON.stringify({ label }),
     });
     loadPersonas();
-  };
-
-  const renameFace = async (filename: string, label: string) => {
-    await fetch("/api/face-reactions/rename", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename, label }),
-    });
-    loadFaces();
   };
 
   return (
@@ -438,8 +387,8 @@ export default function AppSidebar() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
                 <Input
                   placeholder="Rechercher"
-                  value={activeTab === "faces" ? visagesSearch : logosSearch}
-                  onChange={(e) => (activeTab === "faces" ? setVisagesSearch(e.target.value) : setLogosSearch(e.target.value))}
+                  value={activeTab === "faces" ? personasSearch : logosSearch}
+                  onChange={(e) => (activeTab === "faces" ? setPersonasSearch(e.target.value) : setLogosSearch(e.target.value))}
                   className="pl-9"
                 />
               </div>
@@ -448,109 +397,58 @@ export default function AppSidebar() {
             {activeTab === "faces" && (
               <>
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-sm font-medium text-foreground">Visages</h3>
-                  <Button size="sm" variant="secondary" onClick={() => setNewVisageOpen(true)} disabled={savingPersona || faceUploading}>
+                  <h3 className="text-sm font-medium text-foreground">Personnages</h3>
+                  <Button size="sm" variant="secondary" onClick={() => setNewPersonaOpen(true)} disabled={savingPersona}>
                     <Plus className="size-3" />
-                    {savingPersona ? "Enregistrement…" : faceUploading ? "Import…" : "Nouveau visage"}
+                    {savingPersona ? "Enregistrement…" : "Nouveau personnage"}
                   </Button>
                 </div>
-                <p className="text-xs mb-3 text-muted-foreground">Clique pour ajouter au canvas ({filteredVisages.length})</p>
+                <p className="text-xs mb-3 text-muted-foreground">Clique pour ajouter au canvas ({filteredPersonas.length})</p>
 
-                {filteredVisages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-8 rounded-xl cursor-pointer border-2 border-dashed border-border" onClick={() => setNewVisageOpen(true)}>
+                {filteredPersonas.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-8 rounded-xl cursor-pointer border-2 border-dashed border-border" onClick={() => setNewPersonaOpen(true)}>
                     <Users className="size-8 mb-2 text-muted-foreground" strokeWidth={1.5} />
                     <p className="text-xs text-center px-4 text-muted-foreground">
-                      {visagesSearch ? "Aucun résultat." : "Crée ton premier visage"}
+                      {personasSearch ? "Aucun résultat." : "Crée ton premier personnage"}
                     </p>
                   </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-1.5">
-                  {filteredVisages.map((entry) =>
-                    entry.kind === "persona" ? (
-                      <div
-                        key={`persona-${entry.id}`}
-                        className="group cursor-pointer rounded-lg overflow-hidden relative border border-transparent hover:border-muted"
-                        onClick={() =>
-                          addAtCenter("faceReference", {
-                            label: entry.label,
-                            personaId: entry.id,
-                            personaAngles: {
-                              front: entry.angles.includes("front") ? `/api/personas/image?id=${entry.id}&angle=front` : undefined,
-                              left: entry.angles.includes("left") ? `/api/personas/image?id=${entry.id}&angle=left` : undefined,
-                              right: entry.angles.includes("right") ? `/api/personas/image?id=${entry.id}&angle=right` : undefined,
-                            },
-                          })
-                        }
-                      >
-                        <img src={`/api/personas/image?id=${entry.id}&angle=${entry.angles[0]}`} alt={entry.label} className="w-full aspect-square object-cover" loading="lazy" />
-                        <div className="absolute bottom-0 inset-x-0 px-1.5 py-1 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent">
-                          <input
-                            defaultValue={entry.label}
-                            className="flex-1 min-w-0 truncate text-[10px] bg-transparent text-white focus:outline-none nopan nodrag"
-                            onBlur={(e) => {
-                              const v = e.target.value.trim();
-                              if (v && v !== entry.label) renamePersona(entry.id, v);
-                            }}
-                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <span className="text-[9px] text-white/80 shrink-0 ml-1">{entry.angles.length}/3</span>
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeletePersona(entry.id, entry.label); }}
-                          className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/75 hover:bg-destructive transition-colors"
-                          title="Supprimer"
-                        >
-                          <X className="size-3 text-white" strokeWidth={2.5} />
-                        </button>
+                  {filteredPersonas.map((persona) => (
+                    <div
+                      key={persona.id}
+                      className="group cursor-pointer rounded-lg overflow-hidden relative border border-transparent hover:border-muted"
+                      onClick={() => addAtCenter("faceReference", personaNodeData(persona))}
+                    >
+                      {persona.angles[0] ? (
+                        <img src={personaImageUrl(persona.id, persona.angles[0])} alt={persona.label} className="w-full aspect-square object-cover" loading="lazy" />
+                      ) : (
+                        <div className="w-full aspect-square bg-muted" />
+                      )}
+                      <div className="absolute bottom-0 inset-x-0 px-1.5 py-1 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent">
+                        <input
+                          defaultValue={persona.label}
+                          className="flex-1 min-w-0 truncate text-[10px] bg-transparent text-white focus:outline-none nopan nodrag"
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            if (v && v !== persona.label) renamePersona(persona.id, v);
+                          }}
+                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <span className="text-[9px] text-white/80 shrink-0 ml-1">{persona.angles.length}/3</span>
                       </div>
-                    ) : (
-                      <div
-                        key={`legacy-${entry.filename}`}
-                        draggable
-                        onClick={() => addAtCenter("faceReference", { imageUrl: `/api/face-reactions/image?f=${entry.filename}`, label: entry.label })}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("application/reactflow-type", "faceReference");
-                          e.dataTransfer.setData("application/reactflow-data", JSON.stringify({ imageUrl: `/api/face-reactions/image?f=${entry.filename}`, label: entry.label }));
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        className="group cursor-pointer rounded-lg overflow-hidden relative border border-transparent hover:border-muted"
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeletePersona(persona.id, persona.label); }}
+                        className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/75 hover:bg-destructive transition-colors"
+                        title="Supprimer"
                       >
-                        <img src={`/api/face-reactions/image?f=${entry.filename}`} alt={entry.label} className="w-full aspect-square object-cover" loading="lazy" />
-                        <div className="absolute bottom-0 inset-x-0 px-1.5 py-1 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent">
-                          <input
-                            defaultValue={entry.label}
-                            className="flex-1 min-w-0 truncate text-[10px] bg-transparent text-white focus:outline-none nopan nodrag"
-                            onBlur={(e) => {
-                              const v = e.target.value.trim();
-                              if (v && v !== entry.label) renameFace(entry.filename, v);
-                            }}
-                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <span className="text-[9px] text-white/80 shrink-0 ml-1">1 photo</span>
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteFace(entry.filename); }}
-                          className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/75 hover:bg-destructive transition-colors"
-                          title="Supprimer"
-                        >
-                          <X className="size-3 text-white" strokeWidth={2.5} />
-                        </button>
-                      </div>
-                    ),
-                  )}
+                        <X className="size-3 text-white" strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-
-                <input
-                  ref={faceInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => { handleFaceUpload(e.target.files); setNewVisageOpen(false); }}
-                />
               </>
             )}
 
@@ -717,7 +615,7 @@ export default function AppSidebar() {
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData("application/reactflow-type", "swipeFile");
-                        e.dataTransfer.setData("application/reactflow-data", JSON.stringify({ imageUrl: `/api/logos/image?f=${logo.filename}`, label: logo.label }));
+                        e.dataTransfer.setData("application/reactflow-data", JSON.stringify({ imageUrl: `/api/logos/image?f=${logo.filename}`, label: logo.label, kind: "logo" }));
                         e.dataTransfer.effectAllowed = "move";
                       }}
                       className="group flex items-center gap-3 px-2 py-2 rounded-xl cursor-grab bg-muted border border-transparent hover:border-primary"
@@ -725,7 +623,7 @@ export default function AppSidebar() {
                       <div
                         className="flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden bg-white/5"
                         style={{ width: 44, height: 44 }}
-                        onClick={() => addAtCenter("swipeFile", { imageUrl: `/api/logos/image?f=${logo.filename}`, label: logo.label })}
+                        onClick={() => addAtCenter("swipeFile", { imageUrl: `/api/logos/image?f=${logo.filename}`, label: logo.label, kind: "logo" })}
                       >
                         <img src={`/api/logos/image?f=${logo.filename}`} alt={logo.label} className="max-w-full max-h-full object-contain" loading="lazy" />
                       </div>
@@ -764,22 +662,31 @@ export default function AppSidebar() {
         </div>
       )}
 
-      {showWebcamCapture && <WebcamCaptureModal onClose={() => setShowWebcamCapture(false)} onComplete={handlePersonaCaptured} />}
+      {showWebcamCapture && <WebcamCaptureModal onClose={() => setShowWebcamCapture(false)} onComplete={savePersona} />}
 
-      <Dialog open={newVisageOpen} onOpenChange={setNewVisageOpen}>
+      {personaImportOpen && (
+        <PersonaImportDialog
+          onClose={() => setPersonaImportOpen(false)}
+          prepareFile={(file) => fileToDataUrl(file)}
+          onSubmit={savePersona}
+          saving={savingPersona}
+        />
+      )}
+
+      <Dialog open={newPersonaOpen} onOpenChange={setNewPersonaOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Nouveau visage</DialogTitle>
-            <DialogDescription>Choisis comment ajouter un visage à ta bibliothèque.</DialogDescription>
+            <DialogTitle>Nouveau personnage</DialogTitle>
+            <DialogDescription>Ton visage sous trois angles (face, profil gauche, profil droit) pour des miniatures qui te ressemblent.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
-            <Button variant="outline" className="justify-start" onClick={() => { setNewVisageOpen(false); setShowWebcamCapture(true); }}>
+            <Button variant="outline" className="justify-start" onClick={() => { setNewPersonaOpen(false); setShowWebcamCapture(true); }}>
               <Camera className="size-4" />
               Capturer avec la webcam
             </Button>
-            <Button variant="outline" className="justify-start" onClick={() => faceInputRef.current?.click()}>
+            <Button variant="outline" className="justify-start" onClick={() => { setNewPersonaOpen(false); setPersonaImportOpen(true); }}>
               <Upload className="size-4" />
-              Importer une photo
+              Importer une photo par angle
             </Button>
           </div>
         </DialogContent>

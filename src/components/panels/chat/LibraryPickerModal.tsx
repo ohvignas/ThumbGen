@@ -1,17 +1,39 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { personaPickerItem, type PersonaSummary } from "@/lib/personas";
 
 type Tab = "faces" | "logos" | "refs";
 type Item = { source: string; preview_url: string; label: string };
 
-const TABS: Record<Tab, { listUrl: string; imagePrefix: string; storedPrefix: "fr" | "lg" | "sf"; labelKey: "label" | "title" }> = {
-  faces: { listUrl: "/api/face-reactions", imagePrefix: "/api/face-reactions/image", storedPrefix: "fr", labelKey: "label" },
-  logos: { listUrl: "/api/logos", imagePrefix: "/api/logos/image", storedPrefix: "lg", labelKey: "label" },
-  refs: { listUrl: "/api/swipe-files", imagePrefix: "/api/swipe-files/image", storedPrefix: "sf", labelKey: "title" },
+type Row = Record<string, unknown>;
+
+// « faces » lists Personnages (multi-angle sets). Single face photos are
+// no longer offered anywhere.
+const TABS: Record<Tab, { listUrl: string; toItem: (row: Row) => Item | null }> = {
+  faces: {
+    listUrl: "/api/personas",
+    toItem: (row) => personaPickerItem(row as unknown as PersonaSummary),
+  },
+  logos: {
+    listUrl: "/api/logos",
+    toItem: (row) => ({
+      source: `stored:lg_${row.filename}`,
+      preview_url: `/api/logos/image?f=${encodeURIComponent(String(row.filename))}`,
+      label: (row.label as string) || "Untitled",
+    }),
+  },
+  refs: {
+    listUrl: "/api/swipe-files",
+    toItem: (row) => ({
+      source: `stored:sf_${row.filename}`,
+      preview_url: `/api/swipe-files/image?f=${encodeURIComponent(String(row.filename))}`,
+      label: (row.title as string) || "Untitled",
+    }),
+  },
 };
 
-const TAB_LABELS: Record<Tab, string> = { faces: "Visages", logos: "Logos", refs: "Références" };
+const TAB_LABELS: Record<Tab, string> = { faces: "Personnages", logos: "Logos", refs: "Références" };
 
 export default function LibraryPickerModal({
   onClose,
@@ -30,19 +52,9 @@ export default function LibraryPickerModal({
     const cfg = TABS[tab];
     fetch(cfg.listUrl)
       .then((r) => r.json())
-      .then((rows: Array<Record<string, unknown>>) => {
+      .then((rows: Row[]) => {
         if (cancelled) return;
-        setItems(
-          rows.map((r) => {
-            const id = r.filename as string;
-            const label = (r[cfg.labelKey] as string) || "Untitled";
-            return {
-              source: `stored:${cfg.storedPrefix}_${id}`,
-              preview_url: `${cfg.imagePrefix}?f=${encodeURIComponent(id)}`,
-              label,
-            };
-          }),
-        );
+        setItems(rows.map((row) => cfg.toItem(row)).filter((item): item is Item => item !== null));
       })
       .catch(() => setItems([]))
       .finally(() => !cancelled && setLoading(false));
