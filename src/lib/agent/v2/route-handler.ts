@@ -9,13 +9,12 @@ import { buildSystemMessages } from "@/lib/agent/system-prompt";
 import { appendMessage, listMessages } from "@/lib/agent/conversation/store";
 import { generateAndPersistTitle } from "@/lib/agent/conversation/auto-title";
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
-import { getSetting } from "@/lib/settings";
-import { getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/models";
+import { getTypedSettings } from "@/lib/settings";
+import { getModelById } from "@/lib/agent/models";
+import { loadAgentPromptPrefs } from "@/lib/agent/prompt-prefs";
 import { startGcLoop } from "@/lib/agent/gc";
 
 if (typeof window === "undefined") startGcLoop();
-
-const MAX_STEPS = 25;
 
 /**
  * Retroactively fixes up any persisted tool-result image part whose `data`
@@ -185,7 +184,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
     );
   }
 
-  const modelId = getSetting("agentModel") || DEFAULT_AGENT_MODEL;
+  const settings = getTypedSettings();
+  const modelId = settings.agentModel;
   const modelInfo = getModelById(modelId);
   const conversationId = body.conversation_id;
 
@@ -284,7 +284,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
         cost_estimate: 0,
       });
 
-      if (isFirstTurn && lastMessageText.trim()) {
+      if (isFirstTurn && lastMessageText.trim() && settings.agentAutoTitle) {
         void generateAndPersistTitle(conversationId, lastMessageText);
       }
     } else {
@@ -373,7 +373,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
         // client-tool parts (e.g. a stale client still running the old,
         // unscoped predicate, or a future regression) would silently fall
         // through to streamText below and re-run the model for up to
-        // MAX_STEPS more steps with nothing new to respond to. Return early
+        // agentMaxSteps more steps with nothing new to respond to. Return early
         // instead, matching this file's other guard-clause responses.
         return new Response(
           "No client-tool resolution found in this continuation; nothing to resume.",
@@ -417,7 +417,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
       priorMessages.push(...normalizeStaleToolResultFileData(parsed as unknown[]));
     }
 
-    const systemBlocks = buildSystemMessages(body.canvas_snapshot, body.project_id);
+    const systemBlocks = buildSystemMessages(body.canvas_snapshot, body.project_id, loadAgentPromptPrefs());
     systemText = systemBlocks.map((b) => b.text).join("\n\n");
   } catch (e) {
     return new Response(`Failed to prepare the conversation: ${(e as Error).message}`, { status: 400 });
@@ -447,7 +447,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
       ? [...priorMessages, { role: "user", content: userParts }]
       : [...priorMessages]) as ModelMessage[],
     tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
-    stopWhen: isStepCount(MAX_STEPS),
+    stopWhen: isStepCount(settings.agentMaxSteps),
     // v1 checks abort only at the outer-iteration and token-streaming
     // boundaries, never inside the per-tool-call dispatch loop — a Stop
     // click lets any tool calls already in flight for the current batch
@@ -458,7 +458,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
     abortSignal: req.signal,
     providerOptions: {
       openrouter: {
-        ...(modelInfo?.supportsThinking ? { reasoning: { effort: "medium" as const } } : {}),
+        ...(modelInfo?.supportsThinking ? { reasoning: { effort: settings.agentReasoningEffort } } : {}),
         ...webSearchProviderOptions(),
       },
     },
