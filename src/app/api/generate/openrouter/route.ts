@@ -18,6 +18,30 @@ const ENDPOINT = "https://openrouter.ai/api/v1/images";
 
 const DEFAULT_MODEL = "bytedance-seed/seedream-4.5";
 
+// Keep the surfaced error readable in a node's error bubble and avoid
+// leaking an unexpectedly huge provider response into the UI/logs.
+const MAX_ERROR_DETAIL_LENGTH = 300;
+
+// OpenRouter error bodies are JSON shaped like { error: { message, code } }
+// when the request itself was rejected (e.g. an unsupported resolution for
+// a given model). Some failures (gateway timeouts, WAF blocks) return an
+// HTML or plain-text body instead — those have no `error.message` to pull.
+function extractOpenRouterErrorDetail(rawBody: string): string | null {
+  try {
+    const parsed = JSON.parse(rawBody);
+    const message = parsed?.error?.message;
+    if (typeof message === "string" && message.trim()) {
+      const trimmed = message.trim();
+      return trimmed.length > MAX_ERROR_DETAIL_LENGTH
+        ? `${trimmed.slice(0, MAX_ERROR_DETAIL_LENGTH)}…`
+        : trimmed;
+    }
+  } catch {
+    // Non-JSON body — no detail to extract, fall back to the status code.
+  }
+  return null;
+}
+
 function mapAspectRatio(ratio: string): string {
   const map: Record<string, string> = {
     "16x9": "16:9",
@@ -96,13 +120,17 @@ export async function POST(request: NextRequest) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("OpenRouter image API error:", errText);
+      const detail = extractOpenRouterErrorDetail(errText);
+      const errorMessage = detail
+        ? `OpenRouter API error: ${res.status} — ${detail}`
+        : `OpenRouter API error: ${res.status}`;
       logGeneration({
         provider: "openrouter", model: modelUsed, endpoint: "generate",
         timeMs: Date.now() - start, imageCount: 0,
         prompt: promptForLog, status: "error",
-        errorMessage: `OpenRouter API error: ${res.status}`,
+        errorMessage,
       });
-      return NextResponse.json({ error: `OpenRouter API error: ${res.status}` }, { status: res.status });
+      return NextResponse.json({ error: errorMessage }, { status: res.status });
     }
 
     const result = await res.json();
