@@ -8,7 +8,10 @@ type Usage = {
 
 const REFRESH_MS = 30_000;
 
-export default function UsageBadge() {
+const fmt = (n: number) => `$${n.toFixed(n < 0.01 && n > 0 ? 4 : 2)}`;
+
+/** Today / this month spend (chat + image generations), polled while mounted. */
+export default function UsageSummary() {
   const [usage, setUsage] = useState<Usage | null>(null);
 
   useEffect(() => {
@@ -20,7 +23,7 @@ export default function UsageBadge() {
         const data = (await r.json()) as Usage;
         if (!cancelled) setUsage(data);
       } catch {
-        // silent
+        // Usage is informational; a failed poll just keeps the last value.
       }
     };
     tick();
@@ -33,16 +36,17 @@ export default function UsageBadge() {
 
   if (!usage) return null;
 
-  const fmt = (n: number) => `$${n.toFixed(n < 0.01 ? 4 : 2)}`;
-
   return (
     <div
-      className="flex items-center gap-1.5 text-[10px] tabular-nums tracking-[0.04em] font-mono text-muted-foreground"
-      title={`Aujourd'hui : chat ${fmt(usage.today.messages)} + générations ${fmt(usage.today.generations)}\nMois : chat ${fmt(usage.month.messages)} + générations ${fmt(usage.month.generations)}`}
+      className="flex items-center justify-between gap-3 px-2 py-1.5 text-xs text-muted-foreground tabular-nums"
+      title={`Aujourd'hui : chat ${fmt(usage.today.messages)} + images ${fmt(usage.today.generations)}\nCe mois : chat ${fmt(usage.month.messages)} + images ${fmt(usage.month.generations)}`}
     >
-      <span className="text-foreground">{fmt(usage.today.total)}</span>
-      <span>/</span>
-      <span>{fmt(usage.month.total)}</span>
+      <span>
+        Aujourd&apos;hui <span className="text-foreground">{fmt(usage.today.total)}</span>
+      </span>
+      <span>
+        Ce mois <span className="text-foreground">{fmt(usage.month.total)}</span>
+      </span>
     </div>
   );
 }

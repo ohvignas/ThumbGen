@@ -35,7 +35,7 @@ export type FinishInfo = {
 
 /**
  * Persists the assistant's completed turn into the SAME `messages` table
- * v1 uses, with the SAME columns UsageBadge / /api/agent/usage already read.
+ * v1 uses, with the SAME columns UsageSummary / /api/agent/usage already read.
  *
  * IMPORTANT — v1 and v2 are NOT interchangeable at the DB layer, despite
  * sharing this table and these columns: v1 writes Anthropic-block-shaped

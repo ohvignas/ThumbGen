@@ -1,21 +1,32 @@
 "use client";
-import { useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useCallback, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { lastAssistantMessageIsCompleteWithClientToolCalls } from "./chat/should-auto-continue";
 import { useChatStore } from "@/store/chat-store";
 import { useCanvasStore } from "@/store/canvas-store";
-import ConversationList from "./chat/ConversationList";
+import ChatHeader from "./chat/ChatHeader";
+import AgentAvatar from "./chat/AgentAvatar";
 import MessageList from "./chat/MessageList";
 import Composer from "./chat/Composer";
 import PendingUiAction, { PendingToolPart } from "./chat/PendingUiAction";
 import AgentActivity from "./chat/AgentActivity";
 import ImageAnnotateModal from "./chat/ImageAnnotateModal";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import UsageBadge from "./chat/UsageBadge";
 import { rowsToUIMessages } from "./chat/history-to-ui-messages";
+
+// Per-browser UI preference, so a minimised agent stays minimised on reload.
+const OPEN_STORAGE_KEY = "thumbgen.chat.open";
+
+function readStoredOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Right-side chat panel. Slide-in 420px wide. Mounted from Canvas.
@@ -36,6 +47,16 @@ import { rowsToUIMessages } from "./chat/history-to-ui-messages";
  * remains) to consume useChat's chatMessages/status/addToolOutput directly.
  */
 export default function ChatPanel({ projectId }: { projectId: string }) {
+  const [open, setOpenState] = useState(readStoredOpen);
+  const setOpen = useCallback((next: boolean) => {
+    setOpenState(next);
+    try {
+      localStorage.setItem(OPEN_STORAGE_KEY, String(next));
+    } catch {
+      // Storage unavailable (private mode): the choice just won't persist.
+    }
+  }, []);
+
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
@@ -75,7 +96,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
 
-  // When project changes, clear active conv so ConversationList picks the new
+  // When project changes, clear active conv so useConversations picks the new
   // project's first conv (or stays empty if none). Without this, the previous
   // project's conversation + history would bleed over into the new project.
   useEffect(() => {
@@ -211,7 +232,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     if (useChatStore.getState().activeConversationId !== convId) return;
     setMessages(rowsToUIMessages(rows as Array<{ id: string; role: "user" | "assistant"; content_json: string }>));
 
-    // Cheap, idempotent, always safe to call — ConversationList.tsx refetches
+    // Cheap, idempotent, always safe to call — useConversations refetches
     // the whole list on every bump. This is how the conversation list picks
     // up an auto-generated title (route-handler.ts's generateAndPersistTitle,
     // fire-and-forget server-side on a conversation's first turn) — there's
@@ -222,50 +243,72 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     useChatStore.getState().bumpConversationListVersion();
   }, [activeConversationId, projectId, draft, attachments, setDraft, clearAttachments, sendMessage, nodes, edges, setMessages]);
 
+  const busy = status === "submitted" || status === "streaming";
+
   return (
-    <aside className="fixed right-3 top-3 bottom-3 w-[420px] z-40">
-      <Card className="h-full flex flex-col gap-0 py-0 overflow-hidden bg-card">
-        <CardHeader className="border-b">
-          <CardTitle className="truncate">Brainstorm</CardTitle>
-          <CardDescription>Agent conversationnel ThumbGen</CardDescription>
-          <CardAction>
-            <Tooltip>
-              <TooltipTrigger render={<span><UsageBadge /></span>} />
-              <TooltipContent>
-                <p>Usage OpenRouter ce mois-ci</p>
-              </TooltipContent>
-            </Tooltip>
-          </CardAction>
-        </CardHeader>
+    <>
+      {/* Kept mounted while minimised so scroll position and any in-flight
+          stream survive a minimise/reopen; `hidden` only removes it from view. */}
+      <aside
+        hidden={!open}
+        className="fixed right-4 bottom-4 z-40 h-[min(640px,calc(100vh-2rem))] w-[400px] max-w-[calc(100vw-2rem)] origin-bottom-right animate-in fade-in zoom-in-95 duration-150"
+      >
+        <Card className="flex h-full flex-col gap-0 overflow-hidden py-0 shadow-2xl">
+          <ChatHeader projectId={projectId} status={status} onMinimize={() => setOpen(false)} />
 
-        <ConversationList projectId={projectId} />
+          <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
+            <MessageList messages={chatMessages} status={status} />
 
-        <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
-          <MessageList messages={chatMessages} status={status} />
+            {pendingToolPart && (
+              <PendingUiAction part={pendingToolPart} onResolve={respondToUiTool} />
+            )}
 
-          {pendingToolPart && (
-            <PendingUiAction part={pendingToolPart} onResolve={respondToUiTool} />
-          )}
+            <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
 
-          <AgentActivity status={status} lastMessage={chatMessages.at(-1)} />
+            {error && (
+              <Alert variant="destructive" className="mx-3 my-2">
+                <AlertTitle>Erreur</AlertTitle>
+                <AlertDescription>{error.message}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
 
-          {error && (
-            <Alert variant="destructive" className="mx-3 my-2">
-              <AlertTitle>Erreur</AlertTitle>
-              <AlertDescription>{error.message}</AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
+          <CardFooter className="p-0">
+            <Composer onSend={onSend} status={status} onStop={stop} />
+          </CardFooter>
+        </Card>
+      </aside>
 
-        <CardFooter className="p-0">
-          <Composer onSend={onSend} status={status} onStop={stop} />
-        </CardFooter>
-      </Card>
+      {!open && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                aria-label="Ouvrir l'agent"
+                className="fixed right-4 bottom-4 z-40 rounded-2xl transition-transform duration-200 animate-in fade-in zoom-in-75 hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                <AgentAvatar size="lg" />
+                {busy && (
+                  <span className="absolute -top-1 -right-1 flex size-3.5">
+                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-violet-400 opacity-75" />
+                    <span className="relative inline-flex size-3.5 rounded-full border-2 border-background bg-violet-400" />
+                  </span>
+                )}
+              </button>
+            }
+          />
+          <TooltipContent side="left">
+            <p>{busy ? "L'agent travaille…" : "Ouvrir l'agent"}</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {annotateImageUrl && (
         <ImageAnnotateModal imageUrl={annotateImageUrl} onClose={closeAnnotate} />
       )}
-    </aside>
+    </>
   );
 }
 
