@@ -55,6 +55,12 @@ export async function POST(request: NextRequest) {
       decoded.push({ angle, buffer, mimeType });
     }
 
+    // The UI always sends at least the front photo; a Personnage without any
+    // photo is useless to the generator, so the API refuses it too.
+    if (decoded.length === 0) {
+      return NextResponse.json({ error: "Ajoute au moins une photo du personnage." }, { status: 400 });
+    }
+
     const id = uuid();
     const db = getDb();
     const insertPersona = db.prepare("INSERT INTO personas (id, label) VALUES (?, ?)");
