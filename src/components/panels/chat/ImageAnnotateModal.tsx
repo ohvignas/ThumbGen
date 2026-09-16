@@ -173,7 +173,7 @@ export default function ImageAnnotateModal({ imageUrl, onClose }: { imageUrl: st
     >
       <DialogContent
         className="flex flex-col gap-3 p-5"
-        style={{ background: "var(--ink-1)", border: "1px solid var(--line)", maxWidth: "min(1200px, 95vw)", maxHeight: "92vh", minWidth: 600 }}
+        style={{ maxWidth: "min(1200px, 95vw)", maxHeight: "92vh", minWidth: 600 }}
         ref={containerRef}
       >
         {/* Toolbar — chrome, converted; the drawing canvas below is the same
@@ -185,8 +185,8 @@ export default function ImageAnnotateModal({ imageUrl, onClose }: { imageUrl: st
             would otherwise overlap it by ~16x16px — see task-8 fix report. */}
         <div className="flex items-center justify-between gap-3 pr-10">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono), monospace" }}>
-              <span style={{ color: "var(--brand)" }}>·</span> Annoter
+            <span className="text-[10px] uppercase tracking-[0.18em] font-mono text-muted-foreground">
+              <span className="text-primary">·</span> Annoter
             </span>
             <div className="flex items-center gap-1.5">
               {PEN_COLORS.map((c) => (
@@ -195,19 +195,19 @@ export default function ImageAnnotateModal({ imageUrl, onClose }: { imageUrl: st
                   onClick={() => setColor(c)}
                   aria-label={`color ${c}`}
                   className="w-6 h-6 rounded-full transition-transform"
-                  style={{ background: c, border: color === c ? "2px solid var(--text-primary)" : "1px solid var(--line)", transform: color === c ? "scale(1.12)" : "scale(1)" }}
+                  style={{ background: c, border: color === c ? "2px solid var(--foreground)" : "1px solid var(--border)", transform: color === c ? "scale(1.12)" : "scale(1)" }}
                 />
               ))}
-              <div className="w-px h-5 mx-1" style={{ background: "var(--line)" }} />
+              <div className="w-px h-5 mx-1 bg-border" />
               {PEN_WIDTHS.map((w) => (
                 <button
                   key={w}
                   onClick={() => setWidth(w)}
                   aria-label={`width ${w}`}
                   className="flex items-center justify-center w-6 h-6 rounded-md transition-colors"
-                  style={{ background: width === w ? "var(--surface)" : "transparent", border: width === w ? "1px solid var(--brand)" : "1px solid var(--line-faint)" }}
+                  style={{ background: width === w ? "var(--muted)" : "transparent", border: width === w ? "1px solid var(--primary)" : "1px solid var(--border)" }}
                 >
-                  <span className="block rounded-full" style={{ width: w, height: w, background: "var(--text-primary)" }} />
+                  <span className="block rounded-full" style={{ width: w, height: w, background: "var(--foreground)" }} />
                 </button>
               ))}
             </div>
@@ -229,7 +229,7 @@ export default function ImageAnnotateModal({ imageUrl, onClose }: { imageUrl: st
         </div>
 
         {/* Image + drawing canvas — untouched */}
-        <div className="relative flex-1 flex items-center justify-center overflow-hidden rounded-xl" style={{ background: "var(--ink-3)", minHeight: 300 }}>
+        <div className="relative flex-1 flex items-center justify-center overflow-hidden rounded-xl bg-muted" style={{ minHeight: 300 }}>
           <div className="relative inline-block" style={{ maxHeight: "65vh" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -270,7 +270,7 @@ export default function ImageAnnotateModal({ imageUrl, onClose }: { imageUrl: st
         </div>
 
         {imgDims && (
-          <p className="text-[10px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono), monospace" }}>
+          <p className="text-[10px] font-mono text-muted-foreground">
             {imgDims.w} × {imgDims.h} px · clique en dehors pour fermer · esc pour quitter
           </p>
         )}

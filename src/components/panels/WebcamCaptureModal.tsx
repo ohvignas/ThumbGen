@@ -166,8 +166,8 @@ export default function WebcamCaptureModal({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-w-sm" style={{ background: "var(--node-bg)", border: "1px solid var(--line)" }}>
-        <span className="text-xs font-medium mb-1 block" style={{ color: "var(--text-muted)" }}>
+      <DialogContent className="max-w-sm">
+        <span className="text-xs font-medium mb-1 block text-muted-foreground">
           {naming ? "Dernière étape — Nom" : `Étape ${stepIndex + 1} / ${STEPS.length} — ${step.title}`}
         </span>
 
@@ -176,7 +176,7 @@ export default function WebcamCaptureModal({
           // `naming` state declaration above for why this exists and how it
           // should survive a future Dialog conversion of this modal).
           <>
-            <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
+            <p className="text-xs mb-3 text-muted-foreground">
               Donne un nom à ce personnage pour le reconnaître dans la liste.
             </p>
             <div className="grid grid-cols-3 gap-1.5 mb-3">
@@ -193,14 +193,12 @@ export default function WebcamCaptureModal({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.repeat) finish(); }}
               placeholder="Ex: Antoine, Moi, Perso vidéo…"
-              className="w-full px-3 py-2 rounded-xl text-sm mb-3 focus:outline-none"
-              style={{ background: "var(--surface)", color: "var(--text-secondary)", border: "1px solid transparent" }}
+              className="w-full px-3 py-2 rounded-xl text-sm mb-3 focus:outline-none bg-muted text-foreground border border-transparent"
             />
             <div className="flex gap-2">
               <button
                 onClick={() => setNaming(false)}
-                className="flex-1 py-2 rounded-xl text-xs font-medium"
-                style={{ background: "var(--surface)", color: "var(--text-muted)" }}
+                className="flex-1 py-2 rounded-xl text-xs font-medium bg-muted text-muted-foreground"
               >
                 Précédent
               </button>
@@ -221,18 +219,18 @@ export default function WebcamCaptureModal({
                 <div
                   key={s.angle}
                   className="flex-1 h-1 rounded-full"
-                  style={{ background: shots[s.angle] ? "var(--canvas-accent)" : i === stepIndex ? "var(--bone-soft)" : "var(--surface)" }}
+                  style={{ background: shots[s.angle] ? "var(--canvas-accent)" : i === stepIndex ? "var(--muted-foreground)" : "var(--muted)" }}
                 />
               ))}
             </div>
 
-            <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
+            <p className="text-xs mb-3 text-muted-foreground">
               {step.instruction}
             </p>
 
             <div
-              className="relative rounded-xl overflow-hidden mb-3"
-              style={{ aspectRatio: "1/1", background: "var(--ink-0)" }}
+              className="relative rounded-xl overflow-hidden mb-3 bg-background"
+              style={{ aspectRatio: "1/1" }}
             >
               {/* The video stays mounted for the whole modal lifetime — steps only
                   toggle whether the preview image or the framing guide sits on top
@@ -261,7 +259,7 @@ export default function WebcamCaptureModal({
 
               {error && (
                 <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <p className="text-xs text-center" style={{ color: "var(--ember)" }}>{error}</p>
+                  <p className="text-xs text-center text-destructive">{error}</p>
                 </div>
               )}
             </div>
@@ -270,8 +268,7 @@ export default function WebcamCaptureModal({
               {preview ? (
                 <button
                   onClick={retake}
-                  className="flex-1 py-2 rounded-xl text-xs font-medium"
-                  style={{ background: "var(--surface)", color: "var(--text-secondary)" }}
+                  className="flex-1 py-2 rounded-xl text-xs font-medium bg-muted text-muted-foreground"
                 >
                   Reprendre
                 </button>
@@ -291,8 +288,7 @@ export default function WebcamCaptureModal({
               <button
                 onClick={prev}
                 disabled={stepIndex === 0}
-                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30"
-                style={{ background: "var(--surface)", color: "var(--text-muted)" }}
+                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30 bg-muted text-muted-foreground"
               >
                 Précédent
               </button>

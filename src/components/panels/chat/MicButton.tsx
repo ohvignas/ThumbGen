@@ -38,11 +38,7 @@ export default function MicButton({ onTranscribed }: { onTranscribed: (text: str
     }
   };
 
-  const tone = error
-    ? "var(--ember)"
-    : isRecording
-    ? "var(--ember)"
-    : "var(--text-tertiary)";
+  const tone = error || isRecording ? "text-destructive" : "text-muted-foreground hover:text-foreground";
 
   const label = error ? `Erreur : ${error}` : isRecording ? "Arrêter" : "Enregistrer";
 
@@ -55,21 +51,14 @@ export default function MicButton({ onTranscribed }: { onTranscribed: (text: str
             onClick={onClick}
             aria-label={isRecording ? "Arrêter l'enregistrement" : "Enregistrer"}
             disabled={busy || state === "stopping"}
-            className="p-1.5 rounded-lg transition-colors disabled:opacity-30 nopan nodrag"
-            style={{ color: tone }}
-            onMouseEnter={(e) => {
-              if (!isRecording && !error) e.currentTarget.style.color = "var(--text-secondary)";
-            }}
-            onMouseLeave={(e) => {
-              if (!isRecording && !error) e.currentTarget.style.color = "var(--text-tertiary)";
-            }}
+            className={`p-1.5 rounded-lg transition-colors disabled:opacity-30 nopan nodrag ${tone}`}
           >
             {busy ? (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
                 <circle cx="12" cy="12" r="9" strokeDasharray="56" strokeDashoffset="20" />
               </svg>
             ) : isRecording ? (
-              <span className="block w-3 h-3 rounded-full animate-pulse" style={{ background: "var(--ember)" }} />
+              <span className="block w-3 h-3 rounded-full animate-pulse bg-destructive" />
             ) : (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="9" y="3" width="6" height="11" rx="3" />

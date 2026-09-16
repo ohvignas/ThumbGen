@@ -20,10 +20,8 @@ export default function RootLayout({
   return (
     <html lang="fr" className="h-full antialiased dark" suppressHydrationWarning>
       <body
-        className="min-h-full"
+        className="min-h-full bg-background text-foreground"
         style={{
-          background: "var(--ink-1)",
-          color: "var(--bone)",
           fontFamily: "Arial, Helvetica, sans-serif",
         }}
         suppressHydrationWarning
