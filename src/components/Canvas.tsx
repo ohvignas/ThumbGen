@@ -20,6 +20,8 @@ import CustomEdge from "./edges/CustomEdge";
 import ZoomBar from "./panels/ZoomBar";
 import ChatPanel from "./panels/ChatPanel";
 import ContextMenu from "./panels/ContextMenu";
+import NodePicker from "./panels/NodePicker";
+import CanvasEmptyState from "./panels/CanvasEmptyState";
 import ProjectBar from "./panels/ProjectBar";
 import SketchEditor from "./panels/SketchEditor";
 import { useCallback, useState, useEffect, useRef } from "react";
@@ -278,7 +280,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     : [];
 
   return (
-    <div className="w-full h-screen" style={{ background: "var(--canvas-bg)" }}>
+    <div className="relative w-full h-screen" style={{ background: "var(--canvas-bg)" }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -330,6 +332,8 @@ function CanvasInner({ projectId }: { projectId?: string }) {
         <ZoomBar />
       </ReactFlow>
 
+      <CanvasEmptyState />
+
       <ChatPanel projectId={currentProjectId} />
 
       {/* Right-click context menu */}
@@ -373,6 +377,8 @@ function CanvasInner({ projectId }: { projectId?: string }) {
           onClose={() => setEdgeDropMenu(null)}
         />
       )}
+
+      <NodePicker generatorDefaults={generatorDefaults} />
 
       <SketchEditor />
     </div>
