@@ -367,7 +367,7 @@ export default function GeneratorNode({
         style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--canvas-accent)", background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 200 }, id, "ref-in", "image")}
+        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 200 }, id, "ref-in", "image", { kind: "reference" })}
       >
         Référence
       </button>
@@ -379,7 +379,7 @@ export default function GeneratorNode({
         style={{ left: -8, top: "26%", transform: "translateX(-100%) translateY(-50%)", color: INPUT_TYPE_COLORS.logo, background: "none", border: "none", padding: "2px 4px" }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 350 }, id, "logo-in", "image")}
+        onClick={() => addNodeAndConnect("swipeFile", { x: positionAbsoluteX - 340, y: positionAbsoluteY + 350 }, id, "logo-in", "image", { kind: "logo" })}
       >
         Logo
       </button>
