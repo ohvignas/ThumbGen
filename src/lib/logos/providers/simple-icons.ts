@@ -59,7 +59,11 @@ function index(): IndexedIcon[] {
   return searchIndex;
 }
 
-function colouredSvg(icon: SimpleIcon): string {
+const HEX_COLOR_PATTERN = /^[0-9A-Fa-f]{6}$/;
+
+/** Brand-coloured SVG, or the unmodified SVG when `hex` isn't a safe 6-digit colour. */
+export function colouredSvg(icon: Pick<SimpleIcon, "svg" | "hex">): string {
+  if (!HEX_COLOR_PATTERN.test(icon.hex)) return icon.svg;
   return icon.svg.replace("<svg ", `<svg fill="#${icon.hex}" `);
 }
 

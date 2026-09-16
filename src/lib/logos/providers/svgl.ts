@@ -5,6 +5,8 @@ import type { LogoSearchResult, LogoVariant } from "../shared";
 export const SVGL_LIMIT = 8;
 /** SVGL asks API clients to cache answers for a few minutes. */
 export const SVGL_CACHE_TTL_MS = 5 * 60 * 1000;
+/** Caps the cache so an endless stream of distinct queries can't grow it forever. */
+export const SVGL_CACHE_MAX_ENTRIES = 200;
 
 const SVGL_ASSET_PATTERN = /^https:\/\/svgl\.app\/[^?#\s]+\.svg$/;
 
@@ -16,6 +18,31 @@ const cache = new Map<string, { at: number; results: LogoSearchResult[] }>();
 
 export function clearSvglCache(): void {
   cache.clear();
+}
+
+/** Number of entries currently cached — for tests, to check the cache stays bounded. */
+export function svglCacheSize(): number {
+  return cache.size;
+}
+
+/** Live entry, or undefined — an expired entry is deleted as a side effect. */
+function readCache(key: string, now: number): LogoSearchResult[] | undefined {
+  const cached = cache.get(key);
+  if (!cached) return undefined;
+  if (now - cached.at >= SVGL_CACHE_TTL_MS) {
+    cache.delete(key);
+    return undefined;
+  }
+  return cached.results;
+}
+
+/** Inserts/refreshes an entry, evicting the oldest insertion first when the cache is full. */
+function writeCache(key: string, results: LogoSearchResult[], now: number): void {
+  if (!cache.has(key) && cache.size >= SVGL_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
+  cache.set(key, { at: now, results });
 }
 
 type SvglEntry = { title?: unknown; route?: unknown; wordmark?: unknown };
@@ -37,8 +64,8 @@ function toResult(name: string, url: string, variant: LogoVariant | null): LogoS
 
 export async function searchSvgl(query: string, signal: AbortSignal, now: number = Date.now()): Promise<LogoSearchResult[]> {
   const cacheKey = normalizeSearchText(query);
-  const cached = cache.get(cacheKey);
-  if (cached && now - cached.at < SVGL_CACHE_TTL_MS) return cached.results;
+  const cached = readCache(cacheKey, now);
+  if (cached) return cached;
 
   const res = await fetch(`https://api.svgl.app?search=${encodeURIComponent(query)}`, {
     headers: { "User-Agent": THUMBGEN_USER_AGENT },
@@ -46,7 +73,7 @@ export async function searchSvgl(query: string, signal: AbortSignal, now: number
   });
   // SVGL answers 404 {"error": "… SVG not found"} when nothing matches.
   if (res.status === 404) {
-    cache.set(cacheKey, { at: now, results: [] });
+    writeCache(cacheKey, [], now);
     return [];
   }
   if (!res.ok) throw new Error(`SVGL HTTP ${res.status}`);
@@ -60,6 +87,6 @@ export async function searchSvgl(query: string, signal: AbortSignal, now: number
     for (const { url, variant } of assets(entry.wordmark)) results.push(toResult(`${title} (logo texte)`, url, variant));
   }
   const limited = results.slice(0, SVGL_LIMIT);
-  cache.set(cacheKey, { at: now, results: limited });
+  writeCache(cacheKey, limited, now);
   return limited;
 }

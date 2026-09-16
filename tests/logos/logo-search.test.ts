@@ -127,6 +127,12 @@ describe("GET /api/logos/search", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects a query longer than 100 characters", async () => {
+    expect((await search("a".repeat(101))).status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await search("a".repeat(100))).status).toBe(200);
+  });
+
   it("returns merged results and never calls Brandfetch without a key", async () => {
     const res = await search("youtube");
     expect(res.status).toBe(200);

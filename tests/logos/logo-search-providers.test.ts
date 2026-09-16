@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { searchSimpleIcons, simpleIconSvg } from "@/lib/logos/providers/simple-icons";
-import { SVGL_CACHE_TTL_MS, clearSvglCache, isSvglAssetUrl, searchSvgl } from "@/lib/logos/providers/svgl";
+import { colouredSvg, searchSimpleIcons, simpleIconSvg } from "@/lib/logos/providers/simple-icons";
+import {
+  SVGL_CACHE_MAX_ENTRIES,
+  SVGL_CACHE_TTL_MS,
+  clearSvglCache,
+  isSvglAssetUrl,
+  searchSvgl,
+  svglCacheSize,
+} from "@/lib/logos/providers/svgl";
 import { commonsSearchUrl, isCommonsFileUrl, searchWikimedia } from "@/lib/logos/providers/wikimedia";
 import { brandfetchLogoUrl, isBrandfetchBrandId, searchBrandfetch } from "@/lib/logos/providers/brandfetch";
 
@@ -52,6 +59,14 @@ describe("Simple Icons (local package)", () => {
   it("gives the brand-coloured SVG of a slug", () => {
     expect(simpleIconSvg("youtube")).toContain('fill="#FF0000"');
     expect(simpleIconSvg("does-not-exist")).toBeNull();
+  });
+
+  it("falls back to the unmodified SVG when hex isn't a safe 6-digit colour", () => {
+    const svg = '<svg viewBox="0 0 24 24"><path d="M0 0"/></svg>';
+    expect(colouredSvg({ svg, hex: "not-a-color" })).toBe(svg);
+    expect(colouredSvg({ svg, hex: "12345" })).toBe(svg);
+    expect(colouredSvg({ svg, hex: "'});alert(1);//" })).toBe(svg);
+    expect(colouredSvg({ svg, hex: "FF0000" })).toBe('<svg fill="#FF0000" viewBox="0 0 24 24"><path d="M0 0"/></svg>');
   });
 });
 
@@ -113,6 +128,44 @@ describe("SVGL", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await searchSvgl("notion", signal, 1_000 + SVGL_CACHE_TTL_MS + 1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("deletes an expired entry from the cache when it's read, instead of leaving it in memory", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(json([{ id: 416, title: "Notion", route: "https://svgl.app/library/notion.svg" }]));
+      await searchSvgl("notion", signal);
+      expect(svglCacheSize()).toBe(1);
+
+      vi.advanceTimersByTime(SVGL_CACHE_TTL_MS + 1);
+      // The refetch itself fails, so the only way the cache can hold zero entries afterwards
+      // is if the expired read deleted the stale entry before the failing fetch even started.
+      fetchMock.mockResolvedValueOnce(json({ error: "boom" }, 500));
+      await expect(searchSvgl("notion", signal)).rejects.toThrow("SVGL HTTP 500");
+      expect(svglCacheSize()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("caps the cache at SVGL_CACHE_MAX_ENTRIES, evicting the oldest insertion first", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const query = new URL(String(input)).searchParams.get("search");
+      return json([{ id: 1, title: query, route: `https://svgl.app/library/${query}.svg` }]);
+    });
+
+    for (let i = 0; i < SVGL_CACHE_MAX_ENTRIES; i++) {
+      await searchSvgl(`brand${i}`, signal, 1_000);
+    }
+    expect(svglCacheSize()).toBe(SVGL_CACHE_MAX_ENTRIES);
+
+    // One more distinct query evicts the oldest insertion ("brand0") rather than growing further.
+    await searchSvgl("brand-new", signal, 1_000);
+    expect(svglCacheSize()).toBe(SVGL_CACHE_MAX_ENTRIES);
+
+    fetchMock.mockClear();
+    await searchSvgl("brand0", signal, 1_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // evicted, so this is a cache miss again
   });
 
   it("ignores assets outside svgl.app", async () => {
