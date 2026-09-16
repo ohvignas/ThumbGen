@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
@@ -121,6 +121,39 @@ describe("backups", () => {
     expect(deleteBackup(entry.name)).toBe(true);
     expect(fs.existsSync(path.join(backupsDir(), entry.name))).toBe(false);
     expect(fs.existsSync(getDbFilePath())).toBe(true);
+  });
+
+  it("tracks the in-progress flag on globalThis, not plain module state (F4)", async () => {
+    // Separate route bundles are not guaranteed to share a module instance,
+    // so the lock must live on globalThis the same way the DB singleton does.
+    const flag = () => (globalThis as { __thumbgen_backup_running?: boolean }).__thumbgen_backup_running;
+    expect(flag()).toBeFalsy();
+    const running = createBackup(new Date(2026, 8, 16, 15, 30, 0));
+    expect(flag()).toBe(true);
+    await running;
+    expect(flag()).toBe(false);
+  });
+
+  it("removes a partial backup file when db.backup() throws, then rethrows (F4)", async () => {
+    const db = getDb();
+    const spy = vi.spyOn(db, "backup").mockImplementation(async (destPath: string) => {
+      // better-sqlite3 writes progressively — a real failure (disk full,
+      // I/O error) can leave a partial file behind before rejecting.
+      fs.writeFileSync(destPath, "partial-and-broken");
+      throw new Error("simulated disk full");
+    });
+
+    await expect(createBackup(new Date(2026, 8, 16, 16, 0, 0))).rejects.toThrow("simulated disk full");
+
+    const files = fs.existsSync(backupsDir()) ? fs.readdirSync(backupsDir()) : [];
+    expect(files).toHaveLength(0);
+    expect(listBackups().map((b) => b.name)).not.toContain("thumbgen-20260916-160000.db");
+
+    spy.mockRestore();
+
+    // The lock must also be released so a later backup still succeeds.
+    const entry = await createBackup(new Date(2026, 8, 16, 16, 0, 1));
+    expect(entry.size).toBeGreaterThan(0);
   });
 });
 

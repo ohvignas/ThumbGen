@@ -124,7 +124,21 @@ export function resolveBackupPath(name: string): string | null {
   return locateBackups().find((backup) => backup.name === name)?.filePath ?? null;
 }
 
-let backupRunning = false;
+// Plain module state is not guaranteed to be shared across separate route
+// bundles (see the DB singleton's own `global.__thumbgen_db` above) — stash
+// the in-progress flag on globalThis the same way so two routes agree on it.
+declare global {
+  // eslint-disable-next-line no-var
+  var __thumbgen_backup_running: boolean | undefined;
+}
+
+function isBackupRunning(): boolean {
+  return global.__thumbgen_backup_running ?? false;
+}
+
+function setBackupRunning(running: boolean): void {
+  global.__thumbgen_backup_running = running;
+}
 
 function timestamp(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -136,20 +150,31 @@ function timestamp(date: Date): string {
 
 /** Online backup through better-sqlite3 (safe while the app keeps writing). */
 export async function createBackup(now: Date = new Date()): Promise<BackupEntry> {
-  if (backupRunning) throw new BackupInProgressError();
-  backupRunning = true;
+  if (isBackupRunning()) throw new BackupInProgressError();
+  setBackupRunning(true);
+  const dir = backupsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const base = `thumbgen-${timestamp(now)}`;
+  let name = `${base}.db`;
+  for (let suffix = 1; fs.existsSync(path.join(dir, name)); suffix++) name = `${base}-${suffix}.db`;
+  const filePath = path.join(dir, name);
   try {
-    const dir = backupsDir();
-    fs.mkdirSync(dir, { recursive: true });
-    const base = `thumbgen-${timestamp(now)}`;
-    let name = `${base}.db`;
-    for (let suffix = 1; fs.existsSync(path.join(dir, name)); suffix++) name = `${base}-${suffix}.db`;
-    await getDb().backup(path.join(dir, name));
+    await getDb().backup(filePath);
     const entry = locate(dir, name, false);
     if (!entry) throw new Error(`Backup file missing after backup: ${name}`);
     return { name: entry.name, createdAt: entry.createdAt, size: entry.size, legacy: entry.legacy };
+  } catch (err) {
+    // db.backup() can throw partway through (disk full, I/O error, etc.),
+    // leaving a partial .db file behind that listBackups() would otherwise
+    // list as a valid, restorable backup. Remove it before rethrowing.
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      // Nothing was written yet, or it's already gone — fine either way.
+    }
+    throw err;
   } finally {
-    backupRunning = false;
+    setBackupRunning(false);
   }
 }
 
@@ -170,7 +195,7 @@ export function countCleanupCandidates(): CleanupCandidates {
 }
 
 export function runCleanup(): CleanupResult {
-  if (backupRunning) throw new BackupInProgressError();
+  if (isBackupRunning()) throw new BackupInProgressError();
   const db = getDb();
   const bytesBefore = databaseBytes();
   const deleted = db.transaction(() => ({
