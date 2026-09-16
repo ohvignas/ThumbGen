@@ -45,13 +45,11 @@ const MODELS = [
   { id: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash", color: PROVIDER_COLORS.gemini },
   { id: "gemini-3.1-flash-lite-image", label: "Gemini 3.1 Flash Lite", color: PROVIDER_COLORS.gemini },
   { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash", color: PROVIDER_COLORS.gemini },
-  { id: "ideogram", label: "Ideogram v3", color: PROVIDER_COLORS.ideogram },
   { id: "gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst (précis)", color: PROVIDER_COLORS.openai },
   { id: "gpt-image-2.5-flare", label: "GPT Image 2.5 Flare (rapide)", color: PROVIDER_COLORS.openai },
   { id: "gpt-image-2", label: "GPT Image 2 (4K)", color: PROVIDER_COLORS.openai },
-  { id: "gpt-image-1.5", label: "GPT Image 1.5", color: PROVIDER_COLORS.openai },
   { id: "gpt-image-1", label: "GPT Image 1", color: PROVIDER_COLORS.openai },
-  { id: "grok-imagine-image", label: "Grok Imagine", color: PROVIDER_COLORS.grok },
+  { id: "bytedance-seed/seedream-4.5", label: "Seedream 4.5 (ByteDance)", color: PROVIDER_COLORS.openrouter },
 ];
 
 export default function AppSidebar() {
