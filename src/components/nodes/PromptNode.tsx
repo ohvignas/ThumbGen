@@ -18,7 +18,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
       .map((e) => e.target);
 
     if (connectedGenerators.length === 0) {
-      const faces = allNodes.filter((n) => n.type === "faceReference" && (n.data.imageBase64 || n.data.imageUrl));
+      const faces = allNodes.filter((n) => n.type === "faceReference" && n.data.personaId);
       const logos = allNodes.filter((n) => n.type === "swipeFile" && n.data.label && n.data.label !== "Image");
       const refs = allNodes.filter((n) => n.type === "swipeFile");
       const sketches = allNodes.filter((n) => n.type === "sketch" && n.data.imageBase64);

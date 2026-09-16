@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useLibraryStore } from "@/store/library-store";
 import { useReactFlow } from "@xyflow/react";
 import { useGeneratorDefaults } from "@/hooks/useGeneratorDefaults";
 import {
@@ -30,8 +31,6 @@ import { Users, Image as ImageIcon, LayoutGrid, Shapes, BarChart3, Settings as S
 
 /* eslint-disable @next/next/no-img-element */
 
-type SidebarTab = "models" | "faces" | "logos" | "swipe" | null;
-
 type LogoEntry = { filename: string; label: string; size: number };
 type SwipeEntry = { title: string; filename: string; size: number };
 type YouTubeItem = { videoId: string; title: string; thumbnailUrl: string; addedAt: string };
@@ -56,7 +55,9 @@ const MODELS = [
 
 export default function AppSidebar() {
   const { state: sidebarState } = useSidebar();
-  const [activeTab, setActiveTab] = useState<SidebarTab>(null);
+  const activeTab = useLibraryStore((s) => s.activeTab);
+  const setActiveTab = useLibraryStore((s) => s.setActiveTab);
+  const toggleTab = useLibraryStore((s) => s.toggleTab);
   const [swipeEntries, setSwipeEntries] = useState<SwipeEntry[]>([]);
   const [youtubeItems, setYoutubeItems] = useState<YouTubeItem[]>([]);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
@@ -268,8 +269,6 @@ export default function AppSidebar() {
     window.addEventListener("youtube-channel-saved", handler);
     return () => window.removeEventListener("youtube-channel-saved", handler);
   }, []);
-
-  const toggleTab = (tab: SidebarTab) => setActiveTab((prev) => (prev === tab ? null : tab));
 
   const addAtCenter = (type: string, data?: Record<string, unknown>) => {
     if (!onCanvas) {
