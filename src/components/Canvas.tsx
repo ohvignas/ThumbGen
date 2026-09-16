@@ -58,12 +58,10 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
   const router = useRouter();
-  const [providers, setProviders] = useState<Record<string, boolean>>({ gemini: true });
   const [favoriteModel, setFavoriteModel] = useState("gemini-3.1-flash-image");
 
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then((s) => {
-      setProviders({ gemini: !!s.hasGemini, ideogram: !!s.hasIdeogram, openai: !!s.hasOpenai, grok: !!s.hasGrok });
       if (s.favoriteModel) setFavoriteModel(s.favoriteModel);
     }).catch(() => {});
   }, []);

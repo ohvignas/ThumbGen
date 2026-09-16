@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
+import { MODEL_SLUGS } from "@/lib/image-models";
 import { saveGeneratedImage } from "@/lib/generated-images";
 import { logGeneration } from "@/lib/generations-log";
 
@@ -12,22 +13,8 @@ import { logGeneration } from "@/lib/generations-log";
 // configured for the chat agent — no new setting needed.
 const ENDPOINT = "https://openrouter.ai/api/v1/images";
 
-// Maps ThumbGen's internal model id (what the client sends, unchanged from
-// before this migration) to the real OpenRouter model slug. Ideogram, Grok,
-// and gpt-image-1.5 have no OpenRouter equivalent (confirmed via a live
-// 404 against the real API) and are intentionally absent from this map —
-// the client-side model list no longer offers them.
-const MODEL_SLUGS: Record<string, string> = {
-  "gemini-3-pro-image": "google/gemini-3-pro-image",
-  "gemini-3.1-flash-image": "google/gemini-3.1-flash-image",
-  "gemini-3.1-flash-lite-image": "google/gemini-3.1-flash-lite-image",
-  "gemini-2.5-flash-image": "google/gemini-2.5-flash-image",
-  "gpt-image-2.5-sunburst": "openai/gpt-image-2.5-sunburst",
-  "gpt-image-2.5-flare": "openai/gpt-image-2.5-flare",
-  "gpt-image-2": "openai/gpt-image-2",
-  "gpt-image-1": "openai/gpt-image-1",
-  "bytedance-seed/seedream-4.5": "bytedance-seed/seedream-4.5",
-};
+// The id → OpenRouter slug map lives in src/lib/image-models.ts. Ideogram,
+// Grok and gpt-image-1.5 have no OpenRouter equivalent and are absent from it.
 
 const DEFAULT_MODEL = "bytedance-seed/seedream-4.5";
 
