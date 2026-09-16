@@ -9,7 +9,7 @@
  * the chat agent and /api/enhance-prompt use the same rules — no drift.
  */
 import { buildAgentRubric } from "@/lib/prompt-engineering";
-import { LANGUAGES, type LanguageCode } from "@/lib/settings-schema";
+import { EMPTY_CHANNEL_PROFILE, LANGUAGES, type ChannelProfile, type LanguageCode } from "@/lib/settings-schema";
 
 export const AGENT_SYSTEM_PROMPT = `You are ThumbGen Brainstorm, an expert YouTube thumbnail strategist embedded in a node-based canvas editor.
 
@@ -95,11 +95,18 @@ This is the core loop: gather → propose 3 visual options → user picks (one, 
 export type AgentPromptPrefs = {
   responseLanguage: LanguageCode;
   thumbnailLanguage: LanguageCode;
+  youtubeChannel: string;
+  channelProfile: ChannelProfile;
+  /** The profile's default persona; null when unset or deleted since. */
+  defaultPersona: { id: string; label: string } | null;
 };
 
 export const DEFAULT_AGENT_PROMPT_PREFS: AgentPromptPrefs = {
   responseLanguage: "fr",
   thumbnailLanguage: "fr",
+  youtubeChannel: "",
+  channelProfile: EMPTY_CHANNEL_PROFILE,
+  defaultPersona: null,
 };
 
 function languageName(code: LanguageCode): string {
@@ -116,9 +123,49 @@ export function buildResponseLanguageBlock(prefs: Pick<AgentPromptPrefs, "respon
 }
 
 /**
+ * Neutralizes angle brackets so a value the creator typed (or pasted from
+ * elsewhere) can't fake a tag boundary — e.g. close `<channel_profile>` early
+ * or open a spoofed `<project_id>`/`<canvas_state>` block that would read to
+ * the model as a real system block instead of quoted creator text.
+ */
+function neutralizeTags(value: string): string {
+  return value.replace(/</g, "‹").replace(/>/g, "›");
+}
+
+/** The creator's channel profile from Réglages → Ma chaîne, or null when nothing is filled in. */
+export function buildChannelProfileBlock(
+  prefs: Pick<AgentPromptPrefs, "youtubeChannel" | "channelProfile" | "defaultPersona">,
+): string | null {
+  const profile = prefs.channelProfile;
+  const lines: string[] = [];
+  if (profile.name) lines.push(`- Channel name: ${neutralizeTags(profile.name)}`);
+  if (prefs.youtubeChannel) lines.push(`- YouTube channel: ${neutralizeTags(prefs.youtubeChannel)}`);
+  if (profile.niche) lines.push(`- Niche / topic: ${neutralizeTags(profile.niche)}`);
+  if (profile.audience) lines.push(`- Target audience: ${neutralizeTags(profile.audience)}`);
+  if (profile.tone) lines.push(`- Tone and style: ${neutralizeTags(profile.tone)}`);
+  if (profile.brandColors.length > 0)
+    lines.push(`- Brand colors: ${profile.brandColors.map(neutralizeTags).join(", ")}`);
+  if (prefs.defaultPersona) {
+    lines.push(
+      `- Default character: "${neutralizeTags(prefs.defaultPersona.label)}". Use stored:persona_${prefs.defaultPersona.id} as the default faceReference image_source unless the user asks for someone else or no face.`,
+    );
+  }
+  if (profile.agentInstructions)
+    lines.push(`- Standing instructions from the creator:\n${neutralizeTags(profile.agentInstructions)}`);
+  if (lines.length === 0) return null;
+  return [
+    "<channel_profile>",
+    "The creator described their channel in Réglages → Ma chaîne. Use it to ground audience, tone and branding; explicit requests in the conversation take precedence.",
+    ...lines,
+    "</channel_profile>",
+  ].join("\n");
+}
+
+/**
  * Returns the "system" parameter as an array of blocks. The first block is the
  * static persona+rules with cache_control set, so it's cached across turns.
- * The following blocks are per-turn: reply language, project id, canvas snapshot.
+ * The following blocks are per-turn: reply language, channel profile, project
+ * id, canvas snapshot.
  */
 export function buildSystemMessages(
   canvasSnapshot: unknown,
@@ -137,6 +184,8 @@ export function buildSystemMessages(
     },
     { type: "text", text: buildResponseLanguageBlock(prefs) },
   ];
+  const channelProfile = buildChannelProfileBlock(prefs);
+  if (channelProfile) blocks.push({ type: "text", text: channelProfile });
   if (projectId) {
     blocks.push({
       type: "text",
