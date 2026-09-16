@@ -22,7 +22,7 @@ export const listPersonasTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         content: [
           {
             type: "text",
-            text: "Aucun Personnage dans la bibliothèque. S'il veut apparaître dans la miniature, propose-lui d'en créer un depuis l'onglet Personnages de la sidebar (capture webcam en 3 angles ou une photo par angle) ; sinon pars sur des angles sans visage.",
+            text: "Aucun Personnage dans la bibliothèque. S'il veut apparaître dans la miniature, propose-lui d'en créer un depuis la page Bibliothèque, onglet Personnages (capture webcam en 3 angles ou une photo par angle) ; sinon pars sur des angles sans visage.",
           },
         ],
       };

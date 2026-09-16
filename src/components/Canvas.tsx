@@ -28,7 +28,6 @@ import CanvasEmptyState from "./panels/CanvasEmptyState";
 import ProjectBar from "./panels/ProjectBar";
 import SketchEditor from "./panels/SketchEditor";
 import { useCallback, useState, useEffect } from "react";
-import { DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useCanvasSync } from "@/hooks/useCanvasSync";
 import { useGeneratorDefaults } from "@/hooks/useGeneratorDefaults";
@@ -67,7 +66,6 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     onNodesChange,
     onEdgesChange,
     onConnect,
-    addNode,
     removeNode,
     duplicateNode,
     setAllSelected,
@@ -144,32 +142,6 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     [screenToFlowPosition, openNodePicker],
   );
 
-  const onDragOver = useCallback((event: DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  }, []);
-
-  const onDrop = useCallback(
-    (event: DragEvent) => {
-      event.preventDefault();
-      const type = event.dataTransfer.getData("application/reactflow-type");
-      if (!type) return;
-
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      const rawData = event.dataTransfer.getData("application/reactflow-data");
-      const data = rawData ? JSON.parse(rawData) : {};
-
-      // A generator dragged from the sidebar carries only its model; the
-      // Génération settings fill in format, count and resolution.
-      addNode(type, position, type === "generator" ? { ...generatorDefaults, ...data } : data);
-    },
-    [screenToFlowPosition, addNode, generatorDefaults],
-  );
-
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
       event.preventDefault();
@@ -221,8 +193,6 @@ function CanvasInner({ projectId }: { projectId?: string }) {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
         onConnectEnd={onConnectEnd}
         onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
@@ -279,14 +249,9 @@ function CanvasInner({ projectId }: { projectId?: string }) {
   );
 }
 
-// NOTE: this used to wrap CanvasInner in its own <ReactFlowProvider> here.
-// AppSidebar (Task 3) now mounts as a page-level sibling of <Canvas /> instead
-// of nesting inside <ReactFlow> — since it also calls useReactFlow(), it needs
-// to share the same ReactFlowProvider/store as the actual <ReactFlow> instance
-// below (a phantom, unshared provider around AppSidebar alone would either
-// crash — no provider at all — or silently desync screenToFlowPosition from
-// the canvas's real pan/zoom). The provider is therefore lifted one level up,
-// to page.tsx, wrapping both AppSidebar and Canvas together.
+// The ReactFlowProvider lives in app/m/[id]/page.tsx, around AppSidebar and
+// Canvas. Library items reach the canvas from the nodes (« Choisir dans la
+// bibliothèque »), not by dragging from the sidebar.
 export default function Canvas({ projectId }: { projectId?: string }) {
   return <CanvasInner projectId={projectId} />;
 }

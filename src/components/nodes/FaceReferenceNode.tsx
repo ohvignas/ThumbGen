@@ -3,7 +3,7 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCallback, useEffect, useState } from "react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
-import { useLibraryStore } from "@/store/library-store";
+import { libraryTabHref } from "@/lib/library/library-tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PERSONA_ANGLES, PERSONA_ANGLE_LABELS, personaNodeData, type PersonaSummary } from "@/lib/personas";
 import NodeShell from "./NodeShell";
@@ -19,25 +19,38 @@ import NodeShell from "./NodeShell";
 export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const removeNode = useCanvasStore((s) => s.removeNode);
-  const setLibraryTab = useLibraryStore((s) => s.setActiveTab);
+  // null until a list was loaded successfully (a failed load never counts as « deleted »).
   const [personas, setPersonas] = useState<PersonaSummary[] | null>(null);
 
   const loadPersonas = useCallback(() => {
-    fetch("/api/personas")
-      .then((res) => (res.ok ? (res.json() as Promise<PersonaSummary[]>) : []))
-      .then((rows) => setPersonas(rows))
-      .catch(() => setPersonas([]));
+    fetch("/api/personas", { cache: "no-store" })
+      .then((res) => (res.ok ? (res.json() as Promise<PersonaSummary[]>) : null))
+      .then((rows) => {
+        if (rows) setPersonas(rows);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     loadPersonas();
   }, [loadPersonas]);
 
+  // « Créer un personnage » opens the Bibliothèque in another browser tab:
+  // coming back to this one refreshes the list.
+  useEffect(() => {
+    window.addEventListener("focus", loadPersonas);
+    return () => window.removeEventListener("focus", loadPersonas);
+  }, [loadPersonas]);
+
   const angles = data.personaAngles;
-  const hasPersona = Boolean(data.personaId || (angles && (angles.front || angles.left || angles.right)));
+  const personaDeleted = Boolean(
+    data.personaId && personas && !personas.some((persona) => persona.id === data.personaId),
+  );
+  const hasPersona =
+    !personaDeleted && Boolean(data.personaId || (angles && (angles.front || angles.left || angles.right)));
 
   const items = (personas ?? []).map((persona) => ({ value: persona.id, label: persona.label }));
-  if (data.personaId && !items.some((item) => item.value === data.personaId)) {
+  if (data.personaId && !personaDeleted && !items.some((item) => item.value === data.personaId)) {
     items.unshift({ value: data.personaId, label: data.label || "Personnage" });
   }
 
@@ -76,7 +89,7 @@ export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
 
         <Select
           items={items}
-          value={data.personaId ?? null}
+          value={personaDeleted ? null : (data.personaId ?? null)}
           onValueChange={choosePersona}
           onOpenChange={(open) => {
             if (open) loadPersonas();
@@ -100,12 +113,15 @@ export default function FaceReferenceNode({ id, data }: NodeProps<AppNode>) {
 
         {!hasPersona && (
           <>
+            {personaDeleted && (
+              <p className="text-[11px] text-(--text-muted)">Personnage supprimé de la bibliothèque.</p>
+            )}
             {personas?.length === 0 && (
               <p className="text-[11px] text-(--text-muted)">Aucun personnage dans ta bibliothèque.</p>
             )}
             <button
               type="button"
-              onClick={() => setLibraryTab("faces")}
+              onClick={() => window.open(libraryTabHref("personnages"), "_blank", "noopener")}
               className="nodrag nopan self-start text-xs text-(--canvas-accent) hover:underline"
             >
               Créer un personnage
