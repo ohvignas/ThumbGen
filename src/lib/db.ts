@@ -135,6 +135,11 @@ function init(database: Database.Database) {
     database.exec("CREATE INDEX IF NOT EXISTS idx_generated_images_project ON generated_images(project_id)");
     backfillGeneratedImageProjects(database);
   }
+
+  const projectMetaColumns = database.prepare("PRAGMA table_info(projects_meta)").all() as { name: string }[];
+  if (!projectMetaColumns.some((c) => c.name === "description")) {
+    database.exec("ALTER TABLE projects_meta ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+  }
 }
 
 function backfillGeneratedImageProjects(database: Database.Database) {

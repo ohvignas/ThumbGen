@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listProjects, createProject, renameProject, deleteProject } from "@/lib/local-storage";
+import { listProjects, createProject, renameProject, updateProjectDescription, deleteProject } from "@/lib/local-storage";
 
 export async function GET() {
   return NextResponse.json(listProjects());
@@ -7,8 +7,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name = "Nouveau projet" } = await request.json();
-    return NextResponse.json(createProject(name));
+    const { name = "Nouveau projet", description = "" } = (await request.json()) as { name?: string; description?: string };
+    return NextResponse.json(createProject(name.trim() || "Nouveau projet", description.trim()));
   } catch (err) {
     console.error("Create project error:", err);
     return NextResponse.json({ error: "Failed to create project" }, { status: 500 });
@@ -18,13 +18,21 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const id = request.nextUrl.searchParams.get("id");
-    const { name } = await request.json();
-    if (!id || !name) return NextResponse.json({ error: "Missing id or name" }, { status: 400 });
-    if (!renameProject(id, name)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    const { name, description } = (await request.json()) as { name?: string; description?: string };
+    const trimmedName = name?.trim();
+    if (!id || (!trimmedName && description === undefined)) {
+      return NextResponse.json({ error: "Missing id, name or description" }, { status: 400 });
+    }
+    if (trimmedName && !renameProject(id, trimmedName)) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+    if (description !== undefined && !updateProjectDescription(id, description.trim())) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Rename project error:", err);
-    return NextResponse.json({ error: "Failed to rename" }, { status: 500 });
+    console.error("Update project error:", err);
+    return NextResponse.json({ error: "Failed to update" }, { status: 500 });
   }
 }
 

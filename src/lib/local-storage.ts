@@ -19,6 +19,7 @@ export type FlowEdge = {
 export type ProjectMeta = {
   id: string;
   name: string;
+  description: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,29 +31,38 @@ export type ProjectData = {
 
 export function listProjects(): ProjectMeta[] {
   const db = getDb();
-  const rows = db.prepare("SELECT id, name, created_at, updated_at FROM projects_meta ORDER BY created_at ASC").all() as Array<{
+  const rows = db.prepare("SELECT id, name, description, created_at, updated_at FROM projects_meta ORDER BY created_at ASC").all() as Array<{
     id: string;
     name: string;
+    description: string;
     created_at: string;
     updated_at: string;
   }>;
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
+    description: r.description,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
 }
 
-export function createProject(name: string): { id: string; name: string } {
+export function createProject(name: string, description = ""): { id: string; name: string } {
   const db = getDb();
   const id = `proj_${Date.now()}`;
   const now = new Date().toISOString();
   db.transaction(() => {
-    db.prepare("INSERT INTO projects_meta (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)").run(id, name, now, now);
+    db.prepare("INSERT INTO projects_meta (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, name, description, now, now);
     db.prepare("INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, '[]', '[]', ?)").run(id, now);
   })();
   return { id, name };
+}
+
+export function updateProjectDescription(id: string, description: string): boolean {
+  const result = getDb()
+    .prepare("UPDATE projects_meta SET description = ?, updated_at = ? WHERE id = ?")
+    .run(description, new Date().toISOString(), id);
+  return result.changes > 0;
 }
 
 export function renameProject(id: string, name: string): boolean {

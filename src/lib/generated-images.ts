@@ -12,27 +12,12 @@ export function saveGeneratedImage(dataUrl: string, projectId?: string | null): 
   return { id, url: `/api/generated-images/image?id=${id}` };
 }
 
-export type MiniatureImage = { id: string; url: string; createdAt: string };
-
-/** Generated images for one project, newest first — the gallery's unit. */
-export function listProjectImages(projectId: string): MiniatureImage[] {
+/** How many thumbnails each project has generated, keyed by project id. */
+export function countImagesByProject(): Map<string, number> {
   const rows = getDb()
-    .prepare("SELECT id, created_at FROM generated_images WHERE project_id = ? ORDER BY created_at DESC")
-    .all(projectId) as Array<{ id: string; created_at: string }>;
-  return rows.map((r) => ({ id: r.id, url: `/api/generated-images/image?id=${r.id}`, createdAt: r.created_at }));
-}
-
-/**
- * Images that belong to no project: generated before project_id existed and no
- * longer referenced by any canvas (so the backfill could not attribute them),
- * or produced by a canvas that has since been edited. Shown separately rather
- * than guessed into a project.
- */
-export function listUnassignedImages(): MiniatureImage[] {
-  const rows = getDb()
-    .prepare("SELECT id, created_at FROM generated_images WHERE project_id IS NULL ORDER BY created_at DESC")
-    .all() as Array<{ id: string; created_at: string }>;
-  return rows.map((r) => ({ id: r.id, url: `/api/generated-images/image?id=${r.id}`, createdAt: r.created_at }));
+    .prepare("SELECT project_id, COUNT(*) AS n FROM generated_images WHERE project_id IS NOT NULL GROUP BY project_id")
+    .all() as Array<{ project_id: string; n: number }>;
+  return new Map(rows.map((r) => [r.project_id, r.n]));
 }
 
 export function getGeneratedImage(id: string): StoredImage | null {

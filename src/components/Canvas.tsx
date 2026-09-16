@@ -25,6 +25,7 @@ import SketchEditor from "./panels/SketchEditor";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { DragEvent } from "react";
 import { useReactFlow, OnConnectStart } from "@xyflow/react";
+import { useRouter } from "next/navigation";
 import { useCanvasSync } from "@/hooks/useCanvasSync";
 
 const nodeTypes = {
@@ -56,6 +57,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, addNodeAndConnect, loadProject, saving, currentProjectId } =
     useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
+  const router = useRouter();
   const [providers, setProviders] = useState<Record<string, boolean>>({ gemini: true });
   const [favoriteModel, setFavoriteModel] = useState("gemini-3.1-flash-image");
 
@@ -72,19 +74,36 @@ function CanvasInner({ projectId }: { projectId?: string }) {
   // the last-opened project.
   useEffect(() => {
     if (projectId) {
-      loadProject(projectId);
-      fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentProjectId: projectId }),
-      }).catch(() => {});
-      return;
+      let cancelled = false;
+      fetch("/api/projects")
+        .then((r) => r.json() as Promise<Array<{ id: string }>>)
+        .then((projects) => {
+          if (cancelled) return;
+          // Loading an unknown id would show an empty canvas whose first
+          // autosave silently re-creates the project (saveProject upserts its
+          // meta row) — e.g. a stale tab on a deleted project. Send it back to
+          // the gallery instead.
+          if (!projects.some((p) => p.id === projectId)) {
+            router.replace("/miniatures");
+            return;
+          }
+          loadProject(projectId);
+          fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ currentProjectId: projectId }),
+          }).catch(() => {});
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
     }
     fetch("/api/settings")
       .then((r) => r.json())
       .then((s) => loadProject(s.currentProjectId || "default"))
       .catch(() => loadProject());
-  }, [loadProject, projectId]);
+  }, [loadProject, projectId, router]);
 
   // Poll for external mutations (agent / MCP client) and refresh the canvas
   useCanvasSync(currentProjectId);

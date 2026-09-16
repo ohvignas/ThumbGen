@@ -2,10 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImageIcon, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, ImagePlus, Images, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,17 +21,36 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
-type MiniatureImage = { id: string; url: string; createdAt: string };
 type VideoProject = {
   id: string;
   name: string;
+  description: string;
   createdAt: string;
   updatedAt: string;
   imageCount: number;
-  images: MiniatureImage[];
 };
+
+// Full class strings so Tailwind keeps them; picked per project from its id so
+// a card keeps the same colour across reloads.
+const TILE_GRADIENTS = [
+  "from-violet-500 to-fuchsia-600",
+  "from-sky-500 to-indigo-600",
+  "from-emerald-500 to-teal-700",
+  "from-amber-400 to-orange-600",
+  "from-rose-500 to-pink-700",
+  "from-cyan-400 to-blue-700",
+];
+
+function gradientFor(id: string): string {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return TILE_GRADIENTS[hash % TILE_GRADIENTS.length];
+}
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -32,21 +58,110 @@ function formatDate(iso: string): string {
   return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function ProjectTile({ id }: { id: string }) {
+  return (
+    <div className={`relative flex aspect-video items-center justify-center overflow-hidden bg-linear-to-br ${gradientFor(id)}`}>
+      <div className="absolute -top-1/2 -left-1/4 size-[120%] rounded-full bg-white/20 blur-3xl" />
+      <div className="relative flex size-20 items-center justify-center rounded-2xl bg-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),inset_0_-6px_12px_rgba(0,0,0,0.2),0_14px_28px_-8px_rgba(0,0,0,0.5)] ring-1 ring-white/25 transition-transform duration-300 group-hover/card:-translate-y-1 group-hover/card:-rotate-3">
+        <ImagePlus aria-hidden className="absolute size-10 translate-x-0.5 translate-y-1 text-black/35" strokeWidth={2.25} />
+        <ImagePlus aria-hidden className="relative size-10 text-white drop-shadow-[0_1px_0_rgba(255,255,255,0.6)]" strokeWidth={2.25} />
+      </div>
+    </div>
+  );
+}
+
+type FormState = { mode: "create" } | { mode: "edit"; project: VideoProject };
+
+function ProjectFormDialog({
+  state,
+  onClose,
+  onSubmit,
+}: {
+  state: FormState | null;
+  onClose: () => void;
+  onSubmit: (values: { name: string; description: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!state) return;
+    setName(state.mode === "edit" ? state.project.name : "");
+    setDescription(state.mode === "edit" ? state.project.description : "");
+  }, [state]);
+
+  const isEdit = state?.mode === "edit";
+
+  return (
+    <Dialog open={state !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <form
+          className="grid gap-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!name.trim() || submitting) return;
+            setSubmitting(true);
+            try {
+              await onSubmit({ name: name.trim(), description: description.trim() });
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{isEdit ? "Modifier le projet" : "Nouvelle miniature"}</DialogTitle>
+            <DialogDescription>
+              {isEdit
+                ? "Titre et description de la vidéo."
+                : "Donne un titre à ta vidéo : tu arriveras ensuite sur le canvas pour créer les miniatures et leurs variantes."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="project-name">Titre</Label>
+            <Input
+              id="project-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="OpenClaw est mort ! Comment configurer son équipe AI avec Grok Bot"
+              autoFocus
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="project-description">Description</Label>
+            <Textarea
+              id="project-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Le sujet de la vidéo, l'angle, le public visé…"
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={!name.trim() || submitting}>
+              {submitting ? "Enregistrement…" : isEdit ? "Enregistrer" : "Créer et ouvrir"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MiniaturesView() {
   const router = useRouter();
   const [projects, setProjects] = useState<VideoProject[] | null>(null);
-  const [unassigned, setUnassigned] = useState<MiniatureImage[]>([]);
-  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<FormState | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/miniatures");
-      const data = (await res.json()) as { projects: VideoProject[]; unassigned: MiniatureImage[] };
-      setProjects(data.projects);
-      setUnassigned(data.unassigned);
+      setProjects((await res.json()) as VideoProject[]);
     } catch {
       setProjects([]);
-      setUnassigned([]);
     }
   }, []);
 
@@ -54,31 +169,26 @@ export default function MiniaturesView() {
     load();
   }, [load]);
 
-  const createProject = async () => {
-    setCreating(true);
-    try {
-      const res = await fetch("/api/projects", {
-        method: "POST",
+  const submitForm = async ({ name, description }: { name: string; description: string }) => {
+    if (form?.mode === "edit") {
+      await fetch(`/api/projects?id=${encodeURIComponent(form.project.id)}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Nouvelle miniature" }),
+        body: JSON.stringify({ name, description }),
       });
-      if (!res.ok) return;
-      const project = (await res.json()) as { id: string };
-      router.push(`/m/${project.id}`);
-    } finally {
-      setCreating(false);
+      setForm(null);
+      load();
+      return;
     }
-  };
-
-  const rename = async (project: VideoProject) => {
-    const name = prompt("Nom de la miniature", project.name)?.trim();
-    if (!name || name === project.name) return;
-    await fetch(`/api/projects?id=${encodeURIComponent(project.id)}`, {
-      method: "PATCH",
+    const res = await fetch("/api/projects", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, description }),
     });
-    load();
+    if (!res.ok) return;
+    const project = (await res.json()) as { id: string };
+    setForm(null);
+    router.push(`/m/${project.id}`);
   };
 
   const remove = async (project: VideoProject) => {
@@ -92,20 +202,18 @@ export default function MiniaturesView() {
       <header className="mb-8 flex items-end justify-between gap-4">
         <div>
           <h1 className="font-heading text-2xl font-medium">Mes miniatures</h1>
-          <p className="text-sm text-muted-foreground">
-            Un projet par vidéo, avec toutes ses variantes générées.
-          </p>
+          <p className="text-sm text-muted-foreground">Un projet par vidéo, avec son workflow et toutes ses variantes.</p>
         </div>
-        <Button onClick={createProject} disabled={creating}>
+        <Button onClick={() => setForm({ mode: "create" })}>
           <Plus />
-          {creating ? "Création…" : "Nouvelle miniature"}
+          Nouvelle miniature
         </Button>
       </header>
 
       {projects === null && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-56 rounded-xl" />
+            <Skeleton key={i} className="h-72 rounded-xl" />
           ))}
         </div>
       )}
@@ -114,15 +222,15 @@ export default function MiniaturesView() {
         <Empty className="border border-dashed">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <ImageIcon />
+              <ImagePlus />
             </EmptyMedia>
-            <EmptyTitle>Aucune miniature</EmptyTitle>
+            <EmptyTitle>Aucun projet pour l&apos;instant</EmptyTitle>
             <EmptyDescription>
-              Crée ta première miniature : tu arriveras sur le canvas avec l&apos;agent prêt à chercher des
-              références et à te proposer des axes.
+              Crée un projet par vidéo : l&apos;agent cherche des références, propose des axes et génère les variantes à
+              tester.
             </EmptyDescription>
           </EmptyHeader>
-          <Button onClick={createProject} disabled={creating}>
+          <Button onClick={() => setForm({ mode: "create" })}>
             <Plus />
             Nouvelle miniature
           </Button>
@@ -130,115 +238,67 @@ export default function MiniaturesView() {
       )}
 
       {projects && projects.length > 0 && (
-        <div className="space-y-10">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <section key={project.id}>
-              <div className="mb-3 flex items-center gap-2">
-                <button
-                  onClick={() => router.push(`/m/${project.id}`)}
-                  className="text-left text-base font-medium hover:underline"
-                >
-                  {project.name}
-                </button>
-                <Badge variant="secondary">
-                  {project.imageCount} {project.imageCount > 1 ? "variantes" : "variante"}
-                </Badge>
-                <span className="text-xs text-muted-foreground">modifié le {formatDate(project.updatedAt)}</span>
-                <div className="ml-auto flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => router.push(`/m/${project.id}`)}>
-                    Ouvrir
-                  </Button>
+            <Card
+              key={project.id}
+              role="link"
+              tabIndex={0}
+              onClick={() => router.push(`/m/${project.id}`)}
+              onKeyDown={(e) => { if (e.key === "Enter") router.push(`/m/${project.id}`); }}
+              className="cursor-pointer gap-0 pt-0 transition-colors hover:border-ring focus-visible:border-ring focus-visible:outline-none"
+            >
+              <ProjectTile id={project.id} />
+              <CardHeader className="pt-4">
+                <CardTitle className="line-clamp-1">{project.name}</CardTitle>
+                <CardDescription className="line-clamp-2 min-h-10">
+                  {project.description || "Pas de description."}
+                </CardDescription>
+                <CardAction>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
-                        <Button variant="ghost" size="icon" aria-label={`Actions pour ${project.name}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Actions pour ${project.name}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <MoreHorizontal />
                         </Button>
                       }
                     />
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => rename(project)}>
+                        <DropdownMenuItem onClick={() => setForm({ mode: "edit", project })}>
                           <Pencil />
-                          Renommer
+                          Modifier
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => remove(project)} variant="destructive">
+                        <DropdownMenuItem variant="destructive" onClick={() => remove(project)}>
                           <Trash2 />
                           Supprimer
                         </DropdownMenuItem>
                       </DropdownMenuGroup>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
-              </div>
-
-              {project.images.length === 0 ? (
-                <Card
-                  onClick={() => router.push(`/m/${project.id}`)}
-                  className="cursor-pointer border-dashed py-0 transition-colors hover:border-ring"
-                >
-                  <CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
-                    <ImageIcon className="size-4" />
-                    Aucune variante générée pour l&apos;instant — ouvre le canvas pour en créer une.
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {project.images.map((image) => (
-                    <Card
-                      key={image.id}
-                      onClick={() => router.push(`/m/${project.id}`)}
-                      className="cursor-pointer gap-0 py-0 transition-colors hover:border-ring"
-                    >
-                      <CardContent className="p-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={image.url}
-                          alt={`Variante de ${project.name}`}
-                          className="aspect-video w-full object-cover"
-                          loading="lazy"
-                        />
-                      </CardContent>
-                      <CardFooter className="justify-between py-2 text-xs text-muted-foreground">
-                        <span>{formatDate(image.createdAt)}</span>
-                        <span className="underline">Modifier</span>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </section>
+                </CardAction>
+              </CardHeader>
+              <CardFooter className="mt-4 justify-between gap-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="size-3.5" />
+                  {formatDate(project.createdAt)}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Images className="size-3.5" />
+                  {project.imageCount} {project.imageCount > 1 ? "miniatures" : "miniature"}
+                </span>
+              </CardFooter>
+            </Card>
           ))}
         </div>
       )}
 
-      {unassigned.length > 0 && (
-        <section className="mt-10">
-          <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-base font-medium">Non classées</h2>
-            <Badge variant="secondary">{unassigned.length}</Badge>
-            <span className="text-xs text-muted-foreground">
-              générées avant le suivi par projet, ou depuis un canvas modifié depuis
-            </span>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {unassigned.map((image) => (
-              <Card key={image.id} className="gap-0 py-0">
-                <CardContent className="p-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={image.url}
-                    alt="Miniature non classée"
-                    className="aspect-video w-full object-cover"
-                    loading="lazy"
-                  />
-                </CardContent>
-                <CardFooter className="py-2 text-xs text-muted-foreground">{formatDate(image.createdAt)}</CardFooter>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
+      <ProjectFormDialog state={form} onClose={() => setForm(null)} onSubmit={submitForm} />
     </div>
   );
 }
