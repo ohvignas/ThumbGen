@@ -102,6 +102,10 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
   const updateNodeInternals = useUpdateNodeInternals();
   const { run, error } = useGeneratorRun(id);
   const [compareModels, setCompareModels] = useState<string[]>([]);
+  // `pendingRemoval` keeps the last removal copy even after the dialog is
+  // asked to close, so its ~100ms close animation doesn't show blanked
+  // title/description; only a new confirmation request replaces it.
+  const [removalOpen, setRemovalOpen] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
 
   const model = data.model || DEFAULT_IMAGE_MODEL;
@@ -138,13 +142,21 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
     });
 
   // Going to fewer variants removes the edges of the dropped ones: confirm first when there are any.
+  // Adding variants never drops anything, so it always applies immediately —
+  // this also guards against a nonsensical removal dialog if stray edges
+  // were ever misclassified as belonging to a dropped variant.
   const requestVariants = (next: VariantId[]) => {
+    if (next.length >= variants.length) {
+      setGeneratorVariants(id, next);
+      return;
+    }
     const dropped = edgesToRemoveForVariants(edges, id, next);
     if (dropped.length === 0) {
       setGeneratorVariants(id, next);
       return;
     }
     setPendingRemoval({ variants: next, copy: variantRemovalCopy(variants, next, dropped.length) });
+    setRemovalOpen(true);
   };
 
   const toggleCompareModel = (modelId: string) =>
@@ -188,7 +200,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
       onDelete={() => removeNode(id)}
       width={340}
     >
-      <div className="nodrag nopan space-y-3">
+      <div className="space-y-3">
         <section aria-label="Entrées">
           {abActive && <SectionTitle>Commun</SectionTitle>}
           {COMMON_SLOTS.map((slot, index) => renderRow(slot, inputsA, index))}
@@ -198,7 +210,13 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
                 <div className="relative -mx-3 mt-2 flex h-7 items-center justify-between px-3">
                   <SectionTitle>Variante {inputs.variant}</SectionTitle>
                   {inputs.variant === "C" && (
-                    <Button type="button" variant="ghost" size="xs" onClick={() => requestVariants(["A", "B"])}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      className="nodrag nopan"
+                      onClick={() => requestVariants(["A", "B"])}
+                    >
                       Retirer
                     </Button>
                   )}
@@ -215,7 +233,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
               type="button"
               variant="outline"
               size="xs"
-              className="mt-2 w-full"
+              className="nodrag nopan mt-2 w-full"
               onClick={() => requestVariants(["A", "B", "C"])}
             >
               <PlusIcon />
@@ -235,7 +253,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
                   if (value) updateNodeData(id, { model: value });
                 }}
               >
-                <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Modèle">
+                <SelectTrigger size="sm" className="nodrag nopan min-w-0 flex-1" aria-label="Modèle">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
@@ -259,6 +277,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
                       type="button"
                       variant="outline"
                       size="icon-sm"
+                      className="nodrag nopan"
                       aria-label="Définir comme modèle par défaut"
                       onClick={saveFavorite}
                     />
@@ -282,7 +301,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
               variant="outline"
               size="sm"
               spacing={0}
-              className="w-full"
+              className="nodrag nopan w-full"
               aria-label="Format"
               value={(ASPECT_RATIOS as readonly string[]).includes(aspectRatio) ? [aspectRatio] : []}
               onValueChange={(value) => {
@@ -304,7 +323,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
               variant="outline"
               size="sm"
               spacing={0}
-              className="w-full"
+              className="nodrag nopan w-full"
               aria-label="Résolution"
               value={data.imageSize ? [data.imageSize] : []}
               onValueChange={(value) => {
@@ -326,7 +345,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
               variant="outline"
               size="sm"
               spacing={0}
-              className="w-full"
+              className="nodrag nopan w-full"
               aria-label="Images"
               value={[String(numImages)]}
               onValueChange={(value) => {
@@ -349,6 +368,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
             </span>
             <Switch
               size="sm"
+              className="nodrag nopan"
               aria-label="Test A/B"
               checked={abActive}
               onCheckedChange={(checked) => requestVariants(checked ? ["A", "B"] : ["A"])}
@@ -358,7 +378,12 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
           <Collapsible>
             <CollapsibleTrigger
               render={
-                <Button type="button" variant="ghost" size="xs" className="w-full justify-between px-1 text-muted-foreground" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="nodrag nopan w-full justify-between px-1 text-muted-foreground"
+                />
               }
             >
               Avancé
@@ -375,7 +400,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
                 <label
                   key={m.id}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-1 py-1 text-xs",
+                    "nodrag nopan flex items-center gap-2 rounded-md px-1 py-1 text-xs",
                     abActive ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-muted",
                     !abActive && compareModels.includes(m.id) && "bg-muted",
                   )}
@@ -399,7 +424,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
         <div className="relative -mx-3 px-3">
           <Button
             type="button"
-            className="h-auto w-full flex-col gap-0.5 py-2"
+            className="nodrag nopan h-auto w-full flex-col gap-0.5 py-2"
             disabled={Boolean(data.isGenerating)}
             onClick={() => void run(compareModels)}
           >
@@ -425,16 +450,14 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
         )}
 
         <ConfirmDialog
-          open={pendingRemoval !== null}
-          onOpenChange={(open) => {
-            if (!open) setPendingRemoval(null);
-          }}
+          open={removalOpen}
+          onOpenChange={setRemovalOpen}
           title={pendingRemoval?.copy.title ?? ""}
           description={pendingRemoval?.copy.description ?? ""}
           confirmLabel={pendingRemoval?.copy.confirmLabel ?? "Confirmer"}
           onConfirm={() => {
             if (pendingRemoval) setGeneratorVariants(id, pendingRemoval.variants);
-            setPendingRemoval(null);
+            setRemovalOpen(false);
           }}
         />
       </div>

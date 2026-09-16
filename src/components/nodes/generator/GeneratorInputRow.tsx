@@ -58,7 +58,13 @@ export default function GeneratorInputRow({
           <span className="shrink-0 text-[10px] text-muted-foreground">+{preview.more}</span>
         )}
         {preview.kind === "none" && (
-          <Button type="button" variant="ghost" size="xs" className="text-muted-foreground" onClick={onAdd}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="nodrag nopan text-muted-foreground"
+            onClick={onAdd}
+          >
             <PlusIcon />
             Ajouter
           </Button>
@@ -66,7 +72,16 @@ export default function GeneratorInputRow({
         {inherited && (
           <Tooltip>
             <TooltipTrigger
-              render={<Button type="button" variant="ghost" size="icon-xs" aria-label={addLabel} onClick={onAdd} />}
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="nodrag nopan"
+                  aria-label={addLabel}
+                  onClick={onAdd}
+                />
+              }
             >
               <PlusIcon />
             </TooltipTrigger>
