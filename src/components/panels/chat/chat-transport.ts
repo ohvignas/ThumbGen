@@ -1,4 +1,5 @@
 import { DefaultChatTransport, type UIMessage } from "ai";
+import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 
 export const AGENT_CHAT_API = "/api/agent/chat";
 
@@ -9,6 +10,33 @@ export function agentStreamUrl(conversationId: string | null): string {
 
 export function agentStopUrl(conversationId: string): string {
   return `${AGENT_CHAT_API}/${encodeURIComponent(conversationId)}/stop`;
+}
+
+type ToolPartFields = { toolCallId?: unknown; state?: unknown; output?: unknown; errorText?: unknown };
+
+/**
+ * The last message reduced to what POST /api/agent/chat reads (route-handler.ts
+ * rebuilds all prior context from the DB): the text parts of a user turn, or the
+ * resolved client-tool parts of a continuation. File parts and server tool
+ * outputs (generate_sketch's base64 images…) never go over the wire.
+ */
+export function trimMessageForServer(message: UIMessage): UIMessage {
+  const parts: UIMessage["parts"] = [];
+  for (const part of message.parts) {
+    if (part.type === "text") {
+      // The route reads text only on a user turn.
+      if (message.role === "user") parts.push({ type: "text", text: part.text });
+      continue;
+    }
+    if (clientToolNameOfPartType(part.type) === null) continue;
+    const tool = part as ToolPartFields;
+    if (tool.state === "output-available") {
+      parts.push({ type: part.type, toolCallId: tool.toolCallId, state: tool.state, output: tool.output } as UIMessage["parts"][number]);
+    } else if (tool.state === "output-error") {
+      parts.push({ type: part.type, toolCallId: tool.toolCallId, state: tool.state, errorText: tool.errorText } as UIMessage["parts"][number]);
+    }
+  }
+  return { id: message.id, role: message.role, parts };
 }
 
 /**
@@ -32,6 +60,12 @@ export function createAgentChatTransport({
       const response = await (fetchImpl ?? globalThis.fetch)(input, init);
       if ((init?.method ?? "GET").toUpperCase() === "GET") onReconnectStatus?.(response.status);
       return response;
+    },
+    // Only the last message: a long history (base64 tool outputs) went over the
+    // 10 MB request limit, got truncated and failed every send of the conversation.
+    prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => {
+      const last = messages.at(-1);
+      return { body: { ...body, id, messages: last ? [trimMessageForServer(last)] : [], trigger, messageId } };
     },
     prepareReconnectToStreamRequest: () => ({ api: agentStreamUrl(getConversationId()) }),
   });

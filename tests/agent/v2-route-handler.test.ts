@@ -84,6 +84,30 @@ describe("postV2", () => {
       chatRequest({ project_id: "p" }),
     );
     expect(res.status).toBe(400);
+    expect(await res.text()).toBe("Missing conversation_id");
+  });
+
+  const rawChatRequest = (body: string, headers: Record<string, string> = {}) =>
+    new Request("http://localhost/api/agent/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body,
+    }) as never;
+
+  it("returns 400 « Corps JSON invalide » when the body is not valid JSON", async () => {
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(rawChatRequest('{"conversation_id":"c1","messages":[{"ro'));
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe("Corps JSON invalide");
+  });
+
+  it("returns 413 « Requête trop volumineuse » when an over-10 MB body failed to parse (truncated upstream)", async () => {
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      rawChatRequest('{"conversation_id":"c1","messages":[{"ro', { "Content-Length": String(12 * 1024 * 1024) }),
+    );
+    expect(res.status).toBe(413);
+    expect(await res.text()).toBe("Requête trop volumineuse");
   });
 
   it("returns 400 when no OpenRouter API key is configured", async () => {
