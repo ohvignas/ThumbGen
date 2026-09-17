@@ -60,13 +60,15 @@ export default function ChatHeader({
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium leading-tight">{active?.title ?? "Nouvelle conversation"}</p>
-        <p className="flex items-center gap-1.5 text-xs leading-tight text-muted-foreground">
-          <span className={cn("size-1.5 rounded-full", dot)} />
-          Agent ThumbGen · {label}
+        {/* One line, truncated: the « Fiche » button and its badge leave less room in the 400px panel. */}
+        <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight text-muted-foreground">
+          <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />
+          <span className="truncate">Agent ThumbGen</span>
+          <span className="shrink-0">· {label}</span>
         </p>
       </div>
 
-      <div className="flex items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-0.5">
         <BriefButton conversationId={activeConversationId} />
         <HeaderButton label="Nouvelle conversation" onClick={create}>
           <Plus />
