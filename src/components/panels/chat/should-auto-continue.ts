@@ -33,3 +33,32 @@ export function lastAssistantMessageIsCompleteWithClientToolCalls({ messages }: 
     lastStepToolInvocations.every((part) => part.state === "output-available" || part.state === "output-error")
   );
 }
+
+/**
+ * Client backup of the server's dedup: `shouldSend` (useChat's
+ * sendAutomaticallyWhen) is true at most once per answered client-tool call,
+ * so a re-evaluation of the same answered message never posts the continuation
+ * twice. `release` / `clear` let a request whose sending failed be answered again.
+ */
+export function createAutoContinueGuard() {
+  const consumed = new Set<string>();
+  return {
+    shouldSend({ messages }: { messages: UIMessage[] }): boolean {
+      if (!lastAssistantMessageIsCompleteWithClientToolCalls({ messages })) return false;
+      const ids = (messages.at(-1)?.parts ?? [])
+        .filter(isToolUIPart)
+        .filter((part) => clientToolNameOfPartType(part.type) !== null)
+        .map((part) => part.toolCallId);
+      const fresh = ids.filter((id) => !consumed.has(id));
+      if (fresh.length === 0) return false;
+      for (const id of fresh) consumed.add(id);
+      return true;
+    },
+    release(toolCallId: string): void {
+      consumed.delete(toolCallId);
+    },
+    clear(): void {
+      consumed.clear();
+    },
+  };
+}

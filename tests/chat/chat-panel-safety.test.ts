@@ -9,7 +9,8 @@ const source = fs.readFileSync(path.join(process.cwd(), "src/components/panels/C
 describe("ChatPanel wiring", () => {
   it("never lets useChat resume or send on its own", () => {
     expect(source).not.toMatch(/\bresume\s*:/);
-    expect(source).toContain("sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls");
+    expect(source).toContain("sendAutomaticallyWhen: autoContinueGuard.shouldSend");
+    expect(source).toContain("useState(createAutoContinueGuard)");
     expect(source.match(/sendAutomaticallyWhen/g)).toHaveLength(1);
   });
 

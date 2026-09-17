@@ -3,7 +3,7 @@ import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useReactFlow } from "@xyflow/react";
 import type { UIMessage } from "ai";
-import { lastAssistantMessageIsCompleteWithClientToolCalls } from "./chat/should-auto-continue";
+import { createAutoContinueGuard } from "./chat/should-auto-continue";
 import { useChatStore, type ChatAttachment } from "@/store/chat-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import ChatHeader from "./chat/ChatHeader";
@@ -122,6 +122,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const sendInFlightRef = useRef(false);
   // Client requests (request_user_image / request_user_sketch) already answered from this panel.
   const answeredToolCallIdsRef = useRef(new Set<string>());
+  // At most one automatic continuation per answered client request (backup of the server's dedup).
+  const [autoContinueGuard] = useState(createAutoContinueGuard);
   // The client request whose answer is being sent (its continuation may still fail).
   const answeringRef = useRef<{ conversationId: string | null; toolCallId: string } | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
@@ -167,7 +169,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // Auto-resumes ONLY once a client tool (request_user_image) was resolved via
     // addToolOutput — see the function's doc comment. A reconnection never
     // produces a resolved client request, so it never triggers a send.
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls,
+    sendAutomaticallyWhen: autoContinueGuard.shouldSend,
     // Guided interview: a node place_node wrote in the database, shown live and
     // centered (transient part: never in the messages, never sent back).
     onData: (dataPart) => {
@@ -302,13 +304,14 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       // Not sent: the request can be answered again (PendingUiAction unlocks its card on the same rejection).
       sending.catch(() => {
         answeredToolCallIdsRef.current.delete(toolCallId);
+        autoContinueGuard.release(toolCallId);
         answeringRef.current = answeringAfterFailedSend(answeringRef.current, toolCallId);
       });
       // The card is gone: typing goes back to the composer.
       composerInputRef.current?.focus();
       return sending;
     },
-    [addToolOutput, pendingToolPart, chatMessages, activeConversationId, projectId, nodes, edges],
+    [addToolOutput, autoContinueGuard, pendingToolPart, chatMessages, activeConversationId, projectId, nodes, edges],
   );
 
   // The continuation of an answer failed (not a 409: see recoverFromBusyConflict).
@@ -330,6 +333,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     }
     const conversationId = answering.conversationId;
     answeredToolCallIdsRef.current.delete(answering.toolCallId);
+    autoContinueGuard.release(answering.toolCallId);
     void (async () => {
       const messages = await loadHistoryMessages(conversationId);
       if (!isActiveConversation(conversationId)) return;
@@ -337,7 +341,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       setMessages(messages);
       toast({ title: "La réponse n'a pas pu être envoyée" });
     })();
-  }, [status, clearError, setMessages]);
+  }, [status, clearError, setMessages, autoContinueGuard]);
 
   // Canonical refetch for a resumed turn (client-request answer or reconnection),
   // once its status goes from busy back to ready (runTurn does it for the others).
@@ -456,6 +460,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       clearError();
       // A refused client-request answer can be given again once the history is reloaded.
       answeredToolCallIdsRef.current.clear();
+      autoContinueGuard.clear();
       toast({ title: AGENT_BUSY_MESSAGE });
       if (!isActiveConversation(conversationId)) return;
       const history = await loadHistoryMessages(conversationId);
@@ -463,7 +468,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       setMessages(history);
       await resumeConversation(conversationId, history);
     },
-    [clearError, setMessages, resumeConversation],
+    [clearError, setMessages, resumeConversation, autoContinueGuard],
   );
 
   const runTurn = useCallback(
