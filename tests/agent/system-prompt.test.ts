@@ -111,7 +111,8 @@ describe("<channel_profile>", () => {
   it("is absent when the profile is empty", () => {
     expect(buildChannelProfileBlock(DEFAULT_AGENT_PROMPT_PREFS)).toBeNull();
     const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc");
-    expect(blocks.some((b) => b.text.includes("<channel_profile>"))).toBe(false);
+    // The cached static prompt names <channel_profile> (THUMBNAIL JOURNEY); only the per-turn blocks matter here.
+    expect(blocks.slice(1).some((b) => b.text.includes("<channel_profile>"))).toBe(false);
   });
 
   it("sits after the cached prompt and the language block, before project_id and canvas_state", () => {
