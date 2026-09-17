@@ -9,6 +9,7 @@ import AssistantTurn from "./AssistantTurn";
 import TurnProgress from "./TurnProgress";
 import { TextMarkdown } from "./TextMarkdown";
 import { splitAssistantTurn, turnDisplay } from "./turn-model";
+import type { LiveTurnStart } from "./chat-view-model";
 
 /** What every message row needs from ChatPanel. */
 export type ChatTurnControls = {
@@ -18,6 +19,8 @@ export type ChatTurnControls = {
   turnStartedAt: number | null;
   /** The user pressed « Arrêter » in this conversation since the last send. */
   stoppedLive: boolean;
+  /** Messages present when the running turn started, so a stop never marks an older turn. */
+  liveTurnStart: LiveTurnStart | null;
   onAskAgent: (message: string) => void;
   /** Re-runs the last user message; null when there is nothing to retry. */
   onRetry: (() => void) | null;

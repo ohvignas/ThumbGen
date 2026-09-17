@@ -16,7 +16,13 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { rowsToUIMessages, type StoredMessageRow } from "./chat/history-to-ui-messages";
 import { snapshotCanvas } from "./chat/canvas-snapshot";
-import { lastUserText } from "./chat/chat-view-model";
+import {
+  conversationChangeEffects,
+  liveTurnStart,
+  retryableUserText,
+  shouldRefetchAfterResume,
+  type LiveTurnStart,
+} from "./chat/chat-view-model";
 import { isBusyStatus } from "./chat/turn-model";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
@@ -68,8 +74,14 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   // Conversation whose turn the user stopped: its last turn reads « Tour interrompu » until the next send.
   const [stoppedConversationId, setStoppedConversationId] = useState<string | null>(null);
+  // Messages present when the running turn started: « Arrêter » never marks an older turn interrupted.
+  const [liveTurn, setLiveTurn] = useState<LiveTurnStart | null>(null);
   // Set by useChat's onError during a turn, so that turn keeps its live messages instead of the refetch.
   const turnFailedRef = useRef(false);
+  // Conversation the first send just created: its (empty) history is not loaded over the live messages.
+  const createdConversationIdRef = useRef<string | null>(null);
+  // Conversation of a turn resumed by a client-request answer, refetched once that turn ends.
+  const resumedConversationIdRef = useRef<string | null>(null);
 
   const {
     messages: chatMessages,
@@ -121,7 +133,17 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   // every persisted message as an empty bubble now that Task 2's migration
   // has moved the DB to ModelMessage[]-shaped rows. A previous conversation's
   // error must not paint the loaded one, hence clearError().
+  //
+  // A conversation that ensureConversation just created for the first send is
+  // skipped entirely: loading its empty history would wipe the user's message
+  // and a fast error (e.g. a missing key), and stopping would abort the send.
+  // Any other change first stops a running stream so it can't bleed into the
+  // newly selected conversation (stop() is a no-op when nothing runs).
   useEffect(() => {
+    const effects = conversationChangeEffects(activeConversationId, createdConversationIdRef.current);
+    if (activeConversationId !== createdConversationIdRef.current) createdConversationIdRef.current = null;
+    if (effects.stopRunningTurn) void stop();
+    if (!effects.loadHistory) return;
     let cancelled = false;
     const load = async () => {
       if (!activeConversationId) {
@@ -141,7 +163,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, setMessages, clearError]);
+  }, [activeConversationId, setMessages, clearError, stop]);
 
   // The last message's pending client-tool part (request_user_image /
   // request_user_sketch) — a direct scan of chatMessages, replacing the old
@@ -178,8 +200,13 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     (toolCallId: string, result: unknown) => {
       if (!pendingToolPart) return;
       const toolName = pendingToolPart.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
+      // A new (resumed) turn: forget an earlier stop, and let the status effect
+      // below refetch once it ends — addToolOutput doesn't await the resend.
+      setStoppedConversationId(null);
+      setLiveTurn(liveTurnStart(chatMessages, chatMessages.at(-1)?.id ?? null));
       setTurnStartedAt(Date.now());
       turnFailedRef.current = false;
+      resumedConversationIdRef.current = activeConversationId;
       void addToolOutput({
         tool: toolName,
         toolCallId,
@@ -193,8 +220,35 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         },
       });
     },
-    [addToolOutput, pendingToolPart, activeConversationId, projectId, nodes, edges],
+    [addToolOutput, pendingToolPart, chatMessages, activeConversationId, projectId, nodes, edges],
   );
+
+  // Canonical refetch for a turn resumed by respondToUiTool, once its status
+  // goes from busy back to ready (runTurn does it for every other turn). The
+  // previous status lives in a ref; setMessages only runs after the fetch.
+  const previousStatusRef = useRef(status);
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current;
+    previousStatusRef.current = status;
+    const conversationId = resumedConversationIdRef.current;
+    const refetch = shouldRefetchAfterResume({
+      previousStatus,
+      status,
+      resumedConversationId: conversationId,
+      turnFailed: turnFailedRef.current,
+    });
+    // The resumed turn is over (refetched now, or failed and kept as is).
+    if (conversationId !== null && isBusyStatus(previousStatus) && !isBusyStatus(status)) {
+      resumedConversationIdRef.current = null;
+    }
+    if (!refetch || conversationId === null) return;
+    void (async () => {
+      const rows = (await fetch(`/api/agent/conversations/${conversationId}/messages`).then((r) => r.json())) as StoredMessageRow[];
+      if (useChatStore.getState().activeConversationId !== conversationId) return;
+      setMessages(rowsToUIMessages(rows));
+      useChatStore.getState().bumpConversationListVersion();
+    })();
+  }, [status, setMessages]);
 
   // Auto-create a conversation if none is active, so a send never needs a second click.
   const ensureConversation = useCallback(async (): Promise<string | null> => {
@@ -206,6 +260,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     });
     if (!r.ok) return null;
     const conv = (await r.json()) as { id: string };
+    createdConversationIdRef.current = conv.id;
     useChatStore.getState().setActive(conv.id);
     return conv.id;
   }, [activeConversationId, projectId]);
@@ -229,8 +284,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const runTurn = useCallback(
     async (conversationId: string, start: () => Promise<void>) => {
       setStoppedConversationId(null);
+      setLiveTurn(liveTurnStart(chatMessages));
       setTurnStartedAt(Date.now());
       turnFailedRef.current = false;
+      resumedConversationIdRef.current = null;
       await start();
       // A failed turn keeps its live messages: the refetch would drop the
       // user's unsaved message together with the error row under it.
@@ -253,7 +310,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       // list just shows the old title until the next bump.
       useChatStore.getState().bumpConversationListVersion();
     },
-    [setMessages],
+    [chatMessages, setMessages],
   );
 
   const onSend = useCallback(async () => {
@@ -286,7 +343,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   // « Réessayer »: regenerate drops the failed assistant message (if any) and
   // re-runs the last user message — its text only, attachments are not re-sent.
-  const retryText = lastUserText(chatMessages);
+  // Not offered after an answered client request: that turn can't be replayed.
+  const retryText = retryableUserText(chatMessages);
   const onRetry = useMemo(() => {
     if (busy || !retryText || !activeConversationId) return null;
     const conversationId = activeConversationId;
@@ -306,10 +364,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       errorMessage: error?.message ?? null,
       turnStartedAt,
       stoppedLive: stoppedConversationId !== null && stoppedConversationId === activeConversationId,
+      liveTurnStart: liveTurn,
       onAskAgent,
       onRetry,
     }),
-    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, onAskAgent, onRetry],
+    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, liveTurn, onAskAgent, onRetry],
   );
 
   return (

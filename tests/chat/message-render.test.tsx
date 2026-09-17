@@ -9,6 +9,7 @@ const controls = (overrides: Partial<ChatTurnControls> = {}): ChatTurnControls =
   errorMessage: null,
   turnStartedAt: null,
   stoppedLive: false,
+  liveTurnStart: null,
   onAskAgent: () => {},
   onRetry: () => {},
   ...overrides,

@@ -1,5 +1,5 @@
 import type { ChatStatus, UIMessage } from "ai";
-import { isBusyStatus } from "./turn-model";
+import { CLIENT_TOOL_NAMES, isBusyStatus, isToolPart, toolNameOf } from "./turn-model";
 
 export type MessageGroupModel = { key: string; role: UIMessage["role"]; messages: UIMessage[] };
 
@@ -14,15 +14,48 @@ export function groupConsecutiveMessages(messages: UIMessage[]): MessageGroupMod
   return groups;
 }
 
+/**
+ * Where the live turn started: the ids of the messages already there, and the
+ * assistant message a client-request answer resumes (it keeps its id).
+ */
+export type LiveTurnStart = { priorMessageIds: readonly string[]; resumedMessageId: string | null };
+
+export function liveTurnStart(messages: UIMessage[], resumedMessageId: string | null = null): LiveTurnStart {
+  return { priorMessageIds: messages.map((message) => message.id), resumedMessageId };
+}
+
+/** Whether a message belongs to the live turn (created or resumed by it); true when no turn was recorded. */
+export function belongsToLiveTurn(message: UIMessage, start: LiveTurnStart | null): boolean {
+  if (!start) return true;
+  return message.id === start.resumedMessageId || !start.priorMessageIds.includes(message.id);
+}
+
+/**
+ * Where « Tour interrompu » goes after « Arrêter »: on the last message when the
+ * stopped turn produced it, else as a trailing row — never on an older turn
+ * (a stop can land before the new turn's first chunk or its stored user row).
+ */
+export type StoppedPlacement = "last-message" | "trailing" | null;
+
+export function stoppedTurnPlacement(messages: UIMessage[], stoppedLive: boolean, start: LiveTurnStart | null): StoppedPlacement {
+  if (!stoppedLive) return null;
+  const last = messages.at(-1);
+  return last?.role === "assistant" && belongsToLiveTurn(last, start) ? "last-message" : "trailing";
+}
+
 export type TrailingRow = "progress" | "error" | "interrupted" | null;
 
-/** The assistant row to show after the user's last message while no assistant message exists for it. */
-export function trailingAssistantRow(messages: UIMessage[], status: ChatStatus, stoppedLive: boolean): TrailingRow {
+/** The assistant row to show at the end of the list while the running (or failed, or stopped) turn has no assistant message. */
+export function trailingAssistantRow(messages: UIMessage[], status: ChatStatus, stopped: StoppedPlacement): TrailingRow {
   const last = messages.at(-1);
-  if (!last || last.role !== "user") return null;
-  if (isBusyStatus(status)) return "progress";
-  if (status === "error") return "error";
-  if (stoppedLive) return "interrupted";
+  // No message at all: a new conversation's first send whose user message is not shown yet.
+  if (!last || last.role === "user") {
+    if (isBusyStatus(status)) return "progress";
+    if (status === "error") return "error";
+    return stopped === "trailing" ? "interrupted" : null;
+  }
+  // The last message is an older turn's answer: the stopped turn produced nothing.
+  if (!isBusyStatus(status) && status !== "error" && stopped === "trailing") return "interrupted";
   return null;
 }
 
@@ -37,4 +70,60 @@ export function lastUserText(messages: UIMessage[]): string {
       .trim();
   }
   return "";
+}
+
+/** A client request (request_user_image / request_user_sketch) the user already answered. */
+function hasAnsweredClientRequest(message: UIMessage): boolean {
+  return message.parts.some(
+    (part) =>
+      isToolPart(part) &&
+      CLIENT_TOOL_NAMES.has(toolNameOf(part)) &&
+      (part.state === "output-available" || part.state === "output-error"),
+  );
+}
+
+/**
+ * What « Réessayer » would send again; "" when there is nothing to retry. A turn
+ * that went through an answered client request can't be replayed (the answer
+ * isn't part of the retry, and the server refuses such a resumption).
+ */
+export function retryableUserText(messages: UIMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === "user") break;
+    if (hasAnsweredClientRequest(message)) return "";
+  }
+  return lastUserText(messages);
+}
+
+/**
+ * What an active-conversation change does in ChatPanel. A conversation the send
+ * itself just created keeps its live messages (and error) and its starting
+ * stream; any other change stops a running stream and loads the history.
+ */
+export function conversationChangeEffects(
+  nextConversationId: string | null,
+  justCreatedConversationId: string | null,
+): { stopRunningTurn: boolean; loadHistory: boolean } {
+  const justCreated = nextConversationId !== null && nextConversationId === justCreatedConversationId;
+  return { stopRunningTurn: !justCreated, loadHistory: !justCreated };
+}
+
+/**
+ * Whether a turn resumed by a client-request answer just ended and needs the
+ * canonical refetch (runTurn does it for every other turn): the status went from
+ * busy to ready, and the turn didn't fail (a failed turn keeps its live messages).
+ */
+export function shouldRefetchAfterResume(input: {
+  previousStatus: ChatStatus;
+  status: ChatStatus;
+  resumedConversationId: string | null;
+  turnFailed: boolean;
+}): boolean {
+  return (
+    input.resumedConversationId !== null &&
+    isBusyStatus(input.previousStatus) &&
+    input.status === "ready" &&
+    !input.turnFailed
+  );
 }

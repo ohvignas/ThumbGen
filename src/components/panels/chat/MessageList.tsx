@@ -14,14 +14,19 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import AssistantTurn from "./AssistantTurn";
 import Message, { AssistantRow, type ChatTurnControls } from "./Message";
 import TurnProgress from "./TurnProgress";
-import { groupConsecutiveMessages, trailingAssistantRow } from "./chat-view-model";
+import { groupConsecutiveMessages, stoppedTurnPlacement, trailingAssistantRow } from "./chat-view-model";
 import { INTERRUPTED_TURN_ERROR, emptyAssistantTurn, isBusyStatus, liveTurnError } from "./turn-model";
 
 /** Pixels of the previous turn kept visible above a newly anchored user message. */
 const PREVIOUS_ITEM_PEEK_PX = 48;
 
 export default function MessageList({ messages, controls }: { messages: UIMessage[]; controls: ChatTurnControls }) {
-  if (messages.length === 0) {
+  const stopped = stoppedTurnPlacement(messages, controls.stoppedLive, controls.liveTurnStart);
+  const trailing = trailingAssistantRow(messages, controls.status, stopped);
+
+  // Empty state only when nothing is going on: a first send that failed or is
+  // running before its message shows still gets its trailing row.
+  if (messages.length === 0 && !trailing) {
     return (
       <Empty className="flex-1 border-none">
         <EmptyHeader>
@@ -38,8 +43,9 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
   }
 
   const groups = groupConsecutiveMessages(messages);
-  const lastMessage = messages[messages.length - 1];
-  const trailing = trailingAssistantRow(messages, controls.status, controls.stoppedLive);
+  const lastMessage = messages.at(-1);
+  // « Tour interrompu » lands on the last message only when the stopped turn produced it.
+  const rowControls: ChatTurnControls = { ...controls, stoppedLive: stopped === "last-message" };
 
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={PREVIOUS_ITEM_PEEK_PX}>
@@ -55,7 +61,7 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
                       message={message}
                       isLast={message === lastMessage}
                       showAvatar={index === group.messages.length - 1}
-                      controls={controls}
+                      controls={rowControls}
                     />
                   ))}
                 </MessageGroup>
@@ -71,7 +77,8 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
                       turn={emptyAssistantTurn()}
                       error={trailing === "error" ? liveTurnError(controls.errorMessage) : INTERRUPTED_TURN_ERROR}
                       showActions={false}
-                      onRetry={controls.onRetry}
+                      // After an older turn's answer, the retry would replay that older message.
+                      onRetry={lastMessage?.role === "assistant" ? null : controls.onRetry}
                       onAskAgent={controls.onAskAgent}
                     />
                   )}
