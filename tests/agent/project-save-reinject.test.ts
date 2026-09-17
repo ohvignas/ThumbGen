@@ -4,10 +4,11 @@ import { v4 as uuid } from "uuid";
 import { getDb } from "@/lib/db";
 import { GET, POST } from "@/app/api/project/route";
 import { placeInterviewNode } from "@/lib/agent/place-node";
+import { applyWorkflowTool } from "@/lib/agent/tools/apply-workflow";
 
 type Node = { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> };
 type Edge = { id: string; source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null };
-type SaveBody = { success: boolean; updatedAt: string; reinjected: Node[]; reinjectedEdges: Edge[]; refreshed: Node[] };
+type SaveBody = { success: boolean; updatedAt: string; reinjected: Node[]; reinjectedEdges: Edge[]; refreshed: Node[]; removed: string[] };
 
 let projectId: string;
 
@@ -168,6 +169,35 @@ describe("POST /api/project — agent nodes newer than the client base", () => {
     const second = await save(edited, current.edges, current.updatedAt!);
     expect(second.refreshed).toEqual([]);
     expect(dbCanvas().nodes.find((n) => n.id === "iv-prompt")!.data.prompt).toBe("Ma version");
+  });
+
+  it("never resurrects interview nodes removed on the server (« Repartir de zéro ») from a stale save", async () => {
+    await placePromptAndGenerator();
+    const seen = await load();
+    const removal = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [], edges: [] },
+      remove_node_ids: ["iv-prompt", "iv-generator"],
+    });
+    expect(removal.isError).toBeFalsy();
+
+    // The client still shows the old nodes (it saved before its poll saw the removal), plus its own new node.
+    const mine: Node = { id: "user-2", type: "prompt", position: { x: 9, y: 9 }, data: { prompt: "Nouveau" } };
+    const body = await save([...seen.nodes, mine], seen.edges, seen.updatedAt!);
+    expect(body.removed.sort()).toEqual(["iv-generator", "iv-prompt"]);
+    expect(dbCanvas().nodes.map((n) => n.id)).toEqual(["user-1", "user-2"]);
+    expect(dbCanvas().edges).toEqual([]);
+  });
+
+  it("keeps an agent node the client re-added after seeing its removal (e.g. ⌘Z)", async () => {
+    await placePromptAndGenerator();
+    const before = await load();
+    await applyWorkflowTool.handler({ project_id: projectId, blueprint: { nodes: [], edges: [] }, remove_node_ids: ["iv-prompt"] });
+    const afterRemoval = await load();
+    const undone = before.nodes;
+    const body = await save(undone, before.edges, afterRemoval.updatedAt!);
+    expect(body.removed).toEqual([]);
+    expect(dbCanvas().nodes.map((n) => n.id)).toContain("iv-prompt");
   });
 
   it("compares a legacy SQLite base as an instant", async () => {

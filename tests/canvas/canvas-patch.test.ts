@@ -4,6 +4,7 @@ import { compareUpdatedAt, isCanvasPatch, shouldApplyCanvasPatch, type CanvasPat
 const patch = (updatedAt: string, projectId = "proj-1"): CanvasPatch => ({
   projectId,
   updatedAt,
+  previousUpdatedAt: "2026-09-17T09:59:59.000Z",
   created: true,
   node: { id: "iv-prompt", type: "prompt", position: { x: 0, y: 0 }, data: { prompt: "x" } },
   removedDataKeys: [],
@@ -55,6 +56,7 @@ describe("isCanvasPatch", () => {
     expect(isCanvasPatch({ ...patch("t"), node: { id: "iv-prompt", type: "prompt", data: {} } })).toBe(false);
     expect(isCanvasPatch({ ...patch("t"), edges: [{ id: "e" }] })).toBe(false);
     expect(isCanvasPatch({ ...patch("t"), created: undefined })).toBe(false);
+    expect(isCanvasPatch({ ...patch("t"), previousUpdatedAt: undefined })).toBe(false);
     expect(isCanvasPatch({ ...patch("t"), removedDataKeys: [1] })).toBe(false);
   });
 });

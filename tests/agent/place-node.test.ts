@@ -71,6 +71,7 @@ beforeEach(() => {
 
 describe("place_node — merge into the project", () => {
   it("creates iv-prompt right of the existing canvas with one ISO timestamp everywhere", async () => {
+    const previousUpdatedAt = canvas().updatedAt;
     const outcome = await placed({ id: "iv-prompt", type: "prompt", data: { prompt: "Un visage choqué" } });
     const saved = canvas();
     const prompt = node("iv-prompt")!;
@@ -81,7 +82,15 @@ describe("place_node — merge into the project", () => {
     const meta = getDb().prepare("SELECT updated_at FROM projects_meta WHERE id = ?").get(projectId) as { updated_at: string };
     expect(meta.updated_at).toBe(saved.updatedAt);
     expect(outcome.created).toBe(true);
-    expect(outcome.patch).toEqual({ projectId, updatedAt: saved.updatedAt, created: true, node: prompt, removedDataKeys: [], edges: [] });
+    expect(outcome.patch).toEqual({
+      projectId,
+      updatedAt: saved.updatedAt,
+      previousUpdatedAt,
+      created: true,
+      node: prompt,
+      removedDataKeys: [],
+      edges: [],
+    });
     expect(prompt.data.agentCreatedAt).toBe(saved.updatedAt);
     expect(node("user-1")).toEqual({ id: "user-1", type: "prompt", position: { x: 100, y: 50 }, data: { prompt: "Mon idée" } });
     expect(listCanvasSnapshots(projectId).map((s) => s.reason)).toEqual(["place_node"]);

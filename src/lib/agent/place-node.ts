@@ -318,6 +318,7 @@ export async function placeInterviewNode(projectId: string, input: PlaceNodeInpu
       patch: {
         projectId,
         updatedAt,
+        previousUpdatedAt: fresh.updated_at,
         created,
         node: { id, type, position, data: created ? data : changes },
         removedDataKeys,

@@ -33,6 +33,8 @@ export type CanvasPatchEdge = {
 export type CanvasPatch = {
   projectId: string;
   updatedAt: string;
+  /** The project's updated_at right before this write: a client that doesn't know it missed a server write. */
+  previousUpdatedAt: string;
   created: boolean;
   node: CanvasPatchNode;
   removedDataKeys: string[];
@@ -107,7 +109,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export function isCanvasPatch(value: unknown): value is CanvasPatch {
   if (!isRecord(value) || typeof value.projectId !== "string" || typeof value.updatedAt !== "string") return false;
-  if (typeof value.created !== "boolean") return false;
+  if (typeof value.created !== "boolean" || typeof value.previousUpdatedAt !== "string") return false;
   if (!Array.isArray(value.removedDataKeys) || !value.removedDataKeys.every((key) => typeof key === "string")) return false;
   const node = value.node;
   if (!isRecord(node) || typeof node.id !== "string" || typeof node.type !== "string" || !isRecord(node.data)) return false;

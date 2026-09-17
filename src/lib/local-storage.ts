@@ -43,6 +43,8 @@ export type SaveProjectResult = {
   reinjected: FlowNode[];
   reinjectedEdges: FlowEdge[];
   refreshed: FlowNode[];
+  /** Agent nodes of the payload the server had removed after the client's base (not written): drop them locally. */
+  removed: string[];
 };
 
 export function listProjects(): ProjectMeta[] {
@@ -168,6 +170,24 @@ function agentWritesToKeep(
   return { nodes: keptNodes, reinjected, reinjectedEdges, refreshed };
 }
 
+/**
+ * Agent-placed nodes (`placedByAgentAt`) the payload carries but the stored
+ * canvas no longer has, when the client's base is older than the stored
+ * canvas: the server removed them after the client's state was taken (e.g.
+ * « Repartir de zéro »), so a stale save must not bring them back.
+ */
+function agentNodesRemovedOnServer(
+  stored: { nodes: FlowNode[]; updatedAt?: string },
+  nodes: FlowNode[],
+  baseUpdatedAt: string,
+): Set<string> {
+  if (!stored.updatedAt || compareUpdatedAt(baseUpdatedAt, stored.updatedAt) >= 0) return new Set();
+  const storedIds = new Set(stored.nodes.map((node) => node.id));
+  return new Set(
+    nodes.filter((node) => typeof node.data?.placedByAgentAt === "string" && !storedIds.has(node.id)).map((node) => node.id),
+  );
+}
+
 export function saveProject(
   id: string,
   nodes: FlowNode[],
@@ -178,15 +198,26 @@ export function saveProject(
   return db.transaction((): SaveProjectResult => {
     const stored = getProject(id);
     const now = nextUpdatedAt(stored?.updatedAt);
+    let payloadNodes = nodes;
+    let payloadEdges = edges;
+    let removed: string[] = [];
     let keptNodes = nodes;
     let reinjected: FlowNode[] = [];
     let reinjectedEdges: FlowEdge[] = [];
     let refreshed: FlowNode[] = [];
     if (baseUpdatedAt && stored) {
-      ({ nodes: keptNodes, reinjected, reinjectedEdges, refreshed } = agentWritesToKeep(stored, nodes, edges, baseUpdatedAt));
+      const removedIds = agentNodesRemovedOnServer(stored, nodes, baseUpdatedAt);
+      if (removedIds.size > 0) {
+        removed = [...removedIds];
+        payloadNodes = nodes.filter((node) => !removedIds.has(node.id));
+        payloadEdges = edges.filter((edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target));
+      }
+      ({ nodes: keptNodes, reinjected, reinjectedEdges, refreshed } = agentWritesToKeep(stored, payloadNodes, payloadEdges, baseUpdatedAt));
+    } else {
+      keptNodes = payloadNodes;
     }
     const finalNodes = [...keptNodes, ...reinjected];
-    const finalEdges = [...edges, ...reinjectedEdges];
+    const finalEdges = [...payloadEdges, ...reinjectedEdges];
     db.prepare(`
       INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET nodes = excluded.nodes, edges = excluded.edges, updated_at = excluded.updated_at
@@ -198,6 +229,6 @@ export function saveProject(
     } else {
       db.prepare("UPDATE projects_meta SET updated_at = ? WHERE id = ?").run(now, id);
     }
-    return { updatedAt: now, reinjected, reinjectedEdges, refreshed };
+    return { updatedAt: now, reinjected, reinjectedEdges, refreshed, removed };
   })();
 }
