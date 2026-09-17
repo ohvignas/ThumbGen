@@ -37,7 +37,7 @@ export async function executePlaceNode(projectId: string, input: PlaceNodeInput,
 export function buildPlaceNodeTool({ projectId, writePatch }: { projectId: string; writePatch: WritePatch }): Tool {
   return aiTool({
     description: [
-      "Guided interview only: places or completes ONE interview node on the user's canvas, live. Call it right after the answer that produces the node, never in the same step as ask_user.",
+      "Thumbnail journey, one variant (step 7) only: places or completes ONE node on the user's canvas, live. Never in the same step as ask_user.",
       "Ids and types: iv-prompt (prompt), iv-persona (faceReference, image_source stored:persona_<id>), iv-ref-1..3 (swipeFile reference), iv-logo-1..3 (swipeFile logo), iv-generator (generator, no abTest).",
       "A new node needs its full data; an existing node keeps its position and every field you leave out. New nodes are laid out to the right of the existing canvas, and once iv-generator exists every interview node is wired to it automatically (face-in, ref-in, logo-in, prompt-in).",
       'Returns "node id: <id>", plus "linked to iv-generator" when the node is wired to the generator.',

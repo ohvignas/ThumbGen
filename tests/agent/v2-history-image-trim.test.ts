@@ -26,7 +26,14 @@ vi.mock("ai", async (importOriginal) => {
 
 import { setSetting } from "@/lib/settings";
 import { rowsToUIMessages } from "@/components/panels/chat/history-to-ui-messages";
-import { HISTORY_IMAGE_PLACEHOLDER, trimToolResultImages } from "@/lib/agent/v2/history-images";
+import {
+  HISTORY_IMAGE_PLACEHOLDER,
+  HISTORY_IMPORT_PLACEHOLDER,
+  HISTORY_SKETCH_PLACEHOLDER,
+  historyImagePlaceholder,
+  holdsResolvedAskUser,
+  trimToolResultImages,
+} from "@/lib/agent/v2/history-images";
 // Imported up front: loading the route (and the tool registry) can take seconds on a busy machine.
 import { postV2 } from "@/lib/agent/v2/route-handler";
 import { resetRunRegistry } from "@/lib/agent/v2/run-registry";
@@ -91,8 +98,48 @@ describe("trimToolResultImages", () => {
   });
 
   it("leaves other tools' images alone", () => {
-    const messages = JSON.parse(toolRow("b", "generate_sketch", "sketch").content_json);
+    const messages = JSON.parse(toolRow("b", "list_past_generations", "générations").content_json);
     expect(trimToolResultImages(messages)).toEqual(messages);
+  });
+
+  it("also trims imported thumbnails, sketches and previews, each with its own placeholder", () => {
+    expect(historyImagePlaceholder("generate_sketch")).toBe(HISTORY_SKETCH_PLACEHOLDER);
+    expect(historyImagePlaceholder("preview_thumbnail")).toBe(HISTORY_SKETCH_PLACEHOLDER);
+    expect(historyImagePlaceholder("import_youtube_thumbnail")).toBe(HISTORY_IMPORT_PLACEHOLDER);
+    expect(historyImagePlaceholder("view_canvas_images")).toBe(HISTORY_IMAGE_PLACEHOLDER);
+    expect(historyImagePlaceholder("search_youtube")).toBe(HISTORY_IMAGE_PLACEHOLDER);
+    // A paid sketch must never be regenerated just because its image left the history.
+    expect(HISTORY_SKETCH_PLACEHOLDER).not.toContain("rappelle l'outil");
+    expect(HISTORY_SKETCH_PLACEHOLDER).toContain("ne la régénère pas");
+    expect(HISTORY_IMPORT_PLACEHOLDER).not.toContain("rappelle l'outil");
+    expect(HISTORY_IMPORT_PLACEHOLDER).toContain("ne la réimporte pas");
+    for (const tool of ["import_youtube_thumbnail", "generate_sketch", "preview_thumbnail"]) {
+      const trimmed = trimToolResultImages(JSON.parse(toolRow("c", tool, "header").content_json)) as Array<{
+        content: Array<{ output: { value: unknown[] } }>;
+      }>;
+      expect(trimmed[1].content[0].output.value).toEqual([
+        { type: "text", text: "header" },
+        { type: "text", text: historyImagePlaceholder(tool) },
+      ]);
+    }
+  });
+
+  it("recognizes a parsed row holding an answered ask_user", () => {
+    const answer = (id: string) => ({
+      id: "",
+      conversation_id: "c1",
+      role: "assistant" as const,
+      content_json: JSON.stringify([
+        { role: "tool", content: [{ type: "tool-result", toolCallId: id, toolName: "ask_user", output: { type: "json", value: { selected: ["a"] } } }] },
+      ]),
+      interrupted: 0,
+    });
+    const holds = (row: { content_json: string }) => holdsResolvedAskUser(JSON.parse(row.content_json));
+    expect(holds(userRow("x"))).toBe(false);
+    expect(holds(toolRow("v", "view_canvas_images", "h"))).toBe(false);
+    expect(holds(answer("q1"))).toBe(true);
+    expect(holdsResolvedAskUser("not an array")).toBe(false);
+    expect(holdsResolvedAskUser(null)).toBe(false);
   });
 });
 
@@ -110,7 +157,7 @@ describe("postV2 — images of earlier turns are trimmed from the model input", 
       userRow("Regarde le canvas"),
       toolRow("v1", "view_canvas_images", "node s1 (sketch, S) — image 1/1 — stored:gi_1"),
       toolRow("y1", "search_youtube", "8 vidéos"),
-      toolRow("g1", "generate_sketch", "croquis"),
+      toolRow("g1", "list_past_generations", "générations"),
     ];
     const before = rows.map((row) => row.content_json);
     const uiBefore = JSON.stringify(rowsToUIMessages(rows as never));
@@ -125,7 +172,7 @@ describe("postV2 — images of earlier turns are trimmed from the model input", 
       { type: "text", text: "8 vidéos" },
       { type: "text", text: HISTORY_IMAGE_PLACEHOLDER },
     ]);
-    expect(resultValue("generate_sketch").map((p) => p.type)).toEqual(["text", "file"]);
+    expect(resultValue("list_past_generations").map((p) => p.type)).toEqual(["text", "file"]);
 
     // Stored rows and what the chat shows are unchanged.
     expect(rows.slice(0, 4).map((row) => row.content_json)).toEqual(before);

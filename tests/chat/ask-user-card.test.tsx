@@ -53,7 +53,7 @@ describe("AskUserCard — image grid", () => {
   it("shows the question, the counter and a 16:9 grid; one click answers once", async () => {
     const onAnswer = await render({ question: "De quoi parle la vidéo ?", step: 1, options: videos });
     expect(container.textContent).toContain("De quoi parle la vidéo ?");
-    expect(container.textContent).toContain("Question 1/8");
+    expect(container.textContent).toContain("Étape 1/7");
     expect(container.querySelector(".grid-cols-2")).not.toBeNull();
     const images = Array.from(container.querySelectorAll("img")).map((img) => img.getAttribute("src"));
     expect(images).toEqual(videos.map((v) => `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`));
@@ -217,14 +217,62 @@ describe("AskUserCard — text options and footer", () => {
     expect(onAnswer).toHaveBeenCalledWith({ other: "Mon lien" });
   });
 
-  it("sends « Autre » with Enter", async () => {
+  it("sends « Autre » with Enter, right away when nothing is composing", async () => {
+    const onAnswer = await render(angles);
+    const input = container.querySelector<HTMLInputElement>("input[placeholder='Autre…']")!;
+    await typeInto(input, "Tuto");
+    const requestSubmit = vi.spyOn(HTMLFormElement.prototype, "requestSubmit");
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+    expect(onAnswer).toHaveBeenCalledWith({ other: "Tuto" });
+    expect(requestSubmit).not.toHaveBeenCalled();
+    requestSubmit.mockRestore();
+  });
+
+  // Live report: Enter did nothing in the « Autre » field while « Envoyer » worked. macOS inline predictive
+  // text (Chrome/Safari) keeps the field in an IME composition, so the Enter keydown arrives with
+  // isComposing: true — the card ignored it and the browser skipped the form submission. Now that Enter
+  // submits the form on the next tick, once the composition has committed its text.
+  it("sends « Autre » with Enter while composing, after the composition commits", async () => {
+    const onAnswer = await render(angles);
+    const input = container.querySelector<HTMLInputElement>("input[placeholder='Autre…']")!;
+    await typeInto(input, "Tut");
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true }));
+    });
+    // The Enter that ends the composition lands its text before the deferred submit runs.
+    await typeInto(input, "Tuto");
+    // An immediate send would have used the uncommitted text.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect(onAnswer).toHaveBeenCalledWith({ other: "Tuto" });
+  });
+
+  it("sends the free answer with Enter", async () => {
+    const onAnswer = await render({ question: "De quoi parle la vidéo ?", step: 1, options: [], allow_skip: false });
+    const input = container.querySelector<HTMLInputElement>("input[placeholder='Ta réponse…']")!;
+    await typeInto(input, "Les miniatures");
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect(onAnswer).toHaveBeenCalledWith({ other: "Les miniatures" });
+  });
+
+  it("sends once on Enter followed by a form submit", async () => {
     const onAnswer = await render(angles);
     const input = container.querySelector<HTMLInputElement>("input[placeholder='Autre…']")!;
     await typeInto(input, "Tuto");
     await act(async () => {
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     });
-    expect(onAnswer).toHaveBeenCalledWith({ other: "Tuto" });
+    await act(async () => {
+      input.form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(onAnswer).toHaveBeenCalledTimes(1);
   });
 
   it("offers « Passer » only when allowed", async () => {
@@ -241,6 +289,39 @@ describe("AskUserCard — text options and footer", () => {
     expect(container.textContent).toContain("Question illisible");
     await click(button("Passer"));
     expect(onAnswer).toHaveBeenCalledWith({ skipped: true });
+  });
+});
+
+describe("AskUserCard — thumbnail journey", () => {
+  it("asks a free question with a text field only", async () => {
+    const onAnswer = await render({ question: "De quoi parle la vidéo ?", step: 1, options: [], allow_skip: false });
+    expect(container.textContent).toContain("Étape 1/7");
+    expect(container.querySelector("input[placeholder='Autre…']")).toBeNull();
+    const input = container.querySelector<HTMLInputElement>("input[placeholder='Ta réponse…']")!;
+    expect(input).not.toBeNull();
+    expect(input.getAttribute("aria-label")).toBe("Ta réponse");
+    expect(buttons().map((el) => el.textContent)).toEqual(["Envoyer"]);
+    await typeInto(input, "Une vidéo sur les miniatures");
+    await click(button("Envoyer"));
+    expect(onAnswer).toHaveBeenCalledWith({ other: "Une vidéo sur les miniatures" });
+  });
+
+  it("lays out more than 6 text options in two columns and allows 5 picks", async () => {
+    const options = Array.from({ length: 12 }, (_, i) => ({ id: `o${i}`, label: `Option ${i}` }));
+    await render({ question: "Lesquelles ?", step: 3, multiple: true, max_selected: 5, options });
+    expect(container.querySelectorAll("[aria-pressed]")).toHaveLength(12);
+    expect(container.querySelector(".grid-cols-2")).not.toBeNull();
+    expect(container.textContent).toContain("Jusqu'à 5 choix");
+  });
+
+  it("shows generated sketches as 16:9 images", async () => {
+    await render({
+      question: "Variante A : valider l'esquisse ?",
+      step: 7,
+      options: [{ id: "ok", label: "Valider", image: "generated:sk_abc123" }],
+    });
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/generated-sketches/sk_abc123");
+    expect(container.querySelector(".aspect-video")).not.toBeNull();
   });
 });
 
@@ -269,7 +350,7 @@ describe("PendingUiAction — ask_user", () => {
       input: { question: "Quel angle ?", step: 2, options: [{ id: "a", label: "Choc" }] },
     } as unknown as PendingToolPart;
     await act(async () => root.render(<PendingUiAction part={part} onResolve={onResolve} />));
-    expect(container.textContent).toContain("Question 2/8");
+    expect(container.textContent).toContain("Étape 2/7");
     await click(button("Choc"));
     expect(onResolve).toHaveBeenCalledWith("q1", { selected: ["a"] });
   });

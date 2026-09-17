@@ -59,7 +59,7 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
               <MessageScrollerItem key="trailing-assistant" messageId="trailing-assistant">
                 <AssistantRow showAvatar>
                   {trailing === "progress" ? (
-                    <TurnProgress message={undefined} status={controls.status} startedAt={controls.turnStartedAt} steps={[]} />
+                    <TurnProgress message={undefined} status={controls.status} startedAt={controls.turnStartedAt} steps={[]} journeyStep={controls.journeyStep ?? null} />
                   ) : (
                     <AssistantTurn
                       turn={emptyAssistantTurn()}

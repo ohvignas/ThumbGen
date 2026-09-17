@@ -11,10 +11,15 @@ import {
 import { FAKE_AGENT_WARNING, resolveAgentLanguageModel } from "./agent-model";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
-import { trimToolResultImages } from "./history-images";
+import { holdsResolvedAskUser, trimToolResultImages } from "./history-images";
 import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
 import { PLACE_NODE_TOOL_NAME, buildPlaceNodeTool } from "./place-node-tool";
+import { UPDATE_BRIEF_TOOL_NAME, buildUpdateBriefTool } from "./update-brief-tool";
+import { getBrief } from "@/lib/brief/store";
+import { guardSketchHandler } from "@/lib/brief/sketch-guard";
+import { BRIEF_UPDATED_PART } from "@/lib/brief/brief-updated";
+import type { ThumbnailBrief } from "@/lib/brief/schema";
 import { CLIENT_TOOL_NAME_SET, clientToolNameOfPartType } from "@/lib/agent/client-tools";
 import { CANVAS_PATCH_PART } from "@/lib/canvas/canvas-patch";
 import { discardRun, pumpRunStream, runStatusForOutcome, startRun, subscribe } from "./run-registry";
@@ -293,6 +298,9 @@ export async function postV2(req: NextRequest): Promise<Response> {
   }
 
   let priorMessages: unknown[];
+  // The conversation's thumbnail brief, read once per turn (chantier F3): sent
+  // to the model, and it switches the cost reductions below on.
+  let brief: ThumbnailBrief | null = null;
   let systemText: string;
   let userParts: Array<
     { type: "text"; text: string } | { type: "file"; mediaType: string; data: string }
@@ -309,6 +317,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
   let retriedUserRowIndex = -1;
 
   try {
+    brief = getBrief(conversationId)?.brief ?? null;
     userParts = [];
     if (isNewUserTurn) {
       const lastMessageText = (lastMessage?.parts ?? [])
@@ -435,13 +444,23 @@ export async function postV2(req: NextRequest): Promise<Response> {
     // search_youtube images replaced by a placeholder (model input only). On
     // a new send every prior row is earlier; on a retry or a continuation the
     // current turn starts at its stored user row.
-    const currentTurnStart =
+    const turnStart =
       isNewUserTurn && retriedUserRowIndex === -1
         ? priorRows.length
         : Math.max(0, priorRows.map((row) => row.role).lastIndexOf("user"));
+    // Each row is parsed once: the checks, the journey's trim start and the model input share it.
+    const parsedRows: unknown[] = priorRows.map((row) => JSON.parse(row.content_json));
+    // During a thumbnail journey every answer is a continuation: images older
+    // than the last answered question are not re-sent either.
+    let lastAnsweredRow = -1;
+    if (brief) {
+      for (let index = parsedRows.length - 1; index >= 0 && lastAnsweredRow === -1; index--) {
+        if (holdsResolvedAskUser(parsedRows[index])) lastAnsweredRow = index;
+      }
+    }
+    const currentTurnStart = Math.max(turnStart, lastAnsweredRow);
     priorMessages = [];
-    for (const [rowIndex, row] of priorRows.entries()) {
-      const parsed: unknown = JSON.parse(row.content_json);
+    for (const [rowIndex, parsed] of parsedRows.entries()) {
       const looksMigrated =
         Array.isArray(parsed) &&
         parsed.every((m) => typeof m === "object" && m !== null && "role" in (m as Record<string, unknown>));
@@ -458,7 +477,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
       priorMessages.push(...(rowIndex < currentTurnStart ? trimToolResultImages(normalized) : normalized));
     }
 
-    const systemBlocks = buildSystemMessages(body.canvas_snapshot, projectId, loadAgentPromptPrefs());
+    const systemBlocks = buildSystemMessages(body.canvas_snapshot, projectId, loadAgentPromptPrefs(), brief);
     systemText = systemBlocks.map((b) => b.text).join("\n\n");
   } catch (e) {
     discardRun(run);
@@ -474,16 +493,25 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // throw (tools, provider options, streamText, the UI stream) frees the run.
   try {
     if (agentModel.fake) console.warn(FAKE_AGENT_WARNING);
-    // place_node (guided interview) broadcasts each placed node to the open
-    // canvas as a transient `data-canvas-patch` chunk of this turn's stream —
+    // place_node and update_brief broadcast to the open chat as transient chunks
+    // of this turn's stream (`data-canvas-patch`, `data-brief-updated`) —
     // the same stream the run buffers and replays. The writer exists as soon as
     // the composed stream below is built, before any tool can run.
-    let patchWriter: UIMessageStreamWriter | null = null;
+    let uiWriter: UIMessageStreamWriter | null = null;
     const placeNode = buildPlaceNodeTool({
       projectId: run.projectId,
       writePatch: (patch) => {
-        if (!patchWriter) throw new Error("canvas patch stream not ready");
-        patchWriter.write({ type: CANVAS_PATCH_PART, id: patch.node.id, transient: true, data: patch });
+        if (!uiWriter) throw new Error("canvas patch stream not ready");
+        uiWriter.write({ type: CANVAS_PATCH_PART, id: patch.node.id, transient: true, data: patch });
+      },
+    });
+    // update_brief (thumbnail journey) tells the open chat the brief changed, on the same stream.
+    const updateBriefTool = buildUpdateBriefTool({
+      conversationId,
+      projectId: run.projectId,
+      writeBriefUpdated: (data) => {
+        if (!uiWriter) throw new Error("brief stream not ready");
+        uiWriter.write({ type: BRIEF_UPDATED_PART, id: data.conversationId, transient: true, data });
       },
     });
     const result = streamText({
@@ -492,7 +520,15 @@ export async function postV2(req: NextRequest): Promise<Response> {
       messages: (isNewUserTurn && retriedUserRowIndex === -1
         ? [...priorMessages, { role: "user", content: userParts }]
         : [...priorMessages]) as ModelMessage[],
-      tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS, [PLACE_NODE_TOOL_NAME]: placeNode },
+      tools: {
+        // generate_sketch is guarded by the thumbnail brief when there is one (step 7, sketch limit).
+        ...buildAiSdkTools({
+          wrapHandler: (name, handler) => (name === "generate_sketch" ? guardSketchHandler(conversationId, handler) : handler),
+        }),
+        ...V2_CLIENT_TOOLS,
+        [PLACE_NODE_TOOL_NAME]: placeNode,
+        [UPDATE_BRIEF_TOOL_NAME]: updateBriefTool,
+      },
       // finish_turn closes the turn: stop right after its step instead of
       // paying for one more model call that would only restate the answer.
       stopWhen: [isStepCount(settings.agentMaxSteps), hasToolCall(FINISH_TURN_TOOL_NAME)],
@@ -502,7 +538,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
       providerOptions: {
         openrouter: {
           ...(modelInfo?.supportsThinking ? { reasoning: { effort: settings.agentReasoningEffort } } : {}),
-          ...webSearchProviderOptions(),
+          // With a brief the journey does its own research (research_topic): no web search on every call.
+          ...(brief ? {} : webSearchProviderOptions()),
         },
       },
       // `responseMessages` is the aggregate across every step (not the deprecated
@@ -576,7 +613,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
     let modelStreamFailed = false;
     const uiStream = createUIMessageStream({
       execute: ({ writer }) => {
-        patchWriter = writer;
+        uiWriter = writer;
         writer.merge(modelStream);
       },
       // A read failure of the model's stream (previously a pump read error).

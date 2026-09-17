@@ -15,6 +15,16 @@ vi.mock("youtube-transcript", () => ({
 import { buildAiSdkTools } from "@/lib/agent/v2/tool-adapter";
 
 describe("buildAiSdkTools", () => {
+  it("lets the caller wrap a tool's handler", async () => {
+    const tools = buildAiSdkTools({
+      wrapHandler: (name, handler) => (name === "list_logos" ? async () => ({ content: [{ type: "text", text: "wrapped" }] }) : handler),
+    });
+    const result = (await tools.list_logos.execute!({}, { toolCallId: "t2" } as never)) as { content: Array<{ text: string }> };
+    expect(result.content[0].text).toBe("wrapped");
+    const untouched = (await tools.list_personas.execute!({}, { toolCallId: "t3" } as never)) as { content: unknown[] };
+    expect(Array.isArray(untouched.content)).toBe(true);
+  });
+
   it("wraps every registered tool, keyed by name", () => {
     const tools = buildAiSdkTools();
     expect(Object.keys(tools)).toContain("list_logos");

@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import TurnSteps from "./TurnSteps";
 import { currentStepLabel, formatElapsed, type TurnStep } from "./turn-model";
 import { useElapsedMs } from "./useElapsedMs";
+import { briefStepLine } from "@/lib/brief/steps";
 
 /**
  * The single live line of a running turn: spinner, current step, m:ss timer.
@@ -18,14 +19,18 @@ export default function TurnProgress({
   status,
   startedAt,
   steps,
+  journeyStep = null,
 }: {
   message: UIMessage | undefined;
   status: ChatStatus;
   startedAt: number | null;
   steps: TurnStep[];
+  /** The conversation's thumbnail journey step, when it has a brief. */
+  journeyStep?: number | null;
 }) {
   const elapsedMs = useElapsedMs(startedAt);
-  const label = currentStepLabel(message, status);
+  const stepLabel = currentStepLabel(message, status);
+  const label = journeyStep ? `${briefStepLine(journeyStep)} · ${stepLabel}` : stepLabel;
 
   return (
     <Collapsible className="flex flex-col gap-2">
