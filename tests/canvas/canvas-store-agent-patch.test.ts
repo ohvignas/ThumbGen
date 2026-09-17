@@ -14,9 +14,11 @@ const prompt: CanvasPatchNode = { id: "iv-prompt", type: "prompt", position: { x
 const generator: CanvasPatchNode = { id: "iv-generator", type: "generator", position: { x: 1040, y: 0 }, data: { model: "gemini-3.1-flash-image", placedByAgentAt: T2 } };
 const promptEdge: CanvasPatchEdge = { id: "e-1", source: "iv-prompt", target: "iv-generator", sourceHandle: null, targetHandle: "prompt-in" };
 
+const PREVIOUS: Record<string, string> = { [T1]: T0, [T2]: T1, [T3]: T2 };
 const created = (node: CanvasPatchNode, updatedAt: string, edges: CanvasPatchEdge[] = []): CanvasPatch => ({
   projectId: "patch-test",
   updatedAt,
+  previousUpdatedAt: PREVIOUS[updatedAt] ?? T0,
   created: true,
   node,
   removedDataKeys: [],
@@ -114,9 +116,9 @@ describe("applyAgentPatch", () => {
     expect(state.knownUpdatedAt).toBe(T2);
     expect(state.recentOwnSaveUpdatedAts).toEqual([]);
 
-    await vi.advanceTimersByTimeAsync(300);
-    expect(useCanvasStore.getState().history).toHaveLength(2);
-    expect(useCanvasStore.getState().historyIndex).toBe(1);
+    // One immediate history entry per patch.
+    expect(useCanvasStore.getState().history).toHaveLength(3);
+    expect(useCanvasStore.getState().historyIndex).toBe(2);
     await vi.advanceTimersByTimeAsync(3000);
     expect(posts()).toHaveLength(0);
   });
@@ -163,7 +165,86 @@ describe("applyAgentPatch", () => {
   });
 });
 
+describe("applyAgentPatch — projects, missed writes and history", () => {
+  it("never applies another project's patch, even while a project loads", async () => {
+    const other = { ...created(prompt, T1), projectId: "project-a" };
+    useCanvasStore.getState().applyAgentPatch(other);
+    expect(useCanvasStore.getState().nodes).toEqual([userNode]);
+    expect(useCanvasStore.getState().knownUpdatedAt).toBe(T0);
+
+    // A patch for A arrives while B loads: B never gets it.
+    let answer: (value: unknown) => void = () => {};
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    useCanvasStore.setState({ currentProjectId: "project-a" });
+    const loading = useCanvasStore.getState().loadProject("project-b");
+    useCanvasStore.getState().applyAgentPatch({ ...created(generator, T3), projectId: "project-a" });
+    answer({ ok: true, json: async () => ({ nodes: [], edges: [], updatedAt: T1 }) });
+    await loading;
+    const state = useCanvasStore.getState();
+    expect(state.currentProjectId).toBe("project-b");
+    expect(state.nodes).toEqual([]);
+    expect(state.knownUpdatedAt).toBe(T1);
+  });
+
+  it("applies a patch that follows an unseen server write, keeps the base and reloads", async () => {
+    let loads = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/project?id=")) {
+        loads++;
+        return { ok: true, json: async () => ({ nodes: [userNode, { ...prompt }, { ...generator }], edges: [], updatedAt: T2 }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    // The server wrote T1 (unseen here), then the agent placed the generator (previous = T1).
+    useCanvasStore.getState().applyAgentPatch(created(generator, T2));
+    expect(useCanvasStore.getState().nodes.map((n) => n.id)).toContain("iv-generator");
+    expect(useCanvasStore.getState().knownUpdatedAt).toBe(T0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loads).toBe(1);
+    expect(useCanvasStore.getState().nodes.map((n) => n.id)).toEqual(["user-1", "iv-prompt", "iv-generator"]);
+    expect(useCanvasStore.getState().knownUpdatedAt).toBe(T2);
+  });
+
+  it("does not reload for a patch in sequence", async () => {
+    useCanvasStore.getState().applyAgentPatch(created(prompt, T1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/project?id="))).toHaveLength(0);
+  });
+
+  it("keeps a user edit made right after a patch as its own undo step", async () => {
+    useCanvasStore.getState().applyAgentPatch(created(prompt, T1));
+    useCanvasStore.getState().updateNodeData("user-1", { prompt: "Édité" });
+    await vi.advanceTimersByTimeAsync(300);
+    const { history } = useCanvasStore.getState();
+    expect(history).toHaveLength(3);
+    expect(history[1].nodes.find((n) => n.id === "user-1")?.data.prompt).toBe("Mon idée");
+    expect(history[2].nodes.find((n) => n.id === "user-1")?.data.prompt).toBe("Édité");
+  });
+
+  it("keeps an edit made just before a patch as its own undo step too", async () => {
+    useCanvasStore.getState().updateNodeData("user-1", { prompt: "Avant" });
+    useCanvasStore.getState().applyAgentPatch(created(prompt, T1));
+    const { history } = useCanvasStore.getState();
+    expect(history).toHaveLength(3);
+    expect(history[1].nodes.map((n) => n.id)).toEqual(["user-1"]);
+    expect(history[2].nodes.map((n) => n.id)).toEqual(["user-1", "iv-prompt"]);
+  });
+});
+
 describe("saveProject with the known base", () => {
+  it("drops locally the agent nodes the server removed", async () => {
+    seed([userNode, { ...prompt }], [{ ...promptEdge, target: "user-1" }]);
+    saveAnswer({ updatedAt: T3, removed: ["iv-prompt"] });
+    await useCanvasStore.getState().saveProject();
+    expect(useCanvasStore.getState().nodes.map((n) => n.id)).toEqual(["user-1"]);
+    expect(useCanvasStore.getState().edges).toEqual([]);
+  });
+
   it("sends the base read when the payload is built and merges reinjected agent nodes", async () => {
     let release: () => void = () => {};
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {

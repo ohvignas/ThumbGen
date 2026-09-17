@@ -12,6 +12,7 @@ const userNode: AppNode = { id: "user-1", type: "prompt", position: { x: 0, y: 0
 const patch = (overrides: Partial<CanvasPatch> = {}): CanvasPatch => ({
   projectId: "proj-open",
   updatedAt: T1,
+  previousUpdatedAt: T0,
   created: true,
   node: { id: "iv-prompt", type: "prompt", position: { x: 620, y: 0 }, data: { prompt: "x", placedByAgentAt: T1 } },
   removedDataKeys: [],
