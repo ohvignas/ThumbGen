@@ -11,6 +11,8 @@ export function buildMcpServer(): McpServer {
   const server = new McpServer({ name: "thumbgen", version: "1.0.0" });
 
   for (const tool of listTools()) {
+    // Chat-only tools (finish_turn) mean nothing to an external MCP client.
+    if (tool.chatOnly) continue;
     // The MCP SDK registerTool inputSchema accepts either:
     //   - ZodRawShapeCompat: a plain Record<string, ZodType> (the .shape object)
     //   - AnySchema: a full Zod v3/v4 type

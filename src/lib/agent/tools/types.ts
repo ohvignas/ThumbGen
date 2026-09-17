@@ -13,4 +13,6 @@ export type ToolDefinition<I = unknown> = {
   description: string;
   inputSchema: z.ZodType<I>;
   handler: ToolHandler<I>;
+  /** Only meaningful inside ThumbGen's chat panel: the MCP server never lists it. */
+  chatOnly?: boolean;
 };
