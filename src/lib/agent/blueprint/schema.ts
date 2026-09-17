@@ -31,37 +31,54 @@ const AbTestSchema = z.object({
   ]),
 });
 
+const FaceReferenceData = z.object({
+  type: z.literal("faceReference"),
+  image_source: PersonaSourceSchema,
+  label: z.string().optional(),
+});
+const SwipeFileData = z.object({
+  type: z.literal("swipeFile"),
+  kind: z.enum(["logo", "reference"]),
+  image_source: ImageSourceSchema,
+  label: z.string().optional(),
+});
+const SketchData = z.object({
+  type: z.literal("sketch"),
+  image_source: ImageSourceSchema,
+});
+const PromptData = z.object({
+  type: z.literal("prompt"),
+  prompt: z.string(),
+  negativePrompt: z.string().optional(),
+});
+const GeneratorData = z.object({
+  type: z.literal("generator"),
+  // "ideogram" and "grok" removed: dropped from the app's model roster when
+  // image generation migrated to OpenRouter-only (neither has an OpenRouter
+  // equivalent) — see MODEL_ID_MAP in ../tools/apply-workflow.ts.
+  model: z.enum(["nano-banana", "openai", "seedream"]),
+  aspectRatio: z.enum(["16x9", "9x16", "1x1"]),
+  count: z.number().int().min(1).max(4, "count must be at most 4 images (the UI's cap)").optional(),
+  abTest: AbTestSchema.optional(),
+});
+
 const NodeDataByType = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("faceReference"),
-    image_source: PersonaSourceSchema,
-    label: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("swipeFile"),
-    kind: z.enum(["logo", "reference"]),
-    image_source: ImageSourceSchema,
-    label: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("sketch"),
-    image_source: ImageSourceSchema,
-  }),
-  z.object({
-    type: z.literal("prompt"),
-    prompt: z.string(),
-    negativePrompt: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("generator"),
-    // "ideogram" and "grok" removed: dropped from the app's model roster when
-    // image generation migrated to OpenRouter-only (neither has an OpenRouter
-    // equivalent) — see MODEL_ID_MAP in ../tools/apply-workflow.ts.
-    model: z.enum(["nano-banana", "openai", "seedream"]),
-    aspectRatio: z.enum(["16x9", "9x16", "1x1"]),
-    count: z.number().int().min(1).max(4, "count must be at most 4 images (the UI's cap)").optional(),
-    abTest: AbTestSchema.optional(),
-  }),
+  FaceReferenceData,
+  SwipeFileData,
+  SketchData,
+  PromptData,
+  GeneratorData,
+]);
+
+// Update of a node that already exists on the canvas: every field is
+// optional (a missing image_source keeps the node's current image), but the
+// fields that ARE given are validated like for a new node.
+const NodeUpdateDataByType = z.discriminatedUnion("type", [
+  FaceReferenceData.partial().extend({ type: FaceReferenceData.shape.type }),
+  SwipeFileData.partial().extend({ type: SwipeFileData.shape.type }),
+  SketchData.partial().extend({ type: SketchData.shape.type }),
+  PromptData.partial().extend({ type: PromptData.shape.type }),
+  GeneratorData.partial().extend({ type: GeneratorData.shape.type }),
 ]);
 
 // Models calling this tool have repeatedly (reproduced live, multiple
@@ -105,15 +122,16 @@ function normalizeNode(raw: unknown): unknown {
   return { ...rest, id: node.id, type: node.type, position: node.position, data: merged };
 }
 
+const NodeShape = z.object({
+  id: z.string().min(1),
+  type: z.enum(["faceReference", "swipeFile", "sketch", "prompt", "generator"]),
+  position: z.object({ x: z.number(), y: z.number() }).optional(),
+  data: z.record(z.string(), z.unknown()),
+});
+
 const NodeSchema = z.preprocess(
   normalizeNode,
-  z
-    .object({
-      id: z.string().min(1),
-      type: z.enum(["faceReference", "swipeFile", "sketch", "prompt", "generator"]),
-      position: z.object({ x: z.number(), y: z.number() }).optional(),
-      data: z.record(z.string(), z.unknown()),
-    })
+  NodeShape
     .superRefine((node, ctx) => {
       const result = NodeDataByType.safeParse({ type: node.type, ...node.data });
       if (!result.success) {
@@ -129,6 +147,37 @@ const EdgeSchema = z.object({
   target: z.string(),
   targetHandle: z.string(),
 });
+
+type EdgeInput = z.infer<typeof EdgeSchema>;
+type NodeLike = { type: string; data: Record<string, unknown> };
+
+// Variant handles (prompt-in-b, sketch-in-c, …) only exist on a generator
+// whose abTest includes that variant.
+function checkVariantHandles(edges: EdgeInput[], nodesById: Map<string, NodeLike>, ctx: z.RefinementCtx) {
+  edges.forEach((e, i) => {
+    const handle = parseGeneratorHandle(e.targetHandle);
+    if (handle?.kind !== "input" || handle.variant === "A") return;
+    const target = nodesById.get(e.target);
+    if (!target) return; // already reported as an unknown node id
+    const base = baseGeneratorHandle(e.targetHandle);
+    if (target.type !== "generator") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["edges", i, "targetHandle"],
+        message: `Handle "${e.targetHandle}" only exists on generator nodes; node "${e.target}" is a ${target.type}. Use "${base}" instead.`,
+      });
+      return;
+    }
+    if (!activeVariants(target.data.abTest).includes(handle.variant)) {
+      const variants = handle.variant === "C" ? '["A","B","C"]' : '["A","B"]';
+      ctx.addIssue({
+        code: "custom",
+        path: ["edges", i, "targetHandle"],
+        message: `Edge to "${e.targetHandle}" needs variant ${handle.variant} active on generator "${e.target}": set its data.abTest = { variants: ${variants} }, or connect to "${base}".`,
+      });
+    }
+  });
+}
 
 export const BlueprintSchema = z
   .object({
@@ -164,33 +213,76 @@ export const BlueprintSchema = z
       }
     });
 
-    // Variant handles (prompt-in-b, sketch-in-c, …) only exist on a generator
-    // whose abTest includes that variant.
-    const nodesById = new Map(bp.nodes.map((n) => [n.id, n]));
-    bp.edges.forEach((e, i) => {
-      const handle = parseGeneratorHandle(e.targetHandle);
-      if (handle?.kind !== "input" || handle.variant === "A") return;
-      const target = nodesById.get(e.target);
-      if (!target) return; // already reported as an unknown node id
-      const base = baseGeneratorHandle(e.targetHandle);
-      if (target.type !== "generator") {
-        ctx.addIssue({
-          code: "custom",
-          path: ["edges", i, "targetHandle"],
-          message: `Handle "${e.targetHandle}" only exists on generator nodes; node "${e.target}" is a ${target.type}. Use "${base}" instead.`,
-        });
-        return;
-      }
-      if (!activeVariants(target.data.abTest).includes(handle.variant)) {
-        const variants = handle.variant === "C" ? '["A","B","C"]' : '["A","B"]';
-        ctx.addIssue({
-          code: "custom",
-          path: ["edges", i, "targetHandle"],
-          message: `Edge to "${e.targetHandle}" needs variant ${handle.variant} active on generator "${e.target}": set its data.abTest = { variants: ${variants} }, or connect to "${base}".`,
-        });
-      }
-    });
+    checkVariantHandles(bp.edges, new Map(bp.nodes.map((n) => [n.id, n])), ctx);
   });
 
 export type Blueprint = z.infer<typeof BlueprintSchema>;
+
+export type CanvasNodeRef = { id: string; type: string; data: Record<string, unknown> };
+
+/**
+ * Blueprint validated against the current canvas, for apply_workflow's merge:
+ * - a node whose id is on the canvas (and not removed) is an update: it must
+ *   keep its type, and only the fields it gives are validated (image_source
+ *   may be missing);
+ * - any other node is a new node, validated in full;
+ * - an edge may connect blueprint nodes and canvas nodes that are kept;
+ * - a node cannot be both in the blueprint and in `removeNodeIds`.
+ */
+export function mergeBlueprintSchema(canvasNodes: CanvasNodeRef[], removeNodeIds: ReadonlySet<string>) {
+  const canvasById = new Map(canvasNodes.filter((n) => !removeNodeIds.has(n.id)).map((n) => [n.id, n]));
+  return z
+    .object({
+      // `data` may be left out: an existing node given as { id, type } changes nothing.
+      nodes: z.array(z.preprocess(normalizeNode, NodeShape.extend({ data: NodeShape.shape.data.default({}) }))),
+      edges: z.array(EdgeSchema),
+    })
+    .superRefine((bp, ctx) => {
+      const seen = new Set<string>();
+      const merged = new Map<string, NodeLike>(canvasById);
+      bp.nodes.forEach((n, i) => {
+        if (seen.has(n.id)) {
+          ctx.addIssue({ code: "custom", path: ["nodes", i, "id"], message: `Duplicate node id: ${n.id}` });
+        }
+        seen.add(n.id);
+        if (removeNodeIds.has(n.id)) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["nodes", i, "id"],
+            message: `Node "${n.id}" is both in the blueprint and in remove_node_ids.`,
+          });
+          return;
+        }
+        const existing = canvasById.get(n.id);
+        if (existing && existing.type !== n.type) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["nodes", i, "type"],
+            message: `Node "${n.id}" already exists on the canvas as a ${existing.type}; its type cannot change to ${n.type}. Use a new id for a new node.`,
+          });
+          return;
+        }
+        const schema = existing ? NodeUpdateDataByType : NodeDataByType;
+        const result = schema.safeParse({ type: n.type, ...n.data });
+        if (!result.success) {
+          for (const issue of result.error.issues) {
+            ctx.addIssue({ ...issue, path: ["nodes", i, "data", ...(issue.path ?? [])] } as z.core.$ZodRawIssue);
+          }
+        }
+        merged.set(n.id, existing ? { type: n.type, data: { ...existing.data, ...n.data } } : n);
+      });
+      bp.edges.forEach((e, i) => {
+        for (const end of ["source", "target"] as const) {
+          if (!merged.has(e[end])) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["edges", i, end],
+              message: `Unknown node id: ${e[end]} (not in the blueprint, and not on the canvas or removed in this call)`,
+            });
+          }
+        }
+      });
+      checkVariantHandles(bp.edges, merged, ctx);
+    });
+}
 export type ImageSource = z.infer<typeof ImageSourceSchema>;

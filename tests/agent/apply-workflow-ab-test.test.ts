@@ -66,4 +66,41 @@ describe("apply_workflow — generator A/B/C test", () => {
     expect(text).toContain("abTest");
     expect(persisted().nodes).toEqual([]);
   });
+  it("dropping variant C of an existing generator drops that variant's edges, keeping the rest", async () => {
+    getDb()
+      .prepare("UPDATE projects SET nodes = ?, edges = ? WHERE id = ?")
+      .run(
+        JSON.stringify([
+          { id: "prompt-a", type: "prompt", position: { x: 0, y: 0 }, data: { prompt: "A" } },
+          { id: "prompt-b", type: "prompt", position: { x: 0, y: 300 }, data: { prompt: "B" } },
+          { id: "prompt-c", type: "prompt", position: { x: 0, y: 600 }, data: { prompt: "C" } },
+          {
+            id: "gen",
+            type: "generator",
+            position: { x: 400, y: 0 },
+            data: { model: "gemini-3.1-flash-image", aspectRatio: "16x9", abTest: { variants: ["A", "B", "C"] } },
+          },
+        ]),
+        JSON.stringify([
+          { id: "e1", source: "prompt-a", sourceHandle: null, target: "gen", targetHandle: "prompt-in" },
+          { id: "e2", source: "prompt-b", sourceHandle: null, target: "gen", targetHandle: "prompt-in-b" },
+          { id: "e3", source: "prompt-c", sourceHandle: null, target: "gen", targetHandle: "prompt-in-c" },
+        ]),
+        projectId,
+      );
+    const result = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [{ id: "gen", type: "generator", data: { abTest: { variants: ["A", "B", "C"] } } }], edges: [] },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(persisted().edges).toHaveLength(3);
+
+    await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [{ id: "gen", type: "generator", data: { abTest: { variants: ["A", "B"] } } }], edges: [] },
+    });
+    const { nodes, edges } = persisted();
+    expect(nodes).toHaveLength(4);
+    expect(edges.map((e) => e.targetHandle)).toEqual(["prompt-in", "prompt-in-b"]);
+  });
 });

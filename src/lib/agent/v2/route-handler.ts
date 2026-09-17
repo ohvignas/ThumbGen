@@ -3,6 +3,7 @@ import { streamText, isStepCount, hasToolCall, type ModelMessage } from "ai";
 import { getOpenRouterProvider } from "./openrouter-provider";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
+import { trimToolResultImages } from "./history-images";
 import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
 import { FINISH_TURN_TOOL_NAME } from "@/lib/agent/finish-turn";
@@ -483,8 +484,16 @@ export async function postV2(req: NextRequest): Promise<Response> {
         : isNewUserTurn
           ? listMessages(conversationId).slice(0, -1)
           : listMessages(conversationId);
+    // Rows before the current user turn get their view_canvas_images /
+    // search_youtube images replaced by a placeholder (model input only). On
+    // a new send every prior row is earlier; on a retry or a continuation the
+    // current turn starts at its stored user row.
+    const currentTurnStart =
+      isNewUserTurn && retriedUserRowIndex === -1
+        ? priorRows.length
+        : Math.max(0, priorRows.map((row) => row.role).lastIndexOf("user"));
     priorMessages = [];
-    for (const row of priorRows) {
+    for (const [rowIndex, row] of priorRows.entries()) {
       const parsed: unknown = JSON.parse(row.content_json);
       const looksMigrated =
         Array.isArray(parsed) &&
@@ -497,7 +506,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
           { status: 400 },
         );
       }
-      priorMessages.push(...normalizeStaleToolResultFileData(parsed as unknown[]));
+      const normalized = normalizeStaleToolResultFileData(parsed as unknown[]);
+      priorMessages.push(...(rowIndex < currentTurnStart ? trimToolResultImages(normalized) : normalized));
     }
 
     const systemBlocks = buildSystemMessages(body.canvas_snapshot, body.project_id, loadAgentPromptPrefs());

@@ -76,6 +76,7 @@ export function deleteProject(id: string): void {
   db.transaction(() => {
     db.prepare("DELETE FROM projects WHERE id = ?").run(id);
     db.prepare("DELETE FROM projects_meta WHERE id = ?").run(id);
+    db.prepare("DELETE FROM canvas_snapshots WHERE project_id = ?").run(id);
   })();
 }
 

@@ -10,6 +10,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { MousePointer2, Hand, LayoutGrid, Undo2, Redo2, ChevronUp } from "lucide-react";
+import AgentHistoryMenu from "./AgentHistoryMenu";
 
 export default function ZoomBar() {
   const { zoomIn, zoomOut, fitView, zoomTo } = useReactFlow();
@@ -81,6 +82,7 @@ export default function ZoomBar() {
         </TooltipTrigger>
         <TooltipContent><p>Redo (Cmd+Shift+Z)</p></TooltipContent>
       </Tooltip>
+      <AgentHistoryMenu />
 
       <Separator orientation="vertical" className="h-5 mx-1" />
 

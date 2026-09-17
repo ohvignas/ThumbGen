@@ -149,14 +149,25 @@ interface CanvasState {
   canRedo: () => boolean;
   loadProject: (projectId?: string) => Promise<void>;
   saveProject: (projectId?: string) => Promise<void>;
+  // Saves a local edit still waiting on its debounced autosave right away and
+  // cancels that autosave. Used before overwriting the canvas on the server
+  // (« Historique de l'agent » restore), so a late autosave can't write the
+  // pre-restore nodes back over the restored ones.
+  flushPendingSave: () => Promise<void>;
+  // Drops a scheduled autosave without saving (right before loadProject
+  // replaces the canvas with the server's state).
+  cancelPendingSave: () => void;
 }
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+// The save request currently running, if any (see flushPendingSave).
+let inFlightSave: Promise<void> | null = null;
 
 function debouncedSave(state: CanvasState, set: (s: Partial<CanvasState>) => void) {
   set({ dirty: true });
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
+    saveTimeout = null;
     state.saveProject();
   }, 2000);
 }
@@ -460,6 +471,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (saving) return;
 
     set({ saving: true });
+    let finishSave: () => void = () => {};
+    inFlightSave = new Promise<void>((resolve) => {
+      finishSave = resolve;
+    });
     try {
       // Strip large base64 data — generated images are saved on disk as files
       const cleanNodes = nodes.map((n) => {
@@ -519,6 +534,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       console.error("Failed to save project:", err);
     } finally {
       set({ saving: false });
+      inFlightSave = null;
+      finishSave();
+    }
+  },
+
+  flushPendingSave: async () => {
+    const hadScheduledSave = saveTimeout !== null;
+    get().cancelPendingSave();
+    // A save already running captured the nodes of its start; wait for it. It
+    // clears `dirty` when it lands even if an edit came in meanwhile, so an edit
+    // whose autosave was scheduled also counts as pending.
+    if (inFlightSave) await inFlightSave;
+    if (hadScheduledSave || get().dirty) await get().saveProject();
+  },
+
+  cancelPendingSave: () => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
     }
   },
 }));

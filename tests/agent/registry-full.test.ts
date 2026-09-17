@@ -21,6 +21,7 @@ describe("full registry", () => {
       "list_projects",
       "list_past_generations",
       "get_canvas_state",
+      "view_canvas_images",
       "apply_workflow",
       "generate_sketch",
       "extract_youtube_script",
