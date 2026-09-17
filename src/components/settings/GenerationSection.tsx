@@ -10,14 +10,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { IMAGE_MODEL_GROUPS, IMAGE_MODELS } from "@/lib/image-models";
 import { ASPECT_RATIOS, IMAGE_RESOLUTIONS, LANGUAGES, type AspectRatio } from "@/lib/settings-schema";
+import { CLASSIFY_MODEL_LABEL, estimateClassificationCostUsd } from "@/lib/youtube/classification-pricing";
 import FieldError from "./FieldError";
 import SettingsFormCard from "./SettingsFormCard";
 import { useSettingsForm } from "./use-settings-form";
 
-const KEYS = ["favoriteModel", "defaultAspectRatio", "defaultImageCount", "defaultResolution", "language"] as const;
+const KEYS = [
+  "favoriteModel",
+  "defaultAspectRatio",
+  "defaultImageCount",
+  "defaultResolution",
+  "language",
+  "inspirationAutoClassify",
+] as const;
+
+const CLASSIFY_COST_PER_THOUSAND = `${estimateClassificationCostUsd(1000).toFixed(2).replace(".", ",")} $`;
 
 const MODEL_ITEMS = IMAGE_MODELS.map((model) => ({ value: model.id, label: model.label }));
 const LANGUAGE_ITEMS = LANGUAGES.map((language) => ({ value: language.code, label: language.label }));
@@ -154,6 +165,22 @@ export default function GenerationSection() {
               Utilisée par « Améliorer le prompt » et par l&apos;agent pour le texte placé sur les miniatures.
             </p>
             <FieldError message={form.issues.language} />
+          </div>
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid gap-1">
+              <Label htmlFor="generation-auto-classify">Classer automatiquement les miniatures (IA)</Label>
+              <p className="text-sm text-muted-foreground">
+                Range les miniatures des chaînes suivies par type avec {CLASSIFY_MODEL_LABEL} (environ{" "}
+                {CLASSIFY_COST_PER_THOUSAND} pour 1 000 miniatures). Une correction faite à la main n&apos;est jamais
+                remplacée.
+              </p>
+            </div>
+            <Switch
+              id="generation-auto-classify"
+              checked={values.inspirationAutoClassify}
+              onCheckedChange={(checked) => form.setValue("inspirationAutoClassify", checked)}
+            />
           </div>
         </>
       )}
