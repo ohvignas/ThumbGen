@@ -16,6 +16,7 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { RunIndicator } from "@/components/agent-runs/RunIndicator";
 
 export default function AppSidebar() {
   const pathname = usePathname();
@@ -49,6 +50,8 @@ export default function AppSidebar() {
                   <Film />
                   <span>Mes miniatures</span>
                 </SidebarMenuButton>
+                {/* Aggregated: the sidebar lists no project (visible in the collapsed rail too). */}
+                <RunIndicator className="pointer-events-none absolute top-1.5 right-1.5" />
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
