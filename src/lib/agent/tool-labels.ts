@@ -9,6 +9,7 @@ export const TOOL_LABELS: Record<string, string> = {
   list_projects: "Liste tes miniatures",
   list_past_generations: "Relit les générations passées",
   get_canvas_state: "Lit le canvas",
+  view_canvas_images: "Regarde les images du canvas",
   apply_workflow: "Construit le workflow",
   generate_sketch: "Dessine le croquis",
   extract_youtube_script: "Lit la transcription YouTube",
