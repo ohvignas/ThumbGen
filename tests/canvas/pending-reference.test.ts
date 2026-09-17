@@ -13,6 +13,10 @@ describe("pending reference", () => {
     expect(readPendingReference("?reference=0f5c2c1e-4b1d-4a5e-9d7e-1b2c3d4e5f60")).toBe("0f5c2c1e-4b1d-4a5e-9d7e-1b2c3d4e5f60");
     expect(readPendingReference("?other=1&reference=abc_123.png")).toBe("abc_123.png");
     expect(readPendingReference("?reference=../secret")).toBeNull();
+    expect(readPendingReference("?reference=javascript:alert(1)")).toBeNull();
+    expect(readPendingReference("?reference=..%2Fx")).toBeNull();
+    expect(readPendingReference("?reference=a/b")).toBeNull();
+    expect(readPendingReference("?reference=http://x")).toBeNull();
     expect(readPendingReference("?reference=")).toBeNull();
     expect(readPendingReference("")).toBeNull();
   });

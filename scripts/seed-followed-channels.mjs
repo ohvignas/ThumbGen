@@ -9,11 +9,11 @@
  *
  *   /opt/homebrew/bin/node scripts/seed-followed-channels.mjs <throwaway-db-path>
  *
- * Refuses data/thumbgen.db. Run it once the dev server has created the tables
+ * Refuses any path ending with data/thumbgen.db. Run it once the dev server has created the tables
  * (a single GET /api/channels is enough). Safe to run again.
  */
+import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 const target = process.argv[2];
@@ -21,9 +21,12 @@ if (!target) {
   console.error("Usage: node scripts/seed-followed-channels.mjs <throwaway-db-path>");
   process.exit(1);
 }
-const realDb = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "thumbgen.db");
-if (path.resolve(target) === realDb) {
-  console.error("Refusing to seed the real database (data/thumbgen.db).");
+// Any checkout's real database (this worktree's, the main one's, a copy's) ends with data/thumbgen.db.
+// realpath follows symlinks to an existing file; the check is case-insensitive for macOS volumes.
+const resolvedTarget = fs.existsSync(target) ? fs.realpathSync(target) : path.resolve(target);
+const looksReal = (candidate) => candidate.split(path.sep).join("/").toLowerCase().endsWith("/data/thumbgen.db");
+if (looksReal(path.resolve(target)) || looksReal(resolvedTarget)) {
+  console.error("Refusing to seed a real ThumbGen database (…/data/thumbgen.db).");
   process.exit(1);
 }
 
