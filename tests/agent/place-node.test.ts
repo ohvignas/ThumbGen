@@ -12,7 +12,7 @@ import { getDb } from "@/lib/db";
 import { listCanvasSnapshots } from "@/lib/canvas-snapshots";
 import { interviewHandle, placeInterviewNode, placeNodeInputSchema } from "@/lib/agent/place-node";
 import { PLACE_NODE_TOOL_NAME, buildPlaceNodeTool } from "@/lib/agent/v2/place-node-tool";
-import type { CanvasPatch } from "@/lib/canvas/canvas-patch";
+import { nextUpdatedAt, type CanvasPatch } from "@/lib/canvas/canvas-patch";
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -34,10 +34,12 @@ function canvas() {
   return { nodes: JSON.parse(row.nodes) as Node[], edges: JSON.parse(row.edges) as Edge[], updatedAt: row.updated_at };
 }
 
+/** A user save: like saveProject, updated_at never goes back (placements can stamp a few ms ahead of the clock). */
 function setCanvas(nodes: unknown[], edges: unknown[] = []) {
+  const row = getDb().prepare("SELECT updated_at FROM projects WHERE id = ?").get(projectId) as { updated_at: string } | undefined;
   getDb()
     .prepare("UPDATE projects SET nodes = ?, edges = ?, updated_at = ? WHERE id = ?")
-    .run(JSON.stringify(nodes), JSON.stringify(edges), "2026-09-17 08:00:00", projectId);
+    .run(JSON.stringify(nodes), JSON.stringify(edges), nextUpdatedAt(row?.updated_at), projectId);
 }
 
 const node = (id: string) => canvas().nodes.find((n) => n.id === id);
