@@ -77,7 +77,7 @@ Au premier accès à la base après un démarrage, un tour qui avait commencé (
   - point animé (`animate-pulse motion-reduce:animate-none`) sur un projet avec un run `running` ;
   - point fixe sur un projet avec une attention non vue ;
   - en ouvrant la miniature, les attentions de ses conversations sont marquées vues.
-- **Toast** (composant `sonner` s'il est déjà présent, sinon le toast shadcn) :
+- **Toast** : aucun composant toast n'existe encore dans le repo. On ajoute le composant shadcn `sonner` (`./node_modules/.bin/shadcn add sonner`, nouvelle dépendance `sonner`) et `<Toaster />` dans le layout :
   - quand un run passe de `running` à terminé, ou à une pause sur requête client, pour une conversation dont la miniature **n'est pas** la page ouverte ;
   - textes « L'agent a fini — <nom de la miniature> » / « L'agent te pose une question — <nom> », bouton « Ouvrir » vers `/m/<projectId>`.
 
