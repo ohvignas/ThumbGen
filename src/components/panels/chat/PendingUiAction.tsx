@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import LibraryPickerModal from "./LibraryPickerModal";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Button } from "@/components/ui/button";
+import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 import type { UIMessage } from "ai";
 
 /**
@@ -47,7 +48,7 @@ export default function PendingUiAction({
   // (reason/suggested_kind); `initial_image_id` was already speculative/
   // unused in the OLD UiToolRequest["input"] type this replaces.
   const input = part.input as { reason?: string; suggested_kind?: string; initial_image_id?: string } | undefined;
-  const toolName = part.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
+  const toolName = clientToolNameOfPartType(part.type);
   const toolCallId = part.toolCallId;
 
   const skip = () => onResolve(toolCallId, { skipped: true });

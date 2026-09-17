@@ -1,5 +1,6 @@
 import type { ChatStatus, UIMessage } from "ai";
 import { toolLabel } from "@/lib/agent/tool-labels";
+import { CLIENT_TOOL_NAME_SET } from "@/lib/agent/client-tools";
 import {
   FINISH_TURN_TOOL_NAME,
   RESULT_ID_PREFIX,
@@ -18,8 +19,8 @@ import {
 export type MessagePart = UIMessage["parts"][number];
 export type ToolPart = Extract<MessagePart, { type: `tool-${string}` }>;
 
-/** Client tools the chat resolves itself (PendingUiAction) — matches should-auto-continue.ts. */
-export const CLIENT_TOOL_NAMES: ReadonlySet<string> = new Set(["request_user_image", "request_user_sketch"]);
+/** Client tools the chat resolves itself (PendingUiAction) — see src/lib/agent/client-tools.ts. */
+export const CLIENT_TOOL_NAMES: ReadonlySet<string> = CLIENT_TOOL_NAME_SET;
 
 export type ToolStatus = "running" | "done" | "error";
 
