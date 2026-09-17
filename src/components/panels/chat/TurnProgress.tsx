@@ -25,9 +25,14 @@ export default function TurnProgress({
   steps: TurnStep[];
 }) {
   const elapsedMs = useElapsedMs(startedAt);
+  const label = currentStepLabel(message, status);
 
   return (
     <Collapsible className="flex flex-col gap-2">
+      {/* The one live region, outside the trigger button so label changes are announced (not the timer). */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {label}
+      </span>
       <CollapsibleTrigger
         render={
           <button
@@ -36,18 +41,18 @@ export default function TurnProgress({
           />
         }
       >
-        <Marker role="status" render={<span />} className="min-w-0 flex-1">
+        <Marker render={<span />} className="min-w-0 flex-1">
           <MarkerIcon>
             <Spinner />
           </MarkerIcon>
-          <MarkerContent className="truncate shimmer motion-reduce:shimmer-none">{currentStepLabel(message, status)}</MarkerContent>
+          <MarkerContent className="truncate shimmer motion-reduce:shimmer-none">{label}</MarkerContent>
         </Marker>
         <span aria-hidden="true" className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
           {formatElapsed(elapsedMs)}
         </span>
         <ChevronRightIcon
           aria-hidden="true"
-          className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/progress:rotate-90"
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/progress:rotate-90 motion-reduce:transition-none"
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-2">

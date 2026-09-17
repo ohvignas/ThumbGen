@@ -23,6 +23,8 @@ describe("TurnSteps", () => {
       ]),
     );
     const html = renderToStaticMarkup(<TurnSteps steps={turn.steps} live={false} />);
+    expect(html).toContain("group-data-[panel-open]/tool:rotate-90 motion-reduce:transition-none");
+    expect(html).toContain("motion-reduce:animate-none");
     expect(html).toContain("Réflexion");
     expect(html).not.toContain("Je réfléchis longuement.");
     expect(html).toContain("Je lis le canvas.");

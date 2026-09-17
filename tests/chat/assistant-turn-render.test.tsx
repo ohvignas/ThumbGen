@@ -60,6 +60,7 @@ describe("AssistantTurn — reopened conversation without finish_turn", () => {
     const turn = splitAssistantTurn(rowsToUIMessages(rows)[1]);
     const html = render(<AssistantTurn turn={turn} error={null} showActions onRetry={null} onAskAgent={noop} />);
     expect(html).toContain("12 s · 2 étapes");
+    expect(html).toContain("group-data-[panel-open]/steps:rotate-90 motion-reduce:transition-none");
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("Trois patterns ressortent");
     expect(html).not.toContain("Je cherche sur YouTube.");

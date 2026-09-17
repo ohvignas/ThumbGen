@@ -47,7 +47,7 @@ export default function SimpleToolPart({ step }: { step: ToolStep }) {
         <StatusIcon status={status} />
         <span className="min-w-0 flex-1 truncate">{step.label}</span>
         <span className="sr-only">({STATUS_TEXT[status]})</span>
-        <ChevronRightIcon aria-hidden="true" className="size-3.5 shrink-0 transition-transform group-data-[panel-open]/tool:rotate-90" />
+        <ChevronRightIcon aria-hidden="true" className="size-3.5 shrink-0 transition-transform group-data-[panel-open]/tool:rotate-90 motion-reduce:transition-none" />
       </CollapsibleTrigger>
       {status === "error" && step.errorText && <p className="pl-6 text-xs text-destructive">{step.errorText}</p>}
       <CollapsibleContent className="flex flex-col gap-2 pt-1.5 pl-6">

@@ -69,7 +69,7 @@ export default function AssistantTurn({
         <Collapsible className="flex flex-col gap-2">
           <MessageHeader className="px-0">
             <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="group/steps -ml-2 text-muted-foreground" />}>
-              <ChevronRightIcon data-icon="inline-start" className="transition-transform group-data-[panel-open]/steps:rotate-90" />
+              <ChevronRightIcon data-icon="inline-start" className="transition-transform group-data-[panel-open]/steps:rotate-90 motion-reduce:transition-none" />
               {turnHeaderLabel(turn)}
             </CollapsibleTrigger>
           </MessageHeader>
