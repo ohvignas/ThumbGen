@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { getDb } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { fetchBestThumbnail, saveThumbnailToLibrary } from "@/lib/youtube/thumbnails";
-import { ToolDefinition } from "./types";
+import { copyVideoThumbnailToLibrary } from "@/lib/youtube/use-thumbnail";
+import { ToolDefinition, type ToolResult } from "./types";
 import { registerTool } from "./index";
 
 const InputSchema = z.object({
@@ -9,12 +11,49 @@ const InputSchema = z.object({
   label: z.string().optional(),
 });
 
+function importedResult(swipeFileId: string, label: string, mime: string, bytes: Buffer): ToolResult {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: `Thumbnail imported. Reference: stored:sf_${swipeFileId} (label: "${label}", ${Math.round(
+          bytes.length / 1024,
+        )} KB). Wire this as a swipeFile (kind="reference") in apply_workflow.`,
+      },
+      { type: "image" as const, mimeType: mime, data: bytes.toString("base64") },
+    ],
+  };
+}
+
 export const importYoutubeThumbnailTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "import_youtube_thumbnail",
   description:
-    "Imports the published YouTube thumbnail of a video as a reference swipe-file in the user's library. Use this when the user wants to reuse one of THEIR OWN past video thumbnails (or any reference YT thumbnail) as visual inspiration in the workflow. Pass video_id (the 11-char ID, e.g. 'dQw4w9WgXcQ'). Returns a stored:sf_<id> reference you can immediately wire as a swipeFile (kind=\"reference\") in apply_workflow. Idempotent on the YouTube side (always fetches the current published thumbnail).",
+    "Imports the published YouTube thumbnail of a video as a reference swipe-file in the user's library. Use this when the user wants to reuse one of THEIR OWN past video thumbnails (or any reference YT thumbnail) as visual inspiration in the workflow. Pass video_id (the 11-char ID, e.g. 'dQw4w9WgXcQ'). Returns a stored:sf_<id> reference you can immediately wire as a swipeFile (kind=\"reference\") in apply_workflow. A video of a followed channel (see list_followed_videos) is copied into the library only once, shared with « Utiliser comme référence ».",
   inputSchema: InputSchema,
   handler: async ({ video_id, label }) => {
+    // A followed-channel video: same library copy as « Utiliser comme référence » (deduplicated).
+    const outcome = await copyVideoThumbnailToLibrary(video_id);
+    if (outcome.status === "existing" || outcome.status === "created") {
+      const row = getDb().prepare("SELECT mime_type, data FROM swipe_files WHERE id = ?").get(outcome.swipeFileId) as
+        | { mime_type: string; data: Buffer }
+        | undefined;
+      if (row) return importedResult(outcome.swipeFileId, outcome.label, row.mime_type, row.data);
+    }
+    if (outcome.status === "not-found" || outcome.status === "unreachable") {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text" as const,
+            text:
+              outcome.status === "not-found"
+                ? `No thumbnail found for video_id=${video_id}`
+                : `YouTube is unreachable, could not import video_id=${video_id}`,
+          },
+        ],
+      };
+    }
+
     const apiKey = getSetting("youtubeApiKey");
 
     // Best-effort metadata lookup for a sensible label
@@ -43,18 +82,7 @@ export const importYoutubeThumbnailTool: ToolDefinition<z.infer<typeof InputSche
     }
 
     const id = saveThumbnailToLibrary(derivedLabel, thumb);
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: `Thumbnail imported. Reference: stored:sf_${id} (label: "${derivedLabel}", ${Math.round(
-            thumb.bytes.length / 1024,
-          )} KB). Wire this as a swipeFile (kind="reference") in apply_workflow.`,
-        },
-        { type: "image" as const, mimeType: thumb.mime, data: thumb.bytes.toString("base64") },
-      ],
-    };
+    return importedResult(id, derivedLabel, thumb.mime, thumb.bytes);
   },
 };
 
