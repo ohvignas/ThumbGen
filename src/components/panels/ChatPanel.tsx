@@ -40,6 +40,8 @@ import {
 } from "./chat/chat-view-model";
 import { isBusyStatus } from "./chat/turn-model";
 import { applyCanvasPatchPart } from "./chat/canvas-patch-part";
+import { applyBriefUpdatedPart } from "./chat/brief-updated-part";
+import { useBriefStore } from "@/store/brief-store";
 import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
@@ -170,8 +172,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // addToolOutput — see the function's doc comment. A reconnection never
     // produces a resolved client request, so it never triggers a send.
     sendAutomaticallyWhen: autoContinueGuard.shouldSend,
-    // Guided interview: a node place_node wrote in the database, shown live and
-    // centered (transient part: never in the messages, never sent back).
+    // Guided journey: a node place_node wrote in the database, shown live and
+    // centered, and brief updates (transient parts: never in the messages, never sent back).
     onData: (dataPart) => {
       applyCanvasPatchPart(dataPart, {
         openProjectId: projectId,
@@ -183,6 +185,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
           });
         },
       });
+      // Thumbnail journey: the brief changed (badge, sheet, step line).
+      applyBriefUpdatedPart(dataPart);
     },
     onError: (turnError) => {
       turnFailedRef.current = true;
@@ -197,6 +201,13 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     useChatStore.getState().setActive(null);
   }, [projectId]);
+
+  // The open conversation's thumbnail brief (« Fiche », step line): a free local GET.
+  useEffect(() => {
+    void useBriefStore.getState().load(activeConversationId);
+  }, [activeConversationId]);
+
+  const journeyStep = useBriefStore((s) => (s.conversationId === activeConversationId ? (s.brief?.step ?? null) : null));
 
   // Reconnects to the turn the server may be running for this conversation.
   // Never starts one: a GET that answers 204 when nothing runs.
@@ -599,10 +610,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       stoppedLive: stoppedConversationId !== null && stoppedConversationId === activeConversationId,
       liveTurnStart: liveTurn,
       orphanUserTurn: orphanConversationId !== null && orphanConversationId === activeConversationId,
+      journeyStep,
       onAskAgent,
       onRetry,
     }),
-    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, liveTurn, orphanConversationId, onAskAgent, onRetry],
+    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, liveTurn, orphanConversationId, journeyStep, onAskAgent, onRetry],
   );
 
   return (
