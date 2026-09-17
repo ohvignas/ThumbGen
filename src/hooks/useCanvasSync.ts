@@ -28,6 +28,9 @@ const POLL_MS = 2000;
  *   value) is checked because a poll's GET can be answered, after a second
  *   self-save has already landed, with an earlier self-save's timestamp —
  *   still legitimately our own.
+ * - Skips the reload when the new `updated_at` is the store's
+ *   `knownUpdatedAt` (chantier F2): the canvas already holds that state — an
+ *   agent patch applied live, or a save whose response set it.
  * - Stops touching the store once `stop()` has been called: a tick's fetch
  *   can still be in flight when the caller (useCanvasSync's effect cleanup)
  *   unmounts or switches to a different project. Without this, a late
@@ -68,7 +71,7 @@ export function createProjectSyncPoller(
           // until the debounced save lands and dirty clears, then reload.
           return;
         }
-        if (state.recentOwnSaveUpdatedAts.includes(data.updated_at)) {
+        if (state.knownUpdatedAt === data.updated_at || state.recentOwnSaveUpdatedAts.includes(data.updated_at)) {
           // This tick is observing one of the app's own recent autosaves
           // landing (see the doc comment above) — not an external mutation.
           // Re-baseline so it isn't re-detected, but don't reload.

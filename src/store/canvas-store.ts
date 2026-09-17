@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import { v4 as uuid } from "uuid";
 import { migrateCanvas } from "@/lib/canvas/migrate-canvas";
+import { laterUpdatedAt, type CanvasPatchEdge, type CanvasPatchNode } from "@/lib/canvas/canvas-patch";
 import {
   edgesToRemoveForVariants,
   normalizeVariants,
@@ -106,6 +107,11 @@ interface CanvasState {
   // already landed and overwritten a single-value baseline, with the
   // *earlier* save's timestamp — which is still legitimately our own.
   recentOwnSaveUpdatedAts: string[];
+  // The `updated_at` of the server canvas this store's state is based on
+  // (chantier F2): set on load, on a successful save and when an agent patch
+  // is applied. Sent as `baseUpdatedAt` with every save so the server keeps
+  // agent nodes placed after it; a patch not newer than it is ignored.
+  knownUpdatedAt: string | null;
   currentProjectId: string;
   history: Snapshot[];
   historyIndex: number;
@@ -123,6 +129,10 @@ interface CanvasState {
     newNodeIsTarget?: boolean,
   ) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
+  // A node the agent placed on the server (`data-canvas-patch`): added or
+  // merged with its new edges as one history entry. The database already has
+  // it, so this neither marks the canvas dirty nor saves.
+  applyAgentPatch: (node: CanvasPatchNode, edges: CanvasPatchEdge[], updatedAt: string) => void;
   removeNode: (nodeId: string) => void;
   duplicateNode: (nodeId: string) => string;
   setAllSelected: (selected: boolean) => void;
@@ -180,6 +190,20 @@ const MAX_RECENT_SELF_SAVES = 5;
 
 let historyTimeout: ReturnType<typeof setTimeout> | null = null;
 
+const edgeKey = (edge: { source: string; target: string; targetHandle?: string | null }) =>
+  JSON.stringify([edge.source, edge.target, edge.targetHandle ?? ""]);
+
+/** `added` minus the edges already in `current` (same source, target and targetHandle), deduplicated. */
+function newEdges(current: Edge[], added: Edge[]): Edge[] {
+  const keys = new Set(current.map(edgeKey));
+  return added.filter((edge) => {
+    const key = edgeKey(edge);
+    if (keys.has(key)) return false;
+    keys.add(key);
+    return true;
+  });
+}
+
 function pushHistory(get: () => CanvasState, set: (s: Partial<CanvasState>) => void) {
   // Debounce history snapshots so rapid changes (e.g. dragging) collapse into one
   if (historyTimeout) clearTimeout(historyTimeout);
@@ -212,6 +236,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   saving: false,
   dirty: false,
   recentOwnSaveUpdatedAts: [],
+  knownUpdatedAt: null,
   currentProjectId: "default",
   history: [],
   historyIndex: -1,
@@ -295,6 +320,22 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       pushHistory(get, set);
       debouncedSave(get(), set);
     }
+  },
+
+  applyAgentPatch: (node, edges, updatedAt) => {
+    const state = get();
+    if (!state.loaded) return;
+    const exists = state.nodes.some((n) => n.id === node.id);
+    const nodes: AppNode[] = exists
+      ? state.nodes.map((n) => (n.id === node.id ? { ...n, data: { ...n.data, ...(node.data as NodeData) } } : n))
+      : [...state.nodes, { id: node.id, type: node.type, position: node.position, data: node.data as NodeData }];
+    set({
+      nodes,
+      edges: [...state.edges, ...newEdges(state.edges, edges)],
+      knownUpdatedAt: laterUpdatedAt(state.knownUpdatedAt, updatedAt),
+      recentOwnSaveUpdatedAts: [...state.recentOwnSaveUpdatedAts, updatedAt].slice(-MAX_RECENT_SELF_SAVES),
+    });
+    pushHistory(get, set);
   },
 
   removeNode: (nodeId) => {
@@ -438,7 +479,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const res = await fetch(`/api/project?id=${projectId}`);
       if (!res.ok) {
         console.warn("Project load returned non-OK status, using fallback");
-        set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+        set({ loaded: true, currentProjectId: projectId, knownUpdatedAt: null, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
         return;
       }
       const data = await res.json();
@@ -455,18 +496,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         edges: migrated.edges,
         loaded: true,
         currentProjectId: projectId,
+        knownUpdatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
         history: [initialSnapshot],
         historyIndex: 0,
       });
       if (migrated.changed) debouncedSave(get(), set);
     } catch (err) {
       console.error("Failed to load project:", err);
-      set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+      set({ loaded: true, currentProjectId: projectId, knownUpdatedAt: null, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
     }
   },
 
   saveProject: async (projectId?: string) => {
-    const { nodes, edges, saving, currentProjectId } = get();
+    // knownUpdatedAt is read with the nodes: the base of exactly this payload.
+    const { nodes, edges, saving, currentProjectId, knownUpdatedAt } = get();
     const pid = projectId || currentProjectId;
     if (saving) return;
 
@@ -503,7 +546,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const res = await fetch("/api/project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: pid, nodes: cleanNodes, edges }),
+        body: JSON.stringify({
+          projectId: pid,
+          nodes: cleanNodes,
+          edges,
+          ...(knownUpdatedAt !== null ? { baseUpdatedAt: knownUpdatedAt } : {}),
+        }),
       });
       // Record the updated_at the server assigned to this save, if it sent
       // one back, so useCanvasSync's poll can recognize its own autosave
@@ -512,9 +560,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       // recentOwnSaveUpdatedAts doc comment on CanvasState for why a single
       // value isn't enough.
       let updatedAt: string | undefined;
+      let reinjected: AppNode[] = [];
+      let reinjectedEdges: Edge[] = [];
       try {
-        const body = (await res.json()) as { updatedAt?: string };
-        updatedAt = body.updatedAt;
+        const body = (await res.json()) as { updatedAt?: string; reinjected?: unknown; reinjectedEdges?: unknown };
+        updatedAt = typeof body.updatedAt === "string" ? body.updatedAt : undefined;
+        if (Array.isArray(body.reinjected)) reinjected = body.reinjected as AppNode[];
+        if (Array.isArray(body.reinjectedEdges)) reinjectedEdges = body.reinjectedEdges as Edge[];
       } catch {
         // Response wasn't JSON (e.g. a proxy error page) — keep the
         // previously recorded self-save timestamps rather than fail the save.
@@ -524,11 +576,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       // clears dirty even though the edit never actually persisted. That's
       // pre-existing behavior, unrelated to the undo/sync-poll fix this
       // function is otherwise annotated for; left as-is here.
+      //
+      // Agent nodes the server kept although this payload lacked them
+      // (reinjected) join the local canvas without a history entry — unless
+      // another project was opened while the save ran.
+      const current = get();
+      const sameProject = current.currentProjectId === pid;
+      const localIds = new Set(current.nodes.map((node) => node.id));
+      const addedNodes = sameProject ? reinjected.filter((node) => !localIds.has(node.id)) : [];
+      const addedEdges = sameProject ? newEdges(current.edges, reinjectedEdges) : [];
       set({
         dirty: false,
         ...(updatedAt
-          ? { recentOwnSaveUpdatedAts: [...get().recentOwnSaveUpdatedAts, updatedAt].slice(-MAX_RECENT_SELF_SAVES) }
+          ? { recentOwnSaveUpdatedAts: [...current.recentOwnSaveUpdatedAts, updatedAt].slice(-MAX_RECENT_SELF_SAVES) }
           : {}),
+        ...(updatedAt && sameProject ? { knownUpdatedAt: laterUpdatedAt(current.knownUpdatedAt, updatedAt) } : {}),
+        ...(addedNodes.length > 0 ? { nodes: [...current.nodes, ...addedNodes] } : {}),
+        ...(addedEdges.length > 0 ? { edges: [...current.edges, ...addedEdges] } : {}),
       });
     } catch (err) {
       console.error("Failed to save project:", err);
