@@ -86,8 +86,10 @@ describe("finish_turn tool", () => {
     expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual({ ok: true });
   });
 
-  it("is the only chat-only tool", () => {
-    expect(listTools().filter((tool) => tool.chatOnly).map((tool) => tool.name)).toEqual([FINISH_TURN_TOOL_NAME]);
+  it("is one of the chat-only tools", () => {
+    expect(listTools().filter((tool) => tool.chatOnly).map((tool) => tool.name).sort()).toEqual(
+      [FINISH_TURN_TOOL_NAME, "list_followed_videos"].sort(),
+    );
   });
 
   it("is not listed to MCP clients, unlike the other registry tools", async () => {

@@ -15,4 +15,5 @@ import "./search-youtube";
 import "./search-youtube-channel";
 import "./get-channel-videos";
 import "./import-youtube-thumbnail";
+import "./list-followed-videos";
 import "./finish-turn";
