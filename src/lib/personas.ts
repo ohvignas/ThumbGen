@@ -27,15 +27,3 @@ export function personaNodeData(persona: PersonaSummary): {
   return { label: persona.label, personaId: persona.id, personaAngles };
 }
 
-/** Item of the chat « Bibliothèque » picker; null for a Personnage without photos. */
-export function personaPickerItem(
-  persona: PersonaSummary,
-): { source: string; preview_url: string; label: string } | null {
-  const angle = persona.angles[0];
-  if (!angle) return null;
-  return {
-    source: `stored:persona_${persona.id}`,
-    preview_url: personaImageUrl(persona.id, angle),
-    label: persona.label || "Personnage",
-  };
-}
