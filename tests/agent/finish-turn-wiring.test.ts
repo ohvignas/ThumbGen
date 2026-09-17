@@ -8,6 +8,7 @@ vi.mock("youtube-transcript", () => ({
 vi.mock("@/lib/agent/conversation/store", () => ({
   appendMessage: vi.fn(),
   listMessages: vi.fn(() => []),
+  getConversation: (id: string) => ({ id, project_id: "p1", title: "t", created_at: "", updated_at: "" }),
 }));
 
 vi.mock("@/lib/agent/v2/persist-turn", () => ({
@@ -27,6 +28,7 @@ vi.mock("ai", async (importOriginal) => {
 
 import { getDb } from "@/lib/db";
 import { setSetting } from "@/lib/settings";
+import { chatRequest, fakeStreamResult } from "./helpers/chat-route";
 import { getTool } from "@/lib/agent/tools";
 import { buildAiSdkTools } from "@/lib/agent/v2/tool-adapter";
 import { lastAssistantMessageIsCompleteWithClientToolCalls } from "@/components/panels/chat/should-auto-continue";
@@ -78,24 +80,18 @@ describe("chat route", () => {
     getDb().exec("DELETE FROM settings");
     setSetting("openrouterApiKey", "test-key");
     streamTextMock.mockReset();
-    streamTextMock.mockReturnValue({
-      toUIMessageStreamResponse: () => new Response("ok", { headers: { "content-type": "text/event-stream" } }),
-      consumeStream: vi.fn(async () => {}),
-    });
+    streamTextMock.mockImplementation(() => fakeStreamResult({ autoEnd: true }));
   });
 
   it("stops the tool loop right after a finish_turn step, and only then", async () => {
     const { postV2 } = await import("@/lib/agent/v2/route-handler");
     await postV2(
-      new Request("http://localhost/api/agent/chat", {
-        method: "POST",
-        body: JSON.stringify({
+      chatRequest({
           conversation_id: `c-${Math.random().toString(36).slice(2)}`,
           project_id: "p1",
           messages: [{ role: "user", parts: [{ type: "text", text: "Salut" }] }],
           canvas_snapshot: { nodes: [], edges: [] },
         }),
-      }) as never,
     );
     const args = streamTextMock.mock.calls[0][0] as { tools: Record<string, unknown>; stopWhen: StopCondition[] };
     expect(Object.keys(args.tools)).toContain("finish_turn");

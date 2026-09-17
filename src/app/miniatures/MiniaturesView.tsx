@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ImagePlus, Images, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { RunIndicator } from "@/components/agent-runs/RunIndicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -58,7 +59,7 @@ function formatDate(iso: string): string {
   return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function ProjectTile({ id }: { id: string }) {
+function ProjectTile({ id, children }: { id: string; children?: ReactNode }) {
   return (
     <div className={`relative flex aspect-video items-center justify-center overflow-hidden bg-linear-to-br ${gradientFor(id)}`}>
       <div className="absolute -top-1/2 -left-1/4 size-[120%] rounded-full bg-white/20 blur-3xl" />
@@ -66,6 +67,7 @@ function ProjectTile({ id }: { id: string }) {
         <ImagePlus aria-hidden className="absolute size-10 translate-x-0.5 translate-y-1 text-black/35" strokeWidth={2.25} />
         <ImagePlus aria-hidden className="relative size-10 text-white drop-shadow-[0_1px_0_rgba(255,255,255,0.6)]" strokeWidth={2.25} />
       </div>
+      {children}
     </div>
   );
 }
@@ -248,7 +250,9 @@ export default function MiniaturesView() {
               onKeyDown={(e) => { if (e.key === "Enter") router.push(`/m/${project.id}`); }}
               className="cursor-pointer gap-0 pt-0 transition-colors hover:border-ring focus-visible:border-ring focus-visible:outline-none"
             >
-              <ProjectTile id={project.id} />
+              <ProjectTile id={project.id}>
+                <RunIndicator projectId={project.id} className="absolute top-3 right-3 size-3" />
+              </ProjectTile>
               <CardHeader className="pt-4">
                 <CardTitle className="line-clamp-1">{project.name}</CardTitle>
                 <CardDescription className="line-clamp-2 min-h-10">

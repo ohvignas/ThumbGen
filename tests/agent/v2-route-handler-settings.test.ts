@@ -7,6 +7,7 @@ vi.mock("youtube-transcript", () => ({
 vi.mock("@/lib/agent/conversation/store", () => ({
   appendMessage: vi.fn(),
   listMessages: vi.fn(() => []),
+  getConversation: (id: string) => ({ id, project_id: "p1", title: "t", created_at: "", updated_at: "" }),
 }));
 
 vi.mock("@/lib/agent/v2/persist-turn", () => ({
@@ -34,31 +35,22 @@ vi.mock("ai", async (importOriginal) => {
 
 import { getDb } from "@/lib/db";
 import { setSetting, updateSettings } from "@/lib/settings";
+import { chatRequest, fakeStreamResult } from "./helpers/chat-route";
 
 type StreamArgs = {
   system: string;
   providerOptions: { openrouter: { reasoning?: { effort: string } } };
 };
 
-function streamResult() {
-  return {
-    toUIMessageStreamResponse: () => new Response("ok", { headers: { "content-type": "text/event-stream" } }),
-    consumeStream: vi.fn(async () => {}),
-  };
-}
-
 async function send(text = "hi") {
   const { postV2 } = await import("@/lib/agent/v2/route-handler");
   return postV2(
-    new Request("http://localhost/api/agent/chat", {
-      method: "POST",
-      body: JSON.stringify({
+    chatRequest({
         conversation_id: `c-${Math.random().toString(36).slice(2)}`,
         project_id: "p1",
         messages: [{ role: "user", parts: [{ type: "text", text }] }],
         canvas_snapshot: { nodes: [], edges: [] },
       }),
-    }) as never,
   );
 }
 
@@ -71,7 +63,7 @@ describe("postV2 reads the agent settings", () => {
     getDb().exec("DELETE FROM settings");
     setSetting("openrouterApiKey", "test-key");
     streamTextMock.mockReset();
-    streamTextMock.mockReturnValue(streamResult());
+    streamTextMock.mockImplementation(() => fakeStreamResult({ autoEnd: true }));
     isStepCountMock.mockClear();
     generateAndPersistTitleMock.mockClear();
   });

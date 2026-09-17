@@ -47,6 +47,12 @@ export function listProjects(): ProjectMeta[] {
   }));
 }
 
+/** The project's name, or null when it does not exist (deleted). */
+export function getProjectName(id: string): string | null {
+  const row = getDb().prepare("SELECT name FROM projects_meta WHERE id = ?").get(id) as { name: string } | undefined;
+  return row?.name ?? null;
+}
+
 export function createProject(name: string, description = ""): { id: string; name: string } {
   const db = getDb();
   const id = `proj_${Date.now()}`;
