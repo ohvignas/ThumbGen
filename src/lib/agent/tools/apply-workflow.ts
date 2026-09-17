@@ -5,6 +5,7 @@ import { ToolDefinition } from "./types";
 import { registerTool } from "./index";
 import { mergeBlueprintSchema, type CanvasNodeRef } from "@/lib/agent/blueprint/schema";
 import { createCanvasSnapshot, writeProjectCanvas } from "@/lib/canvas-snapshots";
+import { nextUpdatedAt } from "@/lib/canvas/canvas-patch";
 import { edgesToRemoveForVariants, type VariantId } from "@/lib/canvas/generator-variants";
 import { autoLayout, NODE_W } from "./_helpers/auto-layout";
 import { imageExists, markAttached } from "./_helpers/image-source";
@@ -217,7 +218,7 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         (fresh && row && (fresh.updated_at !== row.updated_at || fresh.nodes !== row.nodes || fresh.edges !== row.edges));
       if (changed) return false;
       if (fresh) createCanvasSnapshot(project_id, fresh.nodes, fresh.edges, "apply_workflow", db);
-      writeProjectCanvas(project_id, JSON.stringify(finalNodes), JSON.stringify(finalEdges), db);
+      writeProjectCanvas(project_id, JSON.stringify(finalNodes), JSON.stringify(finalEdges), db, nextUpdatedAt(fresh?.updated_at));
       return true;
     })();
     if (!written) {

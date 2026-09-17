@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
+import { nextUpdatedAt } from "./canvas/canvas-patch";
 
 /**
  * Canvas states saved right before an agent write, so any agent change can be
@@ -112,8 +113,8 @@ export function writeProjectCanvas(
 export function restoreCanvasSnapshot(projectId: string, snapshotId: string): { updated_at: string } | null {
   const db = getDb();
   return db.transaction(() => {
-    const current = db.prepare("SELECT nodes, edges FROM projects WHERE id = ?").get(projectId) as
-      | { nodes: string; edges: string }
+    const current = db.prepare("SELECT nodes, edges, updated_at FROM projects WHERE id = ?").get(projectId) as
+      | { nodes: string; edges: string; updated_at: string }
       | undefined;
     if (!current) return null;
     const snapshot = db
@@ -121,7 +122,7 @@ export function restoreCanvasSnapshot(projectId: string, snapshotId: string): { 
       .get(snapshotId, projectId) as { nodes: string; edges: string } | undefined;
     if (!snapshot) return null;
     createCanvasSnapshot(projectId, current.nodes, current.edges, "restore", db);
-    const updatedAt = writeProjectCanvas(projectId, snapshot.nodes, snapshot.edges, db);
+    const updatedAt = writeProjectCanvas(projectId, snapshot.nodes, snapshot.edges, db, nextUpdatedAt(current.updated_at));
     return { updated_at: updatedAt };
   })();
 }
