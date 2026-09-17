@@ -59,6 +59,24 @@ describe("system prompt — thumbnail journey", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
+  it("asks style and colors in a second step-5 question only without brand colors", () => {
+    const step5 = section().split("\n").find((line) => line.startsWith("5. Common elements"))!;
+    expect(step5).toMatch(/one or two questions/);
+    expect(step5).toMatch(/no brand colors in <channel_profile>.*second ask_user \(step 5\)/);
+    expect(step5).not.toContain("in the same question");
+  });
+
+  it("keeps each card question under 200 characters, the card details in the option descriptions", () => {
+    const step6 = section().split("\n").find((line) => line.startsWith("6. Composition cards"))!;
+    expect(step6).toContain("question ≤ 200 characters");
+    expect(step6).toMatch(/card details go in the option descriptions/);
+    expect(step6).not.toContain("<the card in one line>");
+  });
+
+  it("resumes at the brief's step unless the request is about the existing workflow", () => {
+    expect(section()).toContain("resume at its step unless the request is about the existing workflow");
+  });
+
   it("writes every decision to the brief and trusts <thumbnail_brief>", () => {
     const text = section();
     expect(text).toContain("update_brief");

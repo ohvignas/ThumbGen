@@ -102,17 +102,17 @@ Thumbnail text with accents or more than 2 words → openai. A Personnage and no
 // 5. WORKED EXAMPLE — show the format in action
 // ─────────────────────────────────────────────────────────────────────────
 
-export const WORKED_EXAMPLE = `WORKED EXAMPLE — package "Claude remplace Figma ?" (title "J'ai remplacé Figma par Claude pendant 7 jours", thumbnail text "FIGMA ?"), with the user's Personnage connected. 3 elements: the man (hero), the Claude logo, the cracked Figma logo.
+export const WORKED_EXAMPLE = `WORKED EXAMPLE — package "Claude remplace Figma ?" (title "J'ai remplacé Figma par Claude pendant 7 jours", thumbnail text "ADIEU ?"), with the user's Personnage connected. 3 elements: the man (hero), the Claude logo, the cracked Figma logo.
 
-Young man in the right third of the foreground, eyebrows raised and eyes slightly narrowed in skeptical surprise, mouth closed, head tilted slightly left, holding a tablet toward the camera.
+Young man in the right third of the foreground, eyebrows raised and eyes slightly narrowed in skeptical surprise, mouth closed, head tilted slightly left, one hand raised toward the Claude logo.
 Behind him in the midground, a large Figma logo cracks into a few glowing orange shards; further back, a dark design studio with purple wall accents fades into bokeh.
 Medium shot with action, subject occupies the right 45% of the frame; midground slightly out of focus; background blurred to soft bokeh.
-Claude logo (orange 8-pointed star, 14% frame) glowing on the tablet screen, foreground. Cracked Figma logo (18% frame) midground left, behind the subject's shoulder.
-"FIGMA ?" in white bold sans-serif, top-left corner, thick black outline, 18% frame height.
+Claude logo (orange 8-pointed star, 14% frame) glowing just above his raised hand, foreground. Cracked Figma logo (18% frame) midground left, behind the subject's shoulder.
+"ADIEU ?" in white bold sans-serif, top-left corner, thick black outline, 18% frame height.
 Warm orange key light on the subject from the left, cool blue rim light from behind, background deep navy.
 photorealistic, cinematic.
 
-Notice: 7 sentences, no labels, exactly 3 elements (hero included), a moderate emotion with the mouth closed, a 2-word text that complements the title instead of repeating it, lighting layered per plane, style is 2 words. THIS is the bar.`;
+Notice: 7 sentences, no labels, exactly 3 elements (hero included) and nothing else in the frame, a moderate emotion with the mouth closed, a 1-word text that shares no word with the title and adds what it leaves unsaid, lighting layered per plane, style is 2 words. THIS is the bar.`;
 
 // ─────────────────────────────────────────────────────────────────────────
 // 6. NEGATIVE PROMPT SUGGESTIONS — what to ban globally

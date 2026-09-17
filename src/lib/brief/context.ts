@@ -45,7 +45,7 @@ export function buildThumbnailBriefBlock(brief: ThumbnailBrief): string {
     .replace(/>/g, "›");
   return [
     "<thumbnail_brief>",
-    "The thumbnail brief of this conversation (THUMBNAIL JOURNEY): every decision so far. It is the source of truth — trust it over the chat history, and resume at its step.",
+    "The thumbnail brief of this conversation (THUMBNAIL JOURNEY): every decision so far. It is the source of truth — trust it over the chat history, and resume at its step unless the request is about the existing workflow.",
     json,
     "</thumbnail_brief>",
   ].join("\n");

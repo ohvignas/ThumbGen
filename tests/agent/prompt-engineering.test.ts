@@ -7,6 +7,7 @@ import {
   buildAgentRubric,
   buildEnhanceRubric,
 } from "@/lib/prompt-engineering";
+import { normalizeWords } from "@/lib/brief/merge";
 
 describe("thumbnail guidance", () => {
   const rubrics = [buildAgentRubric(), buildEnhanceRubric("fr")];
@@ -37,5 +38,11 @@ describe("thumbnail guidance", () => {
     expect(WORKED_EXAMPLE).toContain("mouth closed");
     expect(WORKED_EXAMPLE).toContain("exactly 3 elements");
     expect(WORKED_EXAMPLE).not.toMatch(/mouth wide open|extreme shock/);
+    // Its own rules: the thumbnail text shares no word with the title, and nothing beyond the 3 named elements.
+    const title = WORKED_EXAMPLE.match(/title "([^"]+)"/)![1];
+    const text = WORKED_EXAMPLE.match(/thumbnail text "([^"]+)"/)![1];
+    expect(normalizeWords(text).filter((word) => normalizeWords(title).includes(word))).toEqual([]);
+    expect(WORKED_EXAMPLE).toContain(`"${text}" in white`);
+    expect(WORKED_EXAMPLE).not.toMatch(/\b(tablet|laptop|phone|screen|arrow)\b/i);
   });
 });

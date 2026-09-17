@@ -28,6 +28,7 @@ describe("<thumbnail_brief> block", () => {
     expect(block.startsWith("<thumbnail_brief>\n")).toBe(true);
     expect(block.endsWith("\n</thumbnail_brief>")).toBe(true);
     expect(block).toContain("trust it over the chat history");
+    expect(block).toContain("resume at its step unless the request is about the existing workflow");
     expect(block).toContain(`${"s".repeat(BRIEF_CONTEXT_SCRIPT_CHARS)}…`);
     expect(block).not.toContain("s".repeat(BRIEF_CONTEXT_SCRIPT_CHARS + 1));
     expect(block).toContain('"scriptChars":2000');
