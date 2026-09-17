@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { streamText, isStepCount, hasToolCall, createUIMessageStreamResponse, type ModelMessage } from "ai";
-import { resolveAgentLanguageModel } from "./agent-model";
+import { FAKE_AGENT_WARNING, resolveAgentLanguageModel } from "./agent-model";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
 import { trimToolResultImages } from "./history-images";
@@ -444,6 +444,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // output fires both the per-chunk onError and onEnd for the same turn).
   let turnPersisted = false;
 
+  if (agentModel.fake) console.warn(FAKE_AGENT_WARNING);
   const result = streamText({
     model: agentModel.model,
     system: systemText,

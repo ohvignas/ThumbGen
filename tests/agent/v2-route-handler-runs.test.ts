@@ -207,4 +207,19 @@ describe("postV2 runs the turn in the background", () => {
 
     expect(statusAtSave).toEqual(["running", "running"]);
   });
+
+  it("with the dev fake model, warns once per accepted turn and never for a refused one", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("THUMBGEN_FAKE_AGENT", "1");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect((await post(userTurn("c-fake"))).status).toBe(200);
+      expect((await post(userTurn("c-fake", "Encore"))).status).toBe(409);
+      const fakeWarnings = warn.mock.calls.filter((call) => String(call[0]).includes("THUMBGEN_FAKE_AGENT"));
+      expect(fakeWarnings).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
 });
