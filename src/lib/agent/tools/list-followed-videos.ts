@@ -30,24 +30,19 @@ function performanceText(video: VideoListItem): string {
   return "n/a";
 }
 
-function myChannelId(): string | null {
-  const row = getDb().prepare("SELECT id FROM followed_channels WHERE is_mine = 1 ORDER BY id LIMIT 1").get() as
-    | { id: string }
-    | undefined;
-  return row?.id ?? null;
+function hasMyChannel(): boolean {
+  return Boolean(getDb().prepare("SELECT 1 FROM followed_channels WHERE is_mine = 1 LIMIT 1").get());
 }
 
 export const listFollowedVideosTool: ToolDefinition<Input> = {
   name: "list_followed_videos",
   description:
-    "Lists videos already synced from the user's followed YouTube channels (local data, no YouTube API call, no quota). scope \"mine\" = the channel marked « Ma chaîne », \"all\" = every followed channel; sort \"date\" or \"score\" (views divided by the channel's median views); best_type keeps only the best performing thumbnail type. One line per video: youtube:<videoId> (usable as an ask_user option image, and its id with import_youtube_thumbnail), title, channel, thumbnail type and performance ratio.",
+    "Lists videos already synced from the user's followed YouTube channels (local data, no YouTube API call, no quota). scope \"mine\" = the channels marked « Ma chaîne », \"all\" = every followed channel; sort \"date\" or \"score\" (views divided by the channel's median views); best_type keeps only the best performing thumbnail type. One line per video: youtube:<videoId> (usable as an ask_user option image, and its id with import_youtube_thumbnail), title, channel, thumbnail type and performance ratio.",
   inputSchema: InputSchema,
   chatOnly: true,
   handler: async ({ scope, sort, best_type, limit }) => {
-    let channelId: string | null = null;
     if (scope === "mine") {
-      channelId = myChannelId();
-      if (!channelId) {
+      if (!hasMyChannel()) {
         return {
           content: [
             {
@@ -69,7 +64,8 @@ export const listFollowedVideosTool: ToolDefinition<Input> = {
     const { items } = listVideos({
       sort,
       types: bestType ? [bestType] : [],
-      channelId,
+      channelId: null,
+      mine: scope === "mine",
       period: "all",
       q: "",
       offset: 0,

@@ -109,6 +109,15 @@ describe("list_followed_videos", () => {
     expect(ids(text)).toHaveLength(4);
   });
 
+  it("covers every channel marked « Ma chaîne », like the types summary", async () => {
+    seed();
+    const second = channel("s", "Ma deuxième chaîne", true);
+    store.upsertVideos(second, [video("seco0000001", 5, 100)], new Date().toISOString());
+    const { text } = await run({ scope: "mine", sort: "date", limit: 12 });
+    expect(ids(text)).toEqual(["seco0000001", "mine0000001", "mine0000002", "mine0000003", "mine0000004"]);
+    expect(ids(text)).not.toContain("othr0000001");
+  });
+
   it("answers without error when no channel is « Ma chaîne »", async () => {
     channel("o", "Concurrent", false);
     const { result, text } = await run({ scope: "mine" });
