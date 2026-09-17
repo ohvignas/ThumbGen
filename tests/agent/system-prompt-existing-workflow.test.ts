@@ -14,9 +14,9 @@ describe("system prompt — existing workflow", () => {
     expect(text).toMatch(/<canvas_state>/);
     expect(text).toMatch(/priority/i);
     expect(text).toMatch(/look at, analyse, complete, improve or modify/);
-    expect(text).toMatch(/An angle pick, or any other precise request/);
+    expect(text).toMatch(/A precise request/);
     expect(text).not.toMatch(/picking an angle\)/);
-    expect(AGENT_SYSTEM_PROMPT.indexOf("EXISTING WORKFLOW")).toBeLessThan(AGENT_SYSTEM_PROMPT.indexOf("Mental checklist"));
+    expect(AGENT_SYSTEM_PROMPT.indexOf("EXISTING WORKFLOW")).toBeLessThan(AGENT_SYSTEM_PROMPT.indexOf("THUMBNAIL JOURNEY —"));
   });
 
   it("understands first: view_canvas_images, the prompts, what the user added, the chosen generated image", () => {
@@ -54,14 +54,10 @@ describe("system prompt — existing workflow", () => {
     expect(section()).toMatch(/restored/);
   });
 
-  it("builds right away on an angle pick, sending only new or changed nodes on a non-empty canvas", () => {
-    const line = AGENT_SYSTEM_PROMPT.split("\n").find((l) => l.includes("IMMEDIATELY call apply_workflow"));
-    expect(line).toBeDefined();
-    expect(line).toContain("precise request");
-    expect(line).toContain("COMPLETE blueprint");
-    expect(line).toMatch(/only the new or changed nodes/);
-    expect(line).toMatch(/remove nothing unless the user explicitly asked/);
-    expect(line).not.toMatch(/follow EXISTING WORKFLOW instead/);
+  it("acts right away on a precise request, sending only new or changed nodes", () => {
+    const text = section();
+    expect(text).toContain("act on it right away, sending only new or changed nodes");
+    expect(text).toContain("priority over the THUMBNAIL JOURNEY");
   });
 
   it("no longer asks to rebuild the whole workflow when iterating", () => {

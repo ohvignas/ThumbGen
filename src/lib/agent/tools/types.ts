@@ -4,7 +4,12 @@ export type ToolContent =
   | { type: "text"; text: string }
   | { type: "image"; mimeType: string; data: string }; // base64
 
-export type ToolResult = { content: ToolContent[]; isError?: boolean };
+export type ToolResult = {
+  content: ToolContent[];
+  isError?: boolean;
+  /** Set on an error that happened before any paid request left the app (cost guards give their reservation back). */
+  requestNotSent?: boolean;
+};
 
 export type ToolHandler<I> = (input: I) => Promise<ToolResult>;
 

@@ -1,22 +1,23 @@
 import { z } from "zod";
 
 /**
- * `ask_user` (chantier F2): one clickable question of the guided interview.
- * A client tool — no `execute`: the turn pauses until the chat card answers
- * `{ selected }`, `{ other }` or `{ skipped }`. Pure — shared by the chat
- * route's tool declaration, the question card and the turn model.
+ * `ask_user` (chantiers F2, F3): one clickable question of the thumbnail
+ * journey. A client tool — no `execute`: the turn pauses until the chat card
+ * answers `{ selected }`, `{ other }` or `{ skipped }`. With no option it is a
+ * free question answered with `{ other }`. Pure — shared by the chat route's
+ * tool declaration, the question card and the turn model.
  */
 export const ASK_USER_TOOL_NAME = "ask_user";
 
-/** The guided interview's fixed number of questions (« Question n/8 »). */
-export const ASK_USER_TOTAL_STEPS = 8;
+/** The thumbnail journey's number of steps (« Étape n/7 »). */
+export const ASK_USER_TOTAL_STEPS = 7;
 
 export const ASK_USER_LIMITS = {
   question: 200,
-  options: 6,
+  options: 12,
   label: 60,
   description: 140,
-  maxSelected: 3,
+  maxSelected: 5,
   other: 300,
   optionId: 40,
 } as const;
@@ -34,7 +35,7 @@ const optionSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Optional thumbnail: a ref from the list tools — stored:persona_<id>, stored:sf_<id>, stored:lg_<id> — or youtube:<videoId>.",
+      "Optional thumbnail: stored:persona_<id>, stored:sf_<id>, stored:lg_<id>, youtube:<videoId> or generated:sk_<id> (a sketch).",
     ),
 });
 
@@ -46,7 +47,7 @@ export const askUserInputSchema = z
       .int()
       .min(1)
       .max(ASK_USER_TOTAL_STEPS)
-      .describe("The guided interview's question number (1 to 8), never renumbered when a question is skipped."),
+      .describe("The thumbnail journey step (1 to 7) this question belongs to; several questions may share a step."),
     multiple: z.boolean().default(false).describe("true lets the user pick several options, then « Valider »."),
     max_selected: z
       .number()
@@ -54,13 +55,19 @@ export const askUserInputSchema = z
       .min(1)
       .max(ASK_USER_LIMITS.maxSelected)
       .optional()
-      .describe("Only with multiple: at most this many picks (1 to 3)."),
-    options: z.array(optionSchema).min(1).max(ASK_USER_LIMITS.options).describe("1 to 6 options."),
+      .describe("Only with multiple: at most this many picks (1 to 5)."),
+    options: z
+      .array(optionSchema)
+      .max(ASK_USER_LIMITS.options)
+      .describe("0 to 12 options. No option = a free question: the user types the answer."),
     allow_skip: z.boolean().default(true).describe("Shows « Passer »."),
   })
   .superRefine((input, ctx) => {
     if (input.max_selected !== undefined && !input.multiple) {
       ctx.addIssue({ code: "custom", path: ["max_selected"], message: "max_selected requires multiple: true" });
+    }
+    if (input.multiple && input.options.length === 0) {
+      ctx.addIssue({ code: "custom", path: ["multiple"], message: "multiple requires at least one option" });
     }
     const seen = new Set<string>();
     input.options.forEach((option, index) => {
@@ -79,6 +86,21 @@ export type AskUserOutput = { selected: string[] } | { other: string } | { skipp
 export function parseAskUserInput(input: unknown): AskUserInput | null {
   const parsed = askUserInputSchema.safeParse(input);
   return parsed.success ? parsed.data : null;
+}
+
+/** The F2 guided interview's last question (« Question 8/8 »), still found in stored conversations. */
+const F2_LAST_STEP = 8;
+
+/**
+ * For display only (folded history lines): also reads a question stored by the
+ * F2 interview with step 8. The model's schema and the answer card keep 1 to 7.
+ */
+export function parseStoredAskUserInput(input: unknown): AskUserInput | null {
+  const strict = parseAskUserInput(input);
+  if (strict || !input || typeof input !== "object") return strict;
+  if ((input as { step?: unknown }).step !== F2_LAST_STEP) return null;
+  const parsed = parseAskUserInput({ ...input, step: ASK_USER_TOTAL_STEPS });
+  return parsed ? { ...parsed, step: F2_LAST_STEP } : null;
 }
 
 /** How many options the card lets the user pick. */
@@ -104,19 +126,19 @@ export function readAskUserOutput(output: unknown): AskUserOutput | null {
   return null;
 }
 
-/** « Choc, Démo », « Autre : … », « Passé », « sans réponse » (abandoned); null when there is no readable answer. */
+/** « Choc, Démo », « Autre : … » (the text alone for a free question), « Passé », « sans réponse »; null without a readable answer. */
 export function askUserAnswerText(input: AskUserInput | null, output: AskUserOutput | null): string | null {
   if (!output) return null;
   if ("selected" in output) {
     return output.selected.map((id) => input?.options.find((option) => option.id === id)?.label ?? id).join(", ");
   }
-  if ("other" in output) return `Autre : ${output.other}`;
+  if ("other" in output) return input && input.options.length === 0 ? output.other : `Autre : ${output.other}`;
   return output.reason === "abandoned" ? "sans réponse" : "Passé";
 }
 
 /** Folded step line « <question> : <réponse> », or null when the input or the answer can't be read. */
 export function askUserStepLabel(input: unknown, output: unknown): string | null {
-  const parsed = parseAskUserInput(input);
+  const parsed = parseStoredAskUserInput(input);
   if (!parsed) return null;
   const answer = askUserAnswerText(parsed, readAskUserOutput(output));
   return answer === null ? null : `${parsed.question} : ${answer}`;
@@ -129,7 +151,7 @@ const SAFE_ID = /^[\w-]+$/;
 /** URL and tile shape of an option image; null for anything that is not a known reference. */
 export function askUserOptionImage(image: string | undefined): AskUserOptionImage | null {
   if (!image) return null;
-  const match = image.match(/^(stored:persona_|stored:sf_|stored:lg_|youtube:)(.+)$/);
+  const match = image.match(/^(stored:persona_|stored:sf_|stored:lg_|youtube:|generated:sk_)(.+)$/);
   if (!match || !SAFE_ID.test(match[2])) return null;
   const id = encodeURIComponent(match[2]);
   switch (match[1]) {
@@ -139,6 +161,8 @@ export function askUserOptionImage(image: string | undefined): AskUserOptionImag
       return { src: `/api/swipe-files/image?f=${id}`, shape: "wide" };
     case "stored:lg_":
       return { src: `/api/logos/image?f=${id}`, shape: "square" };
+    case "generated:sk_":
+      return { src: `/api/generated-sketches/sk_${id}`, shape: "wide" };
     default:
       return { src: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, shape: "wide" };
   }

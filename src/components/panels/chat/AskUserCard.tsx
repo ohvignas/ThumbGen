@@ -70,10 +70,11 @@ function OptionThumbnail({
 }
 
 /**
- * One guided-interview question (`ask_user`): options as a thumbnail grid or a
- * list, « Autre… » free text and « Passer ». Answers exactly once — every
- * control is disabled after the first answer, and enabled again only when
- * `onAnswer` throws or its promise rejects (the answer was not sent).
+ * One thumbnail-journey question (`ask_user`): options as a thumbnail grid or a
+ * list, « Autre… » free text and « Passer »; with no option, only the free text
+ * field (« Ta réponse… »). Answers exactly once — every control is disabled
+ * after the first answer, and enabled again only when `onAnswer` throws or its
+ * promise rejects (the answer was not sent).
  */
 export default function AskUserCard({
   input,
@@ -139,6 +140,7 @@ export default function AskUserCard({
   const maxSelected = askUserMaxSelected(question);
   const firstImage = question.options.map((option) => askUserOptionImage(option.image)).find((image) => image !== null);
   const shape = firstImage?.shape ?? null;
+  const freeQuestion = question.options.length === 0;
 
   const toggle = (id: string, pressed: boolean) =>
     setSelected((current) => (pressed ? [...current.filter((value) => value !== id), id] : current.filter((value) => value !== id)));
@@ -203,20 +205,22 @@ export default function AskUserCard({
     <div ref={groupRef} tabIndex={-1} role="group" aria-label={question.question} className="flex flex-col gap-2.5 outline-none">
       <div className="flex flex-col gap-0.5">
         <p className="text-xs text-muted-foreground">
-          Question {question.step}/{ASK_USER_TOTAL_STEPS}
+          Étape {question.step}/{ASK_USER_TOTAL_STEPS}
         </p>
         <p className="text-sm leading-snug font-medium text-foreground">{question.question}</p>
       </div>
 
-      <div
-        className={cn(
-          shape ? "grid gap-1.5" : "flex flex-col gap-1.5",
-          shape === "wide" && "grid-cols-2",
-          shape === "square" && "grid-cols-3",
-        )}
-      >
-        {question.options.map(renderOption)}
-      </div>
+      {!freeQuestion && (
+        <div
+          className={cn(
+            shape ? "grid gap-1.5" : question.options.length > 6 ? "grid grid-cols-2 gap-1.5" : "flex flex-col gap-1.5",
+            shape === "wide" && "grid-cols-2",
+            shape === "square" && "grid-cols-3",
+          )}
+        >
+          {question.options.map(renderOption)}
+        </div>
+      )}
 
       {question.multiple && (
         <p className="-mt-1 text-xs text-muted-foreground">
@@ -241,15 +245,22 @@ export default function AskUserCard({
         <Input
           value={other}
           onChange={(event) => setOther(event.target.value)}
-          // Explicit Enter (not only the form's implicit submission, which some key events skip).
+          // Explicit Enter: the form's implicit submission is skipped while the field is composing, and
+          // macOS inline predictive text keeps it composing (Enter did nothing while « Envoyer » worked).
+          // While composing, submit on the next tick so the committed text lands first.
           onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+            if (event.key !== "Enter") return;
             event.preventDefault();
-            sendOther();
+            if (!event.nativeEvent.isComposing) {
+              sendOther();
+              return;
+            }
+            const form = event.currentTarget.form;
+            setTimeout(() => form?.requestSubmit(), 0);
           }}
           maxLength={ASK_USER_LIMITS.other}
-          placeholder="Autre…"
-          aria-label="Autre réponse"
+          placeholder={freeQuestion ? "Ta réponse…" : "Autre…"}
+          aria-label={freeQuestion ? "Ta réponse" : "Autre réponse"}
           disabled={answered}
           className="h-7 text-xs md:text-xs"
         />

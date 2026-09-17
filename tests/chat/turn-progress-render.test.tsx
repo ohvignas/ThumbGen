@@ -5,6 +5,13 @@ import TurnProgress from "@/components/panels/chat/TurnProgress";
 import { splitAssistantTurn } from "@/components/panels/chat/turn-model";
 
 describe("TurnProgress", () => {
+  it("prefixes the live line with the journey step when the conversation has a brief", () => {
+    const html = renderToStaticMarkup(<TurnProgress message={undefined} status="submitted" startedAt={null} steps={[]} journeyStep={3} />);
+    expect(html).toContain('<span role="status" aria-live="polite" class="sr-only">Étape 3/7 — Concurrents · Réfléchit</span>');
+    const without = renderToStaticMarkup(<TurnProgress message={undefined} status="submitted" startedAt={null} steps={[]} journeyStep={null} />);
+    expect(without).not.toContain("Étape");
+  });
+
   it("shows one status line with the current step, a timer and a folded live detail", () => {
     const message = {
       id: "a1",

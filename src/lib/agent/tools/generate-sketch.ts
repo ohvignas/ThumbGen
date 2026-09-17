@@ -22,8 +22,9 @@ const InputSchema = z.object({
 });
 
 const ASPECT_MAP: Record<string, string> = { "16x9": "16:9", "9x16": "9:16", "1x1": "1:1" };
-const SKETCH_MODEL = "gemini-2.5-flash-image"; // fastest/cheapest variant for drafts
-const OPENROUTER_SKETCH_SLUG = "google/gemini-2.5-flash-image";
+// Gemini 3.1 Flash Image: same price as 2.5 (MODEL_COSTS), better layouts and references.
+const SKETCH_MODEL = "gemini-3.1-flash-image";
+const OPENROUTER_SKETCH_SLUG = "google/gemini-3.1-flash-image";
 const OPENROUTER_IMAGES_ENDPOINT = "https://openrouter.ai/api/v1/images";
 
 const PENCIL_SUFFIX =
@@ -43,6 +44,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     if (!apiKey) {
       return {
         isError: true,
+        requestNotSent: true,
         content: [{ type: "text" as const, text: "Clé API OpenRouter non configurée. Ajoute-la dans Réglages." }],
       };
     }
@@ -61,6 +63,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       } catch (e) {
         return {
           isError: true,
+          requestNotSent: true,
           content: [{ type: "text" as const, text: `Cannot resolve image_source ${src}: ${(e as Error).message}` }],
         };
       }
@@ -101,8 +104,10 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         body: JSON.stringify(body),
       });
     } catch (e) {
+      // fetch threw: no response came back, the request was not billed.
       return {
         isError: true,
+        requestNotSent: true,
         content: [{ type: "text" as const, text: `Network error: ${(e as Error).message}` }],
       };
     }

@@ -26,9 +26,9 @@ describe("system prompt — finish_turn", () => {
     expect(AGENT_SYSTEM_PROMPT).not.toContain("Always announce what you're about to do");
   });
 
-  it("sends the generator hand-off through finish_turn with a focus_node action", () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('a focus_node next action on the generator\'s node id (label "Voir le générateur")');
-    expect(AGENT_SYSTEM_PROMPT).toContain('one ask_agent button per angle (label "Angle A — Choc", message "Je choisis l\'angle A.")');
+  it("ends the journey on the generate action, never on a generation the agent starts", () => {
+    expect(AGENT_SYSTEM_PROMPT).toContain('next_actions [{ kind: "generate", node_id: "iv-generator" }]');
+    expect(AGENT_SYSTEM_PROMPT).not.toContain("one ask_agent button per angle");
   });
 
   it("keeps finish_turn in the cached block and the dynamic blocks in the same order", () => {

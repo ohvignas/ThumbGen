@@ -1,7 +1,7 @@
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3CallOptions, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { getDb } from "@/lib/db";
-import { interviewScript, type FakeLibraryItem } from "./fake-interview-script";
+import { journeyScript, type FakePersona } from "./fake-journey-script";
 
 /**
  * DEV ONLY (chantier F1): a scripted, slow agent turn with no network call, so
@@ -12,19 +12,19 @@ import { interviewScript, type FakeLibraryItem } from "./fake-interview-script";
 /** Delay between two chunks of the script (≈ 22 s for the whole turn). */
 export const FAKE_CHUNK_DELAY_MS = 1_000;
 
-/** THUMBGEN_FAKE_AGENT=interview plays the guided interview (chantier F2); any other value the slow F1 turn. */
-export const FAKE_INTERVIEW_SCENARIO = "interview";
-export type FakeAgentScenario = "slow" | typeof FAKE_INTERVIEW_SCENARIO;
-/** The interview's delay between chunks: quick enough to click through, slow enough to watch. */
-export const FAKE_INTERVIEW_CHUNK_DELAY_MS = 150;
+/** THUMBGEN_FAKE_AGENT=journey plays the thumbnail journey (chantier F3a); any other value the slow F1 turn. */
+export const FAKE_JOURNEY_SCENARIO = "journey";
+export type FakeAgentScenario = "slow" | typeof FAKE_JOURNEY_SCENARIO;
+/** The journey's delay between chunks: quick enough to click through, slow enough to watch. */
+export const FAKE_JOURNEY_CHUNK_DELAY_MS = 150;
 
 export function fakeAgentScenario(): FakeAgentScenario {
-  return process.env.THUMBGEN_FAKE_AGENT === FAKE_INTERVIEW_SCENARIO ? FAKE_INTERVIEW_SCENARIO : "slow";
+  return process.env.THUMBGEN_FAKE_AGENT === FAKE_JOURNEY_SCENARIO ? FAKE_JOURNEY_SCENARIO : "slow";
 }
 
-/** Library images offered by the fake references question (local DB, newest first). */
-function libraryFromDb(): FakeLibraryItem[] {
-  return getDb().prepare("SELECT id, title FROM swipe_files ORDER BY created_at DESC LIMIT 6").all() as FakeLibraryItem[];
+/** Personnages offered by the fake character question (local DB, newest first). */
+function personasFromDb(): FakePersona[] {
+  return getDb().prepare("SELECT id, label FROM personas ORDER BY created_at DESC LIMIT 4").all() as FakePersona[];
 }
 
 export function isFakeAgentEnabled(): boolean {
@@ -111,14 +111,14 @@ function script(options: LanguageModelV3CallOptions): LanguageModelV3StreamPart[
 export function createFakeAgentModel({
   chunkDelayMs,
   scenario = "slow",
-  library = libraryFromDb,
-}: { chunkDelayMs?: number; scenario?: FakeAgentScenario; library?: () => FakeLibraryItem[] } = {}) {
-  const delay = chunkDelayMs ?? (scenario === FAKE_INTERVIEW_SCENARIO ? FAKE_INTERVIEW_CHUNK_DELAY_MS : FAKE_CHUNK_DELAY_MS);
+  personas = personasFromDb,
+}: { chunkDelayMs?: number; scenario?: FakeAgentScenario; personas?: () => FakePersona[] } = {}) {
+  const delay = chunkDelayMs ?? (scenario === FAKE_JOURNEY_SCENARIO ? FAKE_JOURNEY_CHUNK_DELAY_MS : FAKE_CHUNK_DELAY_MS);
   return new MockLanguageModelV3({
     provider: "thumbgen-fake",
-    modelId: scenario === FAKE_INTERVIEW_SCENARIO ? "fake-agent-interview" : "fake-agent",
+    modelId: scenario === FAKE_JOURNEY_SCENARIO ? "fake-agent-journey" : "fake-agent",
     doStream: async (options) => {
-      const parts = scenario === FAKE_INTERVIEW_SCENARIO ? interviewScript(options, library()) : script(options);
+      const parts = scenario === FAKE_JOURNEY_SCENARIO ? journeyScript(options, personas()) : script(options);
       let index = 0;
       return {
         stream: new ReadableStream<LanguageModelV3StreamPart>({

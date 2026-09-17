@@ -47,7 +47,12 @@ export function listConversations(project_id: string): Conversation[] {
 }
 
 export function softDeleteConversation(id: string): void {
-  getDb().prepare("UPDATE conversations SET deleted_at = datetime('now') WHERE id = ?").run(id);
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare("UPDATE conversations SET deleted_at = datetime('now') WHERE id = ?").run(id);
+    // Its thumbnail brief (chantier F3) goes with it.
+    db.prepare("DELETE FROM thumbnail_briefs WHERE conversation_id = ?").run(id);
+  })();
 }
 
 export function updateConversationTitle(id: string, title: string): void {

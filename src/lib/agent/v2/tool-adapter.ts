@@ -1,6 +1,6 @@
 import { tool as aiTool, type Tool } from "ai";
 import { getTool, listTools } from "@/lib/agent/tools";
-import type { ToolContent, ToolResult } from "@/lib/agent/tools/types";
+import type { ToolContent, ToolHandler, ToolResult } from "@/lib/agent/tools/types";
 import { appendResultId } from "@/lib/agent/finish-turn";
 // Side-effect-only import: populates the tool registry (src/lib/agent/tools/index.ts)
 // by loading every tool module, each of which calls registerTool() on load. Without
@@ -34,6 +34,9 @@ export function toolResultToModelOutput(output: unknown) {
   };
 }
 
+/** Lets the chat route wrap a registered tool's handler for one request (e.g. the brief's sketch guard). */
+export type HandlerWrapper = (toolName: string, handler: ToolHandler<unknown>) => ToolHandler<unknown>;
+
 /**
  * Wraps one registered ThumbGen tool as an AI SDK tool() definition. Calls
  * straight into the existing ToolDefinition.handler — no MCP round-trip.
@@ -41,14 +44,15 @@ export function toolResultToModelOutput(output: unknown) {
  * changes how the v2 chat route CONSUMES it (v1's loop.ts still goes
  * through the in-memory MCP client, unaffected by this file).
  */
-function toAiSdkTool(name: string): Tool {
+function toAiSdkTool(name: string, wrapHandler?: HandlerWrapper): Tool {
   const def = getTool(name);
   if (!def) throw new Error(`Unknown tool: ${name}`);
+  const handler = wrapHandler ? wrapHandler(name, def.handler) : def.handler;
   return aiTool({
     description: def.description,
     inputSchema: def.inputSchema as any,
     execute: async (input: unknown, { toolCallId }: { toolCallId: string }) => {
-      const result: ToolResult = await def.handler(input);
+      const result: ToolResult = await handler(input);
       // Visual tools end with "result_id: <toolCallId>" so the model can cite
       // them in finish_turn.results — it never sees tool call ids otherwise.
       return appendResultId(name, result, toolCallId) as any;
@@ -81,10 +85,10 @@ function toAiSdkTool(name: string): Tool {
 }
 
 /** Builds the full { [toolName]: Tool } map streamText expects, from every tool currently in the registry. */
-export function buildAiSdkTools(): Record<string, Tool> {
+export function buildAiSdkTools({ wrapHandler }: { wrapHandler?: HandlerWrapper } = {}): Record<string, Tool> {
   const out: Record<string, Tool> = {};
   for (const def of listTools()) {
-    out[def.name] = toAiSdkTool(def.name);
+    out[def.name] = toAiSdkTool(def.name, wrapHandler);
   }
   return out;
 }

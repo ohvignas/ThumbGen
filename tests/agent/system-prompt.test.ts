@@ -8,6 +8,7 @@ import {
   type AgentPromptPrefs,
 } from "@/lib/agent/system-prompt";
 import { EMPTY_CHANNEL_PROFILE } from "@/lib/settings-schema";
+import { emptyBrief } from "@/lib/brief/schema";
 
 const PROFILE_PREFS: AgentPromptPrefs = {
   ...DEFAULT_AGENT_PROMPT_PREFS,
@@ -30,6 +31,16 @@ function blockIndex(blocks: Array<{ text: string; cache_control?: unknown }>, ta
 }
 
 describe("system prompt", () => {
+  it("appends the thumbnail brief after canvas_state when the conversation has one", () => {
+    const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc", DEFAULT_AGENT_PROMPT_PREFS, { ...emptyBrief(), step: 3 });
+    expect(blocks.at(-2)!.text).toContain("<canvas_state>");
+    expect(blocks.at(-1)!.text.startsWith("<thumbnail_brief>")).toBe(true);
+    expect(blocks.at(-1)!.text).toContain('"step":3');
+    expect(blocks.at(-1)!.cache_control).toBeUndefined();
+    // The cached static prompt names <thumbnail_brief> (THUMBNAIL JOURNEY): only the per-turn blocks matter.
+    expect(buildSystemMessages({ nodes: [], edges: [] }, "proj-abc").slice(1).some((block) => block.text.includes("<thumbnail_brief>"))).toBe(false);
+  });
+
   it("contains the persona and the canvas_state instruction", () => {
     expect(AGENT_SYSTEM_PROMPT).toContain("ThumbGen Brainstorm");
     expect(AGENT_SYSTEM_PROMPT).toContain("<canvas_state>");
@@ -111,7 +122,8 @@ describe("<channel_profile>", () => {
   it("is absent when the profile is empty", () => {
     expect(buildChannelProfileBlock(DEFAULT_AGENT_PROMPT_PREFS)).toBeNull();
     const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc");
-    expect(blocks.some((b) => b.text.includes("<channel_profile>"))).toBe(false);
+    // The cached static prompt names <channel_profile> (THUMBNAIL JOURNEY); only the per-turn blocks matter here.
+    expect(blocks.slice(1).some((b) => b.text.includes("<channel_profile>"))).toBe(false);
   });
 
   it("sits after the cached prompt and the language block, before project_id and canvas_state", () => {
