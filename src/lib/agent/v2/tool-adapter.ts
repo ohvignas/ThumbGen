@@ -1,6 +1,7 @@
 import { tool as aiTool, type Tool } from "ai";
 import { getTool, listTools } from "@/lib/agent/tools";
 import type { ToolContent, ToolResult } from "@/lib/agent/tools/types";
+import { appendResultId } from "@/lib/agent/finish-turn";
 // Side-effect-only import: populates the tool registry (src/lib/agent/tools/index.ts)
 // by loading every tool module, each of which calls registerTool() on load. Without
 // this, listTools()/getTool() below see an empty registry in the real app — the only
@@ -22,9 +23,11 @@ function toAiSdkTool(name: string): Tool {
   return aiTool({
     description: def.description,
     inputSchema: def.inputSchema as any,
-    execute: async (input: unknown) => {
+    execute: async (input: unknown, { toolCallId }: { toolCallId: string }) => {
       const result: ToolResult = await def.handler(input);
-      return result as any;
+      // Visual tools end with "result_id: <toolCallId>" so the model can cite
+      // them in finish_turn.results — it never sees tool call ids otherwise.
+      return appendResultId(name, result, toolCallId) as any;
     },
     // Shapes what the MODEL sees back. The UI (Plan 2) reads the raw
     // execute() return value (our ToolResult) directly off the tool part's

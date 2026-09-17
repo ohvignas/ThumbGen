@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
-import { streamText, isStepCount, type ModelMessage } from "ai";
+import { streamText, isStepCount, hasToolCall, type ModelMessage } from "ai";
 import { getOpenRouterProvider } from "./openrouter-provider";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
 import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
+import { FINISH_TURN_TOOL_NAME } from "@/lib/agent/finish-turn";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
 import { appendMessage, listMessages } from "@/lib/agent/conversation/store";
 import { generateAndPersistTitle } from "@/lib/agent/conversation/auto-title";
@@ -447,7 +448,9 @@ export async function postV2(req: NextRequest): Promise<Response> {
       ? [...priorMessages, { role: "user", content: userParts }]
       : [...priorMessages]) as ModelMessage[],
     tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
-    stopWhen: isStepCount(settings.agentMaxSteps),
+    // finish_turn closes the turn: stop right after its step instead of
+    // paying for one more model call that would only restate the answer.
+    stopWhen: [isStepCount(settings.agentMaxSteps), hasToolCall(FINISH_TURN_TOOL_NAME)],
     // v1 checks abort only at the outer-iteration and token-streaming
     // boundaries, never inside the per-tool-call dispatch loop — a Stop
     // click lets any tool calls already in flight for the current batch
