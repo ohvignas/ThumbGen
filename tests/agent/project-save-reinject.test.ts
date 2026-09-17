@@ -189,6 +189,18 @@ describe("POST /api/project — agent nodes newer than the client base", () => {
     expect(dbCanvas().edges).toEqual([]);
   });
 
+  it("keeps a user's duplicate of an interview node through a stale save", async () => {
+    await placePromptAndGenerator();
+    const seen = await load();
+    await applyWorkflowTool.handler({ project_id: projectId, blueprint: { nodes: [], edges: [] }, remove_node_ids: ["iv-generator"] });
+    // An older copy made before the agent-field stripping: an uuid id, still carrying placedByAgentAt.
+    const prompt = seen.nodes.find((n) => n.id === "iv-prompt")!;
+    const copy: Node = { ...prompt, id: "3f2c1a9e-copy", position: { x: 40, y: 40 } };
+    const body = await save([...seen.nodes, copy], seen.edges, seen.updatedAt!);
+    expect(body.removed).toEqual(["iv-generator"]);
+    expect(dbCanvas().nodes.map((n) => n.id)).toContain("3f2c1a9e-copy");
+  });
+
   it("keeps an agent node the client re-added after seeing its removal (e.g. ⌘Z)", async () => {
     await placePromptAndGenerator();
     const before = await load();

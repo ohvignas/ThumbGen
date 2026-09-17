@@ -434,6 +434,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // targeted the original node's id — a copy stuck at "loading" would spin
     // forever with nothing left to update it.
     if (data.genStatus === "loading") delete data.genStatus;
+    // The copy is the user's node, not the agent's: no interview bookkeeping
+    // (a stale save must never treat it as an agent node, place_node never links it).
+    const agentFields = data as Record<string, unknown>;
+    delete agentFields.placedByAgentAt;
+    delete agentFields.agentCreatedAt;
+    delete agentFields.agentLinks;
     const copy: AppNode = {
       id,
       type: source.type,

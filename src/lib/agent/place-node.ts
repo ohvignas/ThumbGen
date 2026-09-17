@@ -11,7 +11,7 @@ import {
 import { imageExists, markAttached } from "@/lib/agent/tools/_helpers/image-source";
 import { NODE_W } from "@/lib/agent/tools/_helpers/auto-layout";
 import { createCanvasSnapshot, writeProjectCanvas } from "@/lib/canvas-snapshots";
-import { compareUpdatedAt, nextUpdatedAt, type CanvasPatchEdge } from "@/lib/canvas/canvas-patch";
+import { INTERVIEW_NODE_ID, compareUpdatedAt, nextUpdatedAt, type CanvasPatchEdge } from "@/lib/canvas/canvas-patch";
 import type { CanvasPatch } from "@/lib/canvas/canvas-patch";
 
 /**
@@ -21,7 +21,7 @@ import type { CanvasPatch } from "@/lib/canvas/canvas-patch";
  * broadcasts the returned patch to the open canvas.
  */
 
-export const INTERVIEW_NODE_ID = /^iv-(prompt|persona|generator|ref-[1-3]|logo-[1-3])$/;
+export { INTERVIEW_NODE_ID };
 export const INTERVIEW_GENERATOR_ID = "iv-generator";
 
 /** Gap between the right edge of the non-interview canvas and the interview inputs column. */

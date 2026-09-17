@@ -1,5 +1,5 @@
 import { getDb } from "./db";
-import { compareUpdatedAt, nextUpdatedAt } from "./canvas/canvas-patch";
+import { INTERVIEW_NODE_ID, compareUpdatedAt, nextUpdatedAt } from "./canvas/canvas-patch";
 
 export type FlowNode = {
   id: string;
@@ -184,7 +184,12 @@ function agentNodesRemovedOnServer(
   if (!stored.updatedAt || compareUpdatedAt(baseUpdatedAt, stored.updatedAt) >= 0) return new Set();
   const storedIds = new Set(stored.nodes.map((node) => node.id));
   return new Set(
-    nodes.filter((node) => typeof node.data?.placedByAgentAt === "string" && !storedIds.has(node.id)).map((node) => node.id),
+    nodes
+      .filter(
+        // Only real interview nodes: a copy the user made keeps its own (uuid) id.
+        (node) => INTERVIEW_NODE_ID.test(node.id) && typeof node.data?.placedByAgentAt === "string" && !storedIds.has(node.id),
+      )
+      .map((node) => node.id),
   );
 }
 

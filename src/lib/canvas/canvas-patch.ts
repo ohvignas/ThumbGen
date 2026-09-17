@@ -6,6 +6,9 @@
 
 export const CANVAS_PATCH_PART = "data-canvas-patch" as const;
 
+/** Ids of the guided interview's nodes, the only ones place_node writes. */
+export const INTERVIEW_NODE_ID = /^iv-(prompt|persona|generator|ref-[1-3]|logo-[1-3])$/;
+
 export type CanvasPatchNode = {
   id: string;
   type: string;
