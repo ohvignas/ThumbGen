@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import type { UIMessage } from "ai";
 import { lastAssistantMessageIsCompleteWithClientToolCalls } from "./chat/should-auto-continue";
 import { useChatStore, type ChatAttachment } from "@/store/chat-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -14,8 +14,13 @@ import ImageAnnotateModal from "./chat/ImageAnnotateModal";
 import type { ChatTurnControls } from "./chat/Message";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/toast";
+import { useAgentRuns } from "@/components/agent-runs/AgentRunsProvider";
+import { AGENT_BUSY_MESSAGE } from "@/lib/agent/v2/run-types";
 import { rowsToUIMessages, type StoredMessageRow } from "./chat/history-to-ui-messages";
 import { snapshotCanvas } from "./chat/canvas-snapshot";
+import { createAgentChatTransport, stopAgentRun } from "./chat/chat-transport";
+import { isAgentBusyError, isOrphanUserTurn, resumeWithoutStreamOutcome, withoutTrailingUserMessage } from "./chat/resume-model";
 import {
   conversationChangeEffects,
   liveTurnStart,
@@ -27,6 +32,8 @@ import { isBusyStatus } from "./chat/turn-model";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
 const OPEN_STORAGE_KEY = "thumbgen.chat.open";
+/** « Arrêter » also abandons the local stream if the server has not ended it by then. */
+const STOP_FALLBACK_MS = 10_000;
 
 function readStoredOpen(): boolean {
   try {
@@ -36,19 +43,23 @@ function readStoredOpen(): boolean {
   }
 }
 
+async function loadHistoryMessages(conversationId: string): Promise<UIMessage[]> {
+  const rows = (await fetch(`/api/agent/conversations/${conversationId}/messages`).then((r) => r.json())) as StoredMessageRow[];
+  return rowsToUIMessages(rows);
+}
+
+const isActiveConversation = (conversationId: string) => useChatStore.getState().activeConversationId === conversationId;
+
 /**
- * Right-side chat panel. Slide-in 420px wide. Mounted from Canvas.
+ * Right-side chat panel. Mounted from Canvas, on the miniature page only.
  *
- * Lifecycle:
- *   - On open + active conversation change: fetch persisted messages
- *   - On send: @ai-sdk/react's useChat optimistically pushes the user
- *     message and opens the UI-message stream against postV2
- *     (src/lib/agent/v2/route-handler.ts, the only agent backend)
- *   - The assistant message streams in as part of useChat's own `messages`
- *     until `status` returns to "ready"; MessageList shows it as one live
- *     step line (TurnProgress), then as a finished turn (AssistantTurn)
- *   - On done: refetch messages from DB to canonicalize (skipped when the
- *     turn failed, so the failed message and its error stay visible)
+ * Lifecycle (chantier F1: a turn belongs to the server, not to this page):
+ *   - Opening a conversation loads its history, then reconnects to the turn the
+ *     server may be running there (resumeStream → GET …/stream, 204 if none).
+ *   - A send streams as before; leaving the page only drops the local stream.
+ *   - « Arrêter » asks the server (POST …/stop); the stream ends by itself.
+ *   - At the end of any turn: canonical refetch of the history (skipped when
+ *     the turn failed, so the failed message and its error stay visible).
  */
 export default function ChatPanel({ projectId }: { projectId: string }) {
   const [open, setOpenState] = useState(readStoredOpen);
@@ -70,18 +81,52 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
 
-  // Start of the running turn (or of its automatic resumption), for the live timer.
+  const { snapshot: runsSnapshot, refreshRuns } = useAgentRuns();
+  const runsSnapshotRef = useRef(runsSnapshot);
+  useEffect(() => {
+    runsSnapshotRef.current = runsSnapshot;
+  }, [runsSnapshot]);
+
+  // Start of the running turn (or of the reconnected one), for the live timer.
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   // Conversation whose turn the user stopped: its last turn reads « Tour interrompu » until the next send.
   const [stoppedConversationId, setStoppedConversationId] = useState<string | null>(null);
   // Messages present when the running turn started: « Arrêter » never marks an older turn interrupted.
   const [liveTurn, setLiveTurn] = useState<LiveTurnStart | null>(null);
+  // Conversation reopened on a user message the server never answered (e.g. after a restart).
+  const [orphanConversationId, setOrphanConversationId] = useState<string | null>(null);
   // Set by useChat's onError during a turn, so that turn keeps its live messages instead of the refetch.
   const turnFailedRef = useRef(false);
+  // Set by onError when the send got a 409: a turn already runs in this conversation.
+  const busyConflictRef = useRef(false);
   // Conversation the first send just created: its (empty) history is not loaded over the live messages.
   const createdConversationIdRef = useRef<string | null>(null);
-  // Conversation of a turn resumed by a client-request answer, refetched once that turn ends.
+  // Conversation of a resumed turn (client-request answer or reconnection), refetched once it ends.
   const resumedConversationIdRef = useRef<string | null>(null);
+  const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // « Arrêter » pressed before the server registered the turn: sent again at the first chunk.
+  const pendingStopRef = useRef<string | null>(null);
+
+  // One transport for the panel's life. `reconnectStatus` holds the HTTP status of
+  // the last reconnection (200 replays a run, 204 means none runs), written by the
+  // transport's fetch — a closure, not a ref, since the transport is built during render.
+  const [{ transport, reconnectStatus }] = useState(() => {
+    let lastStatus: number | null = null;
+    return {
+      reconnectStatus: {
+        reset: () => {
+          lastStatus = null;
+        },
+        read: () => lastStatus,
+      },
+      transport: createAgentChatTransport({
+        getConversationId: () => useChatStore.getState().activeConversationId,
+        onReconnectStatus: (status) => {
+          lastStatus = status;
+        },
+      }),
+    };
+  });
 
   const {
     messages: chatMessages,
@@ -89,56 +134,71 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     sendMessage,
     regenerate,
     stop,
+    resumeStream,
     addToolOutput,
     setMessages,
     error,
     clearError,
   } = useChat({
-    // Starts empty; the "Load persisted history" useEffect below seeds this
-    // via setMessages(rowsToUIMessages(rows)) as soon as activeConversationId
-    // is known (including on first mount), so the initial [] here is only
-    // ever visible for a single render before that effect runs.
+    // Seeded by the history effect below as soon as a conversation is active.
     messages: [],
-    transport: new DefaultChatTransport({ api: "/api/agent/chat" }),
-    // Auto-resumes the turn once a client tool (request_user_image) has been
-    // resolved via addToolOutput — needed for Task 11's human-in-the-loop
-    // flow to actually continue the conversation instead of sitting
-    // resolved-but-idle. Scoped to client-tool completions specifically (see
-    // the function's own doc comment) — ai's own
-    // lastAssistantMessageIsCompleteWithToolCalls fires for ANY completed
-    // tool call, which could otherwise trigger an unbounded auto-
-    // continuation loop when the server's « Étapes max » cap (agentMaxSteps
-    // setting) lands on a step that happened to end with completed
-    // server-tool results.
+    transport,
+    // Auto-resumes ONLY once a client tool (request_user_image) was resolved via
+    // addToolOutput — see the function's doc comment. A reconnection never
+    // produces a resolved client request, so it never triggers a send.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls,
-    onError: () => {
+    onError: (turnError) => {
       turnFailedRef.current = true;
+      if (isAgentBusyError(turnError)) busyConflictRef.current = true;
     },
   });
 
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
 
-  // When project changes, clear active conv so useConversations picks the new
-  // project's first conv (or stays empty if none). Without this, the previous
-  // project's conversation + history would bleed over into the new project.
+  // When project changes, clear active conv so useConversations picks the new project's conversation.
   useEffect(() => {
     useChatStore.getState().setActive(null);
   }, [projectId]);
 
-  // Load persisted history when active conversation changes, seeding
-  // useChat's own message state directly via rowsToUIMessages (Task 4) —
-  // this replaces the old history/setHistory adapter + rowToDisplay, which
-  // parsed content_json as the stale v1 AnthropicBlock[] shape and rendered
-  // every persisted message as an empty bubble now that Task 2's migration
-  // has moved the DB to ModelMessage[]-shaped rows. A previous conversation's
-  // error must not paint the loaded one, hence clearError().
-  //
-  // A conversation that ensureConversation just created for the first send is
-  // skipped entirely: loading its empty history would wipe the user's message
-  // and a fast error (e.g. a missing key), and stopping would abort the send.
-  // Any other change first stops a running stream so it can't bleed into the
-  // newly selected conversation (stop() is a no-op when nothing runs).
+  // Reconnects to the turn the server may be running for this conversation.
+  // Never starts one: a GET that answers 204 when nothing runs.
+  const resumeConversation = useCallback(
+    async (conversationId: string, history: UIMessage[]) => {
+      if (!isActiveConversation(conversationId)) return;
+      const listedRun = runsSnapshotRef.current.running.find((run) => run.conversationId === conversationId) ?? null;
+      setStoppedConversationId(null);
+      setOrphanConversationId(null);
+      setLiveTurn(liveTurnStart(history));
+      setTurnStartedAt(listedRun?.startedAt ?? Date.now());
+      turnFailedRef.current = false;
+      resumedConversationIdRef.current = conversationId;
+      reconnectStatus.reset();
+      await resumeStream();
+      if (reconnectStatus.read() === 200) {
+        // A run was replayed to its end: the status effect below refetches the canonical history.
+        return;
+      }
+      resumedConversationIdRef.current = null;
+      if (reconnectStatus.read() !== 204 || !isActiveConversation(conversationId)) return;
+      const runsNow = await refreshRuns();
+      if (!isActiveConversation(conversationId)) return;
+      const outcome = resumeWithoutStreamOutcome({ conversationId, listedRunningBefore: listedRun !== null, runsNow });
+      let messages = history;
+      if (outcome.refetch) {
+        messages = await loadHistoryMessages(conversationId);
+        if (!isActiveConversation(conversationId)) return;
+        setMessages(messages);
+      }
+      if (isOrphanUserTurn(messages, outcome.runningNow)) setOrphanConversationId(conversationId);
+    },
+    [resumeStream, refreshRuns, setMessages, reconnectStatus],
+  );
+
+  // Load the persisted history when the active conversation changes, then
+  // reconnect. A conversation that ensureConversation just created for the
+  // first send is skipped entirely (its live messages and error stay). Any
+  // other change first drops the local stream — the server turn goes on.
   useEffect(() => {
     const effects = conversationChangeEffects(activeConversationId, createdConversationIdRef.current);
     if (activeConversationId !== createdConversationIdRef.current) createdConversationIdRef.current = null;
@@ -150,33 +210,31 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         if (!cancelled) {
           setMessages([]);
           clearError();
+          setOrphanConversationId(null);
         }
         return;
       }
-      const rows = (await fetch(`/api/agent/conversations/${activeConversationId}/messages`).then((r) => r.json())) as StoredMessageRow[];
-      if (!cancelled) {
-        setMessages(rowsToUIMessages(rows));
-        clearError();
-      }
+      const history = await loadHistoryMessages(activeConversationId);
+      if (cancelled) return;
+      setMessages(history);
+      clearError();
+      void resumeConversation(activeConversationId, history);
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, setMessages, clearError, stop]);
+  }, [activeConversationId, setMessages, clearError, stop, resumeConversation]);
 
-  // The last message's pending client-tool part (request_user_image /
-  // request_user_sketch) — a direct scan of chatMessages, replacing the old
-  // legacyEvents-array scan. Requires state === "input-available"
-  // specifically (not just "!== output-available"): the deleted
-  // uiMessageToLegacyEvents adapter also excluded "input-streaming" (args
-  // not settled yet — `input?.reason` would be undefined, and resolving
-  // mid-stream sets state to "output-available" without ever firing the
-  // auto-continuation, since sendAutomaticallyWhen's send is gated on
-  // status being neither "streaming" nor "submitted" — the next
-  // tool-input-available chunk then silently overwrites the resolved part).
-  // "output-error"/"output-denied" are excluded too for the same reason —
-  // only "input-available" is a state where offering a resolution is safe.
+  // Leaving the page only drops the local stream; the server keeps running the turn.
+  useEffect(() => {
+    return () => {
+      void stop();
+    };
+  }, [stop]);
+
+  // The last message's pending client-tool part, only in state "input-available"
+  // (offering a resolution in any other state is unsafe — see chantier E).
   const pendingToolPart = useMemo<PendingToolPart | undefined>(() => {
     const lastMessage = chatMessages.at(-1);
     return lastMessage?.role === "assistant"
@@ -188,21 +246,14 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       : undefined;
   }, [chatMessages]);
 
-  // Resolves PendingUiAction's pending part via useChat's real addToolOutput.
-  // `options.body` is NOT optional: addToolOutput's auto-continuation
-  // (sendAutomaticallyWhen above) goes through the SAME DefaultChatTransport
-  // as a normal send, so it needs the same conversation_id/project_id/
-  // canvas_snapshot or route-handler.ts's own guard 400s it (verified
-  // against node_modules/ai/dist/index.js's real addToolOutput ->
-  // makeRequest -> transport.sendMessages call path) — see this task's brief
-  // header note.
+  // Resolves PendingUiAction's pending part via useChat's addToolOutput. `options.body`
+  // is required: the auto-continuation goes through the same transport as a send.
   const respondToUiTool = useCallback(
     (toolCallId: string, result: unknown) => {
       if (!pendingToolPart) return;
       const toolName = pendingToolPart.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
-      // A new (resumed) turn: forget an earlier stop, and let the status effect
-      // below refetch once it ends — addToolOutput doesn't await the resend.
       setStoppedConversationId(null);
+      setOrphanConversationId(null);
       setLiveTurn(liveTurnStart(chatMessages, chatMessages.at(-1)?.id ?? null));
       setTurnStartedAt(Date.now());
       turnFailedRef.current = false;
@@ -223,9 +274,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     [addToolOutput, pendingToolPart, chatMessages, activeConversationId, projectId, nodes, edges],
   );
 
-  // Canonical refetch for a turn resumed by respondToUiTool, once its status
-  // goes from busy back to ready (runTurn does it for every other turn). The
-  // previous status lives in a ref; setMessages only runs after the fetch.
+  // Canonical refetch for a resumed turn (client-request answer or reconnection),
+  // once its status goes from busy back to ready (runTurn does it for the others).
   const previousStatusRef = useRef(status);
   useEffect(() => {
     const previousStatus = previousStatusRef.current;
@@ -237,18 +287,40 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       resumedConversationId: conversationId,
       turnFailed: turnFailedRef.current,
     });
-    // The resumed turn is over (refetched now, or failed and kept as is).
     if (conversationId !== null && isBusyStatus(previousStatus) && !isBusyStatus(status)) {
       resumedConversationIdRef.current = null;
     }
     if (!refetch || conversationId === null) return;
     void (async () => {
-      const rows = (await fetch(`/api/agent/conversations/${conversationId}/messages`).then((r) => r.json())) as StoredMessageRow[];
-      if (useChatStore.getState().activeConversationId !== conversationId) return;
-      setMessages(rowsToUIMessages(rows));
+      const messages = await loadHistoryMessages(conversationId);
+      if (!isActiveConversation(conversationId)) return;
+      setMessages(messages);
       useChatStore.getState().bumpConversationListVersion();
     })();
   }, [status, setMessages]);
+
+  // Indicators elsewhere follow this page's turns without waiting for the next poll.
+  useEffect(() => {
+    if (status === "streaming" || status === "ready" || status === "error") void refreshRuns();
+  }, [status, refreshRuns]);
+
+  // « Arrêter » bookkeeping: a stop pressed too early is re-sent at the first
+  // chunk; nothing pending survives the end of the turn.
+  useEffect(() => {
+    if (status === "streaming" && pendingStopRef.current !== null) {
+      const conversationId = pendingStopRef.current;
+      pendingStopRef.current = null;
+      void stopAgentRun(conversationId).then((result) => {
+        if (result === "failed") void stop();
+      });
+    }
+    if (isBusyStatus(status)) return;
+    pendingStopRef.current = null;
+    if (stopFallbackRef.current !== null) {
+      clearTimeout(stopFallbackRef.current);
+      stopFallbackRef.current = null;
+    }
+  }, [status, stop]);
 
   // Auto-create a conversation if none is active, so a send never needs a second click.
   const ensureConversation = useCallback(async (): Promise<string | null> => {
@@ -265,10 +337,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     return conv.id;
   }, [activeConversationId, projectId]);
 
-  // Attachments deliberately do NOT go through AI SDK's own `files`/
-  // FileUIPart mechanism (Plan 2's Task 7 decision keeps AttachButton.tsx's
-  // existing `stored:<id>` string flow) — they're sent as a sibling
-  // top-level `attachments` field in `body`, read by route-handler.ts.
+  // Attachments go as a sibling `attachments` field (stored:<id> references), not AI SDK file parts.
   const requestBody = useCallback(
     (conversationId: string, attachmentsToSend: ChatAttachment[] = []) => ({
       conversation_id: conversationId,
@@ -279,38 +348,45 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     [projectId, nodes, edges],
   );
 
-  // Runs one turn (a send, an « Et maintenant » reply or a « Réessayer »),
-  // then canonicalizes the conversation from the DB.
+  // Runs one turn (a send, an « Et maintenant » reply or a « Réessayer »), then
+  // canonicalizes the conversation from the DB. `restoreInput` puts back what a
+  // refused send (409) had taken from the composer.
   const runTurn = useCallback(
-    async (conversationId: string, start: () => Promise<void>) => {
+    async (conversationId: string, start: () => Promise<void>, restoreInput?: () => void) => {
       setStoppedConversationId(null);
+      setOrphanConversationId(null);
       setLiveTurn(liveTurnStart(chatMessages));
       setTurnStartedAt(Date.now());
       turnFailedRef.current = false;
+      busyConflictRef.current = false;
       resumedConversationIdRef.current = null;
       await start();
+
+      if (busyConflictRef.current) {
+        // 409: the server already runs a turn here (another tab, or one not reconnected yet).
+        busyConflictRef.current = false;
+        setMessages((messages) => withoutTrailingUserMessage(messages));
+        clearError();
+        restoreInput?.();
+        toast({ title: AGENT_BUSY_MESSAGE });
+        if (!isActiveConversation(conversationId)) return;
+        const history = await loadHistoryMessages(conversationId);
+        if (!isActiveConversation(conversationId)) return;
+        setMessages(history);
+        await resumeConversation(conversationId, history);
+        return;
+      }
       // A failed turn keeps its live messages: the refetch would drop the
       // user's unsaved message together with the error row under it.
       if (turnFailedRef.current) return;
 
-      // Refetch persisted history (canonical assistant message replaces the live one).
-      // If the user switched conversations mid-stream, the active conv has changed —
-      // discard the refetch so we don't paint old messages over the new conv's UI.
-      const rows = (await fetch(`/api/agent/conversations/${conversationId}/messages`).then((r) => r.json())) as StoredMessageRow[];
-      if (useChatStore.getState().activeConversationId !== conversationId) return;
-      setMessages(rowsToUIMessages(rows));
-
-      // Cheap, idempotent, always safe to call — useConversations refetches
-      // the whole list on every bump. This is how the conversation list picks
-      // up an auto-generated title (route-handler.ts's generateAndPersistTitle,
-      // fire-and-forget server-side on a conversation's first turn) — there's
-      // no more SSE `conversation_renamed` event under v2 to trigger this
-      // precisely, so bumping unconditionally after every send is the simplest
-      // correct replacement. If the title write raced past this refetch, the
-      // list just shows the old title until the next bump.
+      const messages = await loadHistoryMessages(conversationId);
+      if (!isActiveConversation(conversationId)) return;
+      setMessages(messages);
+      // Picks up an auto-generated title (fire-and-forget on the first turn).
       useChatStore.getState().bumpConversationListVersion();
     },
-    [chatMessages, setMessages],
+    [chatMessages, setMessages, clearError, resumeConversation],
   );
 
   const onSend = useCallback(async () => {
@@ -320,10 +396,15 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     const attachmentsToSend = attachments;
     setDraft("");
     clearAttachments();
-    // useChat's sendMessage pushes the user's UIMessage into `chatMessages`
-    // synchronously before the network call resolves, so no manual
-    // optimistic append is needed here.
-    await runTurn(conversationId, () => sendMessage({ text }, { body: requestBody(conversationId, attachmentsToSend) }));
+    await runTurn(
+      conversationId,
+      () => sendMessage({ text }, { body: requestBody(conversationId, attachmentsToSend) }),
+      () => {
+        const store = useChatStore.getState();
+        store.setDraft(text);
+        for (const attachment of attachmentsToSend) store.addAttachment(attachment);
+      },
+    );
   }, [ensureConversation, draft, attachments, setDraft, clearAttachments, runTurn, sendMessage, requestBody]);
 
   const busy = isBusyStatus(status);
@@ -341,9 +422,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     [busy, ensureConversation, runTurn, sendMessage, requestBody],
   );
 
-  // « Réessayer »: regenerate drops the failed assistant message (if any) and
-  // re-runs the last user message — its text only, attachments are not re-sent.
-  // Not offered after an answered client request: that turn can't be replayed.
+  // « Réessayer »: regenerate re-runs the last user message (text only).
   const retryText = retryableUserText(chatMessages);
   const onRetry = useMemo(() => {
     if (busy || !retryText || !activeConversationId) return null;
@@ -353,9 +432,28 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   }, [busy, retryText, activeConversationId, runTurn, regenerate, requestBody]);
 
+  // « Arrêter »: the server stops and saves the turn, then its stream ends by
+  // itself. A local stop() alone would leave the paid turn running on the server.
   const onStop = useCallback(() => {
-    setStoppedConversationId(activeConversationId);
-    stop();
+    const conversationId = activeConversationId;
+    setStoppedConversationId(conversationId);
+    const stopLocally = () => {
+      if (stopFallbackRef.current !== null) {
+        clearTimeout(stopFallbackRef.current);
+        stopFallbackRef.current = null;
+      }
+      void stop();
+    };
+    if (!conversationId) {
+      stopLocally();
+      return;
+    }
+    if (stopFallbackRef.current !== null) clearTimeout(stopFallbackRef.current);
+    stopFallbackRef.current = setTimeout(stopLocally, STOP_FALLBACK_MS);
+    void stopAgentRun(conversationId).then((result) => {
+      if (result === "failed") stopLocally();
+      else if (result === "not-running") pendingStopRef.current = conversationId;
+    });
   }, [activeConversationId, stop]);
 
   const controls = useMemo<ChatTurnControls>(
@@ -365,10 +463,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       turnStartedAt,
       stoppedLive: stoppedConversationId !== null && stoppedConversationId === activeConversationId,
       liveTurnStart: liveTurn,
+      orphanUserTurn: orphanConversationId !== null && orphanConversationId === activeConversationId,
       onAskAgent,
       onRetry,
     }),
-    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, liveTurn, onAskAgent, onRetry],
+    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, liveTurn, orphanConversationId, onAskAgent, onRetry],
   );
 
   return (
