@@ -7,6 +7,7 @@ import {
   askUserOptionImage,
   askUserStepLabel,
   parseAskUserInput,
+  parseStoredAskUserInput,
   readAskUserOutput,
   type AskUserInput,
 } from "@/lib/agent/browser-tools/ask-user";
@@ -97,6 +98,15 @@ describe("ask_user output", () => {
     expect(askUserStepLabel(input, { type: "json", value: { selected: ["a"] } })).toBe("Quel angle ? : Choc");
     expect(askUserStepLabel(input, undefined)).toBeNull();
     expect(askUserStepLabel({ nope: true }, { selected: ["a"] })).toBeNull();
+  });
+
+  it("still folds an F2 interview question stored with step 8, while the model and the card keep 1 to 7", () => {
+    const f2 = { question: "Quel modèle ?", step: 8, options: [option("nb", { label: "Nano Banana · ~0,02 $ / image" })] };
+    expect(askUserStepLabel(f2, { type: "json", value: { selected: ["nb"] } })).toBe("Quel modèle ? : Nano Banana · ~0,02 $ / image");
+    expect(parseStoredAskUserInput(f2)).not.toBeNull();
+    expect(parseStoredAskUserInput({ ...f2, step: 9 })).toBeNull();
+    expect(parseAskUserInput(f2)).toBeNull();
+    expect(accepts(f2)).toBe(false);
   });
 });
 

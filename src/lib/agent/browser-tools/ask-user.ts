@@ -88,6 +88,21 @@ export function parseAskUserInput(input: unknown): AskUserInput | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** The F2 guided interview's last question (« Question 8/8 »), still found in stored conversations. */
+const F2_LAST_STEP = 8;
+
+/**
+ * For display only (folded history lines): also reads a question stored by the
+ * F2 interview with step 8. The model's schema and the answer card keep 1 to 7.
+ */
+export function parseStoredAskUserInput(input: unknown): AskUserInput | null {
+  const strict = parseAskUserInput(input);
+  if (strict || !input || typeof input !== "object") return strict;
+  if ((input as { step?: unknown }).step !== F2_LAST_STEP) return null;
+  const parsed = parseAskUserInput({ ...input, step: ASK_USER_TOTAL_STEPS });
+  return parsed ? { ...parsed, step: F2_LAST_STEP } : null;
+}
+
 /** How many options the card lets the user pick. */
 export function askUserMaxSelected(input: AskUserInput): number {
   if (!input.multiple) return 1;
@@ -123,7 +138,7 @@ export function askUserAnswerText(input: AskUserInput | null, output: AskUserOut
 
 /** Folded step line « <question> : <réponse> », or null when the input or the answer can't be read. */
 export function askUserStepLabel(input: unknown, output: unknown): string | null {
-  const parsed = parseAskUserInput(input);
+  const parsed = parseStoredAskUserInput(input);
   if (!parsed) return null;
   const answer = askUserAnswerText(parsed, readAskUserOutput(output));
   return answer === null ? null : `${parsed.question} : ${answer}`;
