@@ -45,4 +45,18 @@ export const AGENT_TABLES_DDL = `
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_sketches_attached ON generated_sketches(attached, created_at);
+
+  -- Canvas state saved right before an agent write (apply_workflow) or a
+  -- restore, so every agent change can be undone from « Historique de
+  -- l'agent ». created_at is ISO; only the 20 most recent rows per project
+  -- are kept (see src/lib/canvas-snapshots.ts).
+  CREATE TABLE IF NOT EXISTS canvas_snapshots (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    nodes       TEXT NOT NULL,
+    edges       TEXT NOT NULL,
+    reason      TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_canvas_snapshots_project ON canvas_snapshots(project_id, created_at);
 `;

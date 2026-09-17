@@ -1,0 +1,118 @@
+import type Database from "better-sqlite3";
+import { v4 as uuid } from "uuid";
+import { getDb } from "./db";
+
+/**
+ * Canvas states saved right before an agent write, so any agent change can be
+ * undone from the canvas (« Historique de l'agent »). Table created in
+ * src/lib/agent/migrations.ts.
+ */
+
+export const MAX_SNAPSHOTS_PER_PROJECT = 20;
+
+/** `apply_workflow`: state before an agent write. `restore`: state before a restore. */
+export type SnapshotReason = "apply_workflow" | "restore";
+
+export type CanvasSnapshotSummary = {
+  id: string;
+  created_at: string;
+  reason: SnapshotReason;
+  node_count: number;
+  edge_count: number;
+};
+
+function countItems(json: string): number {
+  try {
+    const value = JSON.parse(json);
+    return Array.isArray(value) ? value.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Stores the given canvas (JSON strings exactly as in `projects`) and purges
+ * the project's snapshots beyond the most recent MAX_SNAPSHOTS_PER_PROJECT.
+ * Call it inside the same transaction as the write it protects.
+ */
+export function createCanvasSnapshot(
+  projectId: string,
+  nodesJson: string,
+  edgesJson: string,
+  reason: SnapshotReason,
+  db: Database.Database = getDb(),
+): { id: string; created_at: string } {
+  const id = uuid();
+  const createdAt = new Date().toISOString();
+  db.prepare(
+    "INSERT INTO canvas_snapshots (id, project_id, created_at, nodes, edges, reason) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run(id, projectId, createdAt, nodesJson, edgesJson, reason);
+  // rowid breaks ties between snapshots created within the same millisecond.
+  db.prepare(
+    `DELETE FROM canvas_snapshots WHERE project_id = ? AND id NOT IN (
+       SELECT id FROM canvas_snapshots WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
+     )`,
+  ).run(projectId, projectId, MAX_SNAPSHOTS_PER_PROJECT);
+  return { id, created_at: createdAt };
+}
+
+/** Newest first, without the canvas payloads. */
+export function listCanvasSnapshots(projectId: string): CanvasSnapshotSummary[] {
+  const rows = getDb()
+    .prepare(
+      "SELECT id, created_at, reason, nodes, edges FROM canvas_snapshots WHERE project_id = ? ORDER BY created_at DESC, rowid DESC",
+    )
+    .all(projectId) as Array<{ id: string; created_at: string; reason: SnapshotReason; nodes: string; edges: string }>;
+  return rows.map((row) => ({
+    id: row.id,
+    created_at: row.created_at,
+    reason: row.reason,
+    node_count: countItems(row.nodes),
+    edge_count: countItems(row.edges),
+  }));
+}
+
+export function projectExists(projectId: string): boolean {
+  return Boolean(getDb().prepare("SELECT 1 FROM projects WHERE id = ?").get(projectId));
+}
+
+/**
+ * Writes the canvas to `projects` with an ISO updated_at (same format as
+ * saveProject) and bumps the meta row when there is one.
+ */
+export function writeProjectCanvas(
+  projectId: string,
+  nodesJson: string,
+  edgesJson: string,
+  db: Database.Database = getDb(),
+): string {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET nodes = excluded.nodes, edges = excluded.edges, updated_at = excluded.updated_at`,
+  ).run(projectId, nodesJson, edgesJson, now);
+  db.prepare("UPDATE projects_meta SET updated_at = ? WHERE id = ?").run(now, projectId);
+  return now;
+}
+
+/**
+ * Puts a snapshot back on the canvas, after snapshotting the current state
+ * (reason `restore`) so the restore itself can be undone. null when the
+ * project or the snapshot (for this project) does not exist.
+ */
+export function restoreCanvasSnapshot(projectId: string, snapshotId: string): { updated_at: string } | null {
+  const db = getDb();
+  return db.transaction(() => {
+    const current = db.prepare("SELECT nodes, edges FROM projects WHERE id = ?").get(projectId) as
+      | { nodes: string; edges: string }
+      | undefined;
+    if (!current) return null;
+    const snapshot = db
+      .prepare("SELECT nodes, edges FROM canvas_snapshots WHERE id = ? AND project_id = ?")
+      .get(snapshotId, projectId) as { nodes: string; edges: string } | undefined;
+    if (!snapshot) return null;
+    createCanvasSnapshot(projectId, current.nodes, current.edges, "restore", db);
+    const updatedAt = writeProjectCanvas(projectId, snapshot.nodes, snapshot.edges, db);
+    return { updated_at: updatedAt };
+  })();
+}
