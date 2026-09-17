@@ -21,6 +21,11 @@ describe("ChatPanel wiring", () => {
     expect(source).toContain("orphanUserTurn");
   });
 
+  it("stops on the server through stopFollowUp, and asks the server again before the 10 s local fallback", () => {
+    expect(source).toContain("stopFollowUp({ result, status: statusRef.current, retried })");
+    expect(source).toContain("void stopAgentRun(conversationId).finally(abandonLocalStream);");
+  });
+
   it("drops a second send started before the first one is under way", () => {
     expect(source.match(/if \((?:busy \|\| )?sendInFlightRef\.current\) return;/g)).toHaveLength(2);
   });

@@ -6,6 +6,7 @@ import {
   isAgentBusyError,
   isOrphanUserTurn,
   resumeWithoutStreamOutcome,
+  stopFollowUp,
   withoutTrailingUserMessage,
 } from "@/components/panels/chat/resume-model";
 import { groupConsecutiveMessages, trailingAssistantRow } from "@/components/panels/chat/chat-view-model";
@@ -139,5 +140,20 @@ describe("resume model", () => {
     expect(trailingAssistantRow(orphan, "submitted", null, true)).toBe("progress");
     expect(trailingAssistantRow([], "ready", null, true)).toBeNull();
     expect(trailingAssistantRow([...orphan, msg("a0", "assistant")], "ready", null, true)).toBeNull();
+  });
+
+  it("decides what « Arrêter » does after the stop route answered", () => {
+    // The route could not reach the server: drop the local stream at once.
+    expect(stopFollowUp({ result: "failed", status: "streaming", retried: false })).toBe("local-stop");
+    expect(stopFollowUp({ result: "failed", status: "streaming", retried: true })).toBe("local-stop");
+    // Stopped: the stream ends by itself.
+    expect(stopFollowUp({ result: "stopped", status: "streaming", retried: false })).toBe("none");
+    // Not running yet while the request is still submitted: re-sent at the first chunk.
+    expect(stopFollowUp({ result: "not-running", status: "submitted", retried: false })).toBe("retry-when-streaming");
+    // Already streaming (the run registered meanwhile): re-sent right away, once.
+    expect(stopFollowUp({ result: "not-running", status: "streaming", retried: false })).toBe("retry-now");
+    expect(stopFollowUp({ result: "not-running", status: "streaming", retried: true })).toBe("none");
+    // Turn over: nothing to do.
+    expect(stopFollowUp({ result: "not-running", status: "ready", retried: false })).toBe("none");
   });
 });

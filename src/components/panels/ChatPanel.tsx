@@ -20,7 +20,13 @@ import { AGENT_BUSY_MESSAGE } from "@/lib/agent/v2/run-types";
 import { rowsToUIMessages, type StoredMessageRow } from "./chat/history-to-ui-messages";
 import { snapshotCanvas } from "./chat/canvas-snapshot";
 import { createAgentChatTransport, stopAgentRun } from "./chat/chat-transport";
-import { isAgentBusyError, isOrphanUserTurn, resumeWithoutStreamOutcome, withoutTrailingUserMessage } from "./chat/resume-model";
+import {
+  isAgentBusyError,
+  isOrphanUserTurn,
+  resumeWithoutStreamOutcome,
+  stopFollowUp,
+  withoutTrailingUserMessage,
+} from "./chat/resume-model";
 import {
   conversationChangeEffects,
   liveTurnStart,
@@ -308,13 +314,41 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   // « Arrêter » bookkeeping: a stop pressed too early is re-sent at the first
   // chunk; nothing pending survives the end of the turn.
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  // Drops the local stream only (the last resort of « Arrêter »).
+  const abandonLocalStream = useCallback(() => {
+    if (stopFallbackRef.current !== null) {
+      clearTimeout(stopFallbackRef.current);
+      stopFallbackRef.current = null;
+    }
+    void stop();
+  }, [stop]);
+
+  // POST …/stop, then whatever its answer calls for (see stopFollowUp).
+  const requestServerStop = useCallback(
+    (conversationId: string) => {
+      const attempt = (retried: boolean) => {
+        void stopAgentRun(conversationId).then((result) => {
+          const followUp = stopFollowUp({ result, status: statusRef.current, retried });
+          if (followUp === "local-stop") abandonLocalStream();
+          else if (followUp === "retry-now") attempt(true);
+          else if (followUp === "retry-when-streaming") pendingStopRef.current = conversationId;
+        });
+      };
+      attempt(false);
+    },
+    [abandonLocalStream],
+  );
+
   useEffect(() => {
     if (status === "streaming" && pendingStopRef.current !== null) {
       const conversationId = pendingStopRef.current;
       pendingStopRef.current = null;
-      void stopAgentRun(conversationId).then((result) => {
-        if (result === "failed") void stop();
-      });
+      requestServerStop(conversationId);
     }
     if (isBusyStatus(status)) return;
     pendingStopRef.current = null;
@@ -322,7 +356,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       clearTimeout(stopFallbackRef.current);
       stopFallbackRef.current = null;
     }
-  }, [status, stop]);
+  }, [status, requestServerStop]);
 
   // Auto-create a conversation if none is active, so a send never needs a second click.
   const ensureConversation = useCallback(async (): Promise<string | null> => {
@@ -452,24 +486,18 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const onStop = useCallback(() => {
     const conversationId = activeConversationId;
     setStoppedConversationId(conversationId);
-    const stopLocally = () => {
-      if (stopFallbackRef.current !== null) {
-        clearTimeout(stopFallbackRef.current);
-        stopFallbackRef.current = null;
-      }
-      void stop();
-    };
     if (!conversationId) {
-      stopLocally();
+      abandonLocalStream();
       return;
     }
     if (stopFallbackRef.current !== null) clearTimeout(stopFallbackRef.current);
-    stopFallbackRef.current = setTimeout(stopLocally, STOP_FALLBACK_MS);
-    void stopAgentRun(conversationId).then((result) => {
-      if (result === "failed") stopLocally();
-      else if (result === "not-running") pendingStopRef.current = conversationId;
-    });
-  }, [activeConversationId, stop]);
+    // Still not ended after 10 s: ask the server once more, then drop the local stream.
+    stopFallbackRef.current = setTimeout(() => {
+      stopFallbackRef.current = null;
+      void stopAgentRun(conversationId).finally(abandonLocalStream);
+    }, STOP_FALLBACK_MS);
+    requestServerStop(conversationId);
+  }, [activeConversationId, abandonLocalStream, requestServerStop]);
 
   const controls = useMemo<ChatTurnControls>(
     () => ({
