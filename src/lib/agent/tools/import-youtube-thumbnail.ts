@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { v4 as uuid } from "uuid";
-import { getDb } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
+import { fetchBestThumbnail, saveThumbnailToLibrary } from "@/lib/youtube/thumbnails";
 import { ToolDefinition } from "./types";
 import { registerTool } from "./index";
 
@@ -9,24 +8,6 @@ const InputSchema = z.object({
   video_id: z.string().min(1),
   label: z.string().optional(),
 });
-
-// Fetch the highest-resolution thumbnail Google serves for a video, falling
-// back through the conventional sizes. maxresdefault is only present when the
-// uploader supplied a 1280×720 master; otherwise we drop down.
-const THUMB_SIZES = ["maxresdefault", "sddefault", "hqdefault", "mqdefault", "default"] as const;
-
-async function fetchBestThumbnail(videoId: string): Promise<{ bytes: Buffer; mime: string } | null> {
-  for (const size of THUMB_SIZES) {
-    const url = `https://i.ytimg.com/vi/${videoId}/${size}.jpg`;
-    const res = await fetch(url);
-    if (!res.ok) continue;
-    const ab = await res.arrayBuffer();
-    // YouTube returns a tiny placeholder for missing sizes — skip those.
-    if (ab.byteLength < 2000) continue;
-    return { bytes: Buffer.from(ab), mime: "image/jpeg" };
-  }
-  return null;
-}
 
 export const importYoutubeThumbnailTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "import_youtube_thumbnail",
@@ -61,10 +42,7 @@ export const importYoutubeThumbnailTool: ToolDefinition<z.infer<typeof InputSche
       };
     }
 
-    const id = uuid();
-    getDb()
-      .prepare("INSERT INTO swipe_files (id, title, mime_type, size, data) VALUES (?, ?, ?, ?, ?)")
-      .run(id, derivedLabel, thumb.mime, thumb.bytes.length, thumb.bytes);
+    const id = saveThumbnailToLibrary(derivedLabel, thumb);
 
     return {
       content: [
