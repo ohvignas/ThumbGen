@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { v4 as uuid } from "uuid";
+import { createConversation } from "@/lib/agent/conversation/store";
 import { briefUpdateInputSchema } from "@/lib/brief/merge";
 import { emptyBrief } from "@/lib/brief/schema";
 import { getBrief, updateBrief } from "@/lib/brief/store";
@@ -9,7 +10,7 @@ import { pkg } from "./fixtures";
 const ok = { content: [{ type: "text" as const, text: "Sketch generated. Reference: generated:sk_1" }] };
 
 function briefAt(step: number, variants: Array<"A" | "B" | "C"> = ["A"]) {
-  const conversationId = uuid();
+  const conversationId = createConversation("proj-guard").id;
   for (const key of variants) updateBrief(conversationId, "proj-guard", briefUpdateInputSchema.parse({ variant: { key, set: pkg() } }));
   updateBrief(conversationId, "proj-guard", briefUpdateInputSchema.parse({ step }));
   return conversationId;

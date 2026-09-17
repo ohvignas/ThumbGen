@@ -36,6 +36,7 @@ export async function PATCH(req: NextRequest, { params }: Context) {
   const parsed = briefPatchInputSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Fiche invalide", issues: briefIssues(parsed.error) }, { status: 400 });
   const result = updateBrief(conversationId, conversation.project_id, parsed.data);
+  if (!result.ok && result.notFound) return NextResponse.json({ error: "Conversation introuvable" }, { status: 404 });
   if (!result.ok) return NextResponse.json({ error: "Fiche invalide", issues: result.issues }, { status: 400 });
   return NextResponse.json({ brief: result.stored.brief, updatedAt: result.stored.updatedAt, warnings: result.warnings });
 }

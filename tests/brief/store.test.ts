@@ -9,6 +9,7 @@ import { getBrief, releaseBriefUsage, reserveBriefUsage, updateBrief } from "@/l
 import { pkg } from "./fixtures";
 
 const input = (value: unknown) => briefUpdateInputSchema.parse(value);
+const newConversation = (projectId = "proj-store") => createConversation(projectId).id;
 
 function insertSketch(): string {
   const id = `sk_${uuid().replace(/-/g, "")}`;
@@ -31,7 +32,7 @@ describe("brief store", () => {
   });
 
   it("creates the brief on the first update, then merges into it", () => {
-    const conversationId = uuid();
+    const conversationId = newConversation();
     expect(getBrief(conversationId)).toBeNull();
     const first = updateBrief(conversationId, "proj-store", input({ step: 4, video: { promise: "Savoir cliquer" } }));
     expect(first.ok).toBe(true);
@@ -47,7 +48,7 @@ describe("brief store", () => {
   });
 
   it("writes nothing when the update is refused", () => {
-    const conversationId = uuid();
+    const conversationId = newConversation();
     const ok = updateBrief(conversationId, "proj-store", input({ variant: { key: "A", set: pkg() } }));
     if (!ok.ok) throw new Error("setup refused");
     const refused = updateBrief(conversationId, "proj-store", input({ step: 5, variant: { key: "A", set: { thumbnailText: "a b c d e" } } }));
@@ -64,8 +65,8 @@ describe("brief store", () => {
     softDeleteConversation(conversation.id);
     expect(getBrief(conversation.id)).toBeNull();
 
-    const kept = uuid();
-    const [a, b] = [uuid(), uuid()];
+    const kept = newConversation("proj-keep");
+    const [a, b] = [newConversation("proj-delete"), newConversation("proj-delete")];
     updateBrief(a, "proj-delete", input({ step: 2 }));
     updateBrief(b, "proj-delete", input({ step: 3 }));
     updateBrief(kept, "proj-keep", input({ step: 3 }));
@@ -76,7 +77,7 @@ describe("brief store", () => {
   });
 
   it("attaches the brief's sketches and detaches a replaced one no longer used anywhere", () => {
-    const conversationId = uuid();
+    const conversationId = newConversation();
     const [first, second, onCanvas] = [insertSketch(), insertSketch(), insertSketch()];
     updateBrief(conversationId, "proj-sketch", input({ variant: { key: "A", set: { ...pkg(), sketch: sketch(first) } } }));
     expect(attached(first)).toBe(1);
@@ -94,7 +95,7 @@ describe("brief store", () => {
   });
 
   it("reserves and releases usage in the brief", () => {
-    const conversationId = uuid();
+    const conversationId = newConversation();
     expect(reserveBriefUsage(conversationId, "sketches", () => null)).toEqual({ status: "no-brief" });
     updateBrief(conversationId, "proj-usage", input({ step: 7 }));
     expect(reserveBriefUsage(conversationId, "sketches", () => "non")).toEqual({ status: "refused", reason: "non" });
@@ -115,7 +116,7 @@ describe("brief store", () => {
   });
 
   it("reads and updates an older or broken stored brief instead of blocking every update", () => {
-    const conversationId = uuid();
+    const conversationId = newConversation();
     const broken = { step: 5, usage: { sketches: 2 }, variants: [{ key: "A", ...pkg({ thumbnailText: "a b c d e f" }) }] };
     getDb()
       .prepare("INSERT INTO thumbnail_briefs (conversation_id, project_id, data, updated_at) VALUES (?, 'proj-repair', ?, ?)")
@@ -128,5 +129,19 @@ describe("brief store", () => {
     warn.mockRestore();
     expect(updated.ok).toBe(true);
     expect(getBrief(conversationId)!.brief.step).toBe(6);
+  });
+
+  it("refuses to write the brief of an unknown or deleted conversation, even when it is deleted meanwhile", () => {
+    expect(updateBrief(uuid(), "proj-store", input({ step: 2 }))).toEqual({
+      ok: false,
+      notFound: true,
+      issues: [{ path: "", message: "Conversation introuvable" }],
+    });
+    const conversation = createConversation("proj-store");
+    // The route or the tool saw the conversation, then it was deleted before the write.
+    softDeleteConversation(conversation.id);
+    const late = updateBrief(conversation.id, conversation.project_id, input({ step: 2 }));
+    expect(late).toMatchObject({ ok: false, notFound: true });
+    expect(getBrief(conversation.id)).toBeNull();
   });
 });

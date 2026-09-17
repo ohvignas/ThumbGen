@@ -6,7 +6,7 @@ vi.mock("youtube-transcript", () => ({
 }));
 
 import { getDb } from "@/lib/db";
-import { createConversation } from "@/lib/agent/conversation/store";
+import { createConversation, softDeleteConversation } from "@/lib/agent/conversation/store";
 import { briefUpdateInputSchema } from "@/lib/brief/merge";
 import { getBrief } from "@/lib/brief/store";
 import { TOOL_LABELS } from "@/lib/agent/tool-labels";
@@ -39,6 +39,15 @@ describe("update_brief", () => {
     expect(result.isError).toBe(true);
     expect(text(result)).toBe("Fiche refusée, rien n'a été enregistré :\n- variants.A.thumbnailText : Texte de miniature : 4 mots maximum");
     expect(getBrief(ctx.conversationId)).toBeNull();
+    expect(ctx.writeBriefUpdated).not.toHaveBeenCalled();
+  });
+
+  it("refuses the brief of a conversation deleted meanwhile, without broadcasting", () => {
+    const ctx = context();
+    softDeleteConversation(ctx.conversationId);
+    const result = executeUpdateBrief(ctx, briefUpdateInputSchema.parse({ step: 2 }));
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe("Fiche refusée, rien n'a été enregistré :\n- fiche : Conversation introuvable");
     expect(ctx.writeBriefUpdated).not.toHaveBeenCalled();
   });
 

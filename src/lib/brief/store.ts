@@ -9,7 +9,9 @@ import { emptyBrief, repairBrief, thumbnailBriefSchema, type BriefIssue, type Br
  */
 
 export type StoredBrief = { conversationId: string; projectId: string; brief: ThumbnailBrief; updatedAt: string };
-export type BriefWriteResult = { ok: true; stored: StoredBrief; warnings: string[] } | { ok: false; issues: BriefIssue[] };
+export type BriefWriteResult =
+  | { ok: true; stored: StoredBrief; warnings: string[] }
+  | { ok: false; issues: BriefIssue[]; notFound?: true };
 export type UsageReservation = { status: "no-brief" } | { status: "refused"; reason: string } | { status: "reserved" };
 
 type Row = { conversation_id: string; project_id: string; data: string; updated_at: string };
@@ -54,6 +56,9 @@ function stillReferenced(source: string): boolean {
 export function updateBrief(conversationId: string, projectId: string, input: BriefUpdateInput): BriefWriteResult {
   const db = getDb();
   return db.transaction((): BriefWriteResult => {
+    // Checked inside the write: a conversation deleted after the caller looked never gets a brief back.
+    const alive = db.prepare("SELECT 1 FROM conversations WHERE id = ? AND deleted_at IS NULL").get(conversationId);
+    if (!alive) return { ok: false, notFound: true, issues: [{ path: "", message: "Conversation introuvable" }] };
     const existing = getBrief(conversationId);
     const current = existing?.brief ?? emptyBrief();
     const now = new Date().toISOString();
