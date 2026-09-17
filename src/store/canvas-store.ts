@@ -149,6 +149,11 @@ interface CanvasState {
   canRedo: () => boolean;
   loadProject: (projectId?: string) => Promise<void>;
   saveProject: (projectId?: string) => Promise<void>;
+  // Saves a local edit still waiting on its debounced autosave right away and
+  // cancels that autosave. Used before overwriting the canvas on the server
+  // (« Historique de l'agent » restore), so a late autosave can't write the
+  // pre-restore nodes back over the restored ones.
+  flushPendingSave: () => Promise<void>;
 }
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -520,5 +525,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     } finally {
       set({ saving: false });
     }
+  },
+
+  flushPendingSave: async () => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+    if (get().dirty) await get().saveProject();
   },
 }));
