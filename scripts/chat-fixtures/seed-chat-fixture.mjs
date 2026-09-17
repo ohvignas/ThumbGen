@@ -6,6 +6,7 @@
 //     /opt/homebrew/bin/node scripts/chat-fixtures/seed-chat-fixture.mjs
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3100";
@@ -15,8 +16,24 @@ if (!DB_PATH) {
   console.error("THUMBGEN_DB_PATH is required: the dev server's throwaway database.");
   process.exit(1);
 }
-if (path.resolve(DB_PATH).startsWith(path.resolve("data") + path.sep)) {
-  console.error("Refusing to seed ./data: that is the Docker database with the user's real projects.");
+// Any checkout's real database (this worktree's, the main one's, a copy's) ends with data/thumbgen.db.
+// realpath follows symlinks to an existing file; the check is case-insensitive for macOS volumes.
+const resolvedDbPath = fs.existsSync(DB_PATH) ? fs.realpathSync(DB_PATH) : path.resolve(DB_PATH);
+const looksReal = (candidate) => candidate.split(path.sep).join("/").toLowerCase().endsWith("/data/thumbgen.db");
+if (looksReal(path.resolve(DB_PATH)) || looksReal(resolvedDbPath)) {
+  console.error("Refusing to seed a real ThumbGen database (…/data/thumbgen.db).");
+  process.exit(1);
+}
+// Port 3000 is the Docker app the user works in: the HTTP half of the seed must never reach it.
+let baseUrl;
+try {
+  baseUrl = new URL(BASE_URL);
+} catch {
+  console.error(`BASE_URL is not a valid URL: ${BASE_URL}`);
+  process.exit(1);
+}
+if (baseUrl.port === "3000") {
+  console.error("Refusing BASE_URL on port 3000: that is the user's Docker app. Use the throwaway dev server (e.g. 3100).");
   process.exit(1);
 }
 
