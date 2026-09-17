@@ -84,6 +84,30 @@ describe("postV2", () => {
       chatRequest({ project_id: "p" }),
     );
     expect(res.status).toBe(400);
+    expect(await res.text()).toBe("Missing conversation_id");
+  });
+
+  const rawChatRequest = (body: string, headers: Record<string, string> = {}) =>
+    new Request("http://localhost/api/agent/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body,
+    }) as never;
+
+  it("returns 400 « Corps JSON invalide » when the body is not valid JSON", async () => {
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(rawChatRequest('{"conversation_id":"c1","messages":[{"ro'));
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe("Corps JSON invalide");
+  });
+
+  it("returns 413 « Requête trop volumineuse » when an over-10 MB body failed to parse (truncated upstream)", async () => {
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      rawChatRequest('{"conversation_id":"c1","messages":[{"ro', { "Content-Length": String(12 * 1024 * 1024) }),
+    );
+    expect(res.status).toBe(413);
+    expect(await res.text()).toBe("Requête trop volumineuse");
   });
 
   it("returns 400 when no OpenRouter API key is configured", async () => {
@@ -271,6 +295,43 @@ describe("postV2", () => {
     ]);
     const secondCallArg = appendMessageMock.mock.calls[1][0] as { role: string };
     expect(secondCallArg.role).toBe("user");
+  });
+
+  it("refuses (400) a continuation re-sending an ask_user answer whose result is already stored, without a model call or a write", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    streamTextMock.mockReturnValue(fakeStreamResult());
+    listMessagesMock.mockReturnValue([
+      fakeRow({
+        id: "a1",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "assistant", content: [{ type: "tool-call", toolCallId: "ask-1", toolName: "ask_user", input: {} }] },
+        ]),
+      }),
+      fakeRow({
+        id: "a1-result",
+        role: "assistant",
+        content_json: JSON.stringify([
+          { role: "tool", content: [{ type: "tool-result", toolCallId: "ask-1", toolName: "ask_user", output: { type: "json", value: { answer: "Minimal" } } }] },
+        ]),
+      }),
+    ]);
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      chatRequest({
+        conversation_id: "c-duplicate-answer",
+        project_id: "p1",
+        messages: [
+          {
+            role: "assistant",
+            parts: [{ type: "tool-ask_user", toolCallId: "ask-1", state: "output-available", output: { answer: "Minimal" } }],
+          },
+        ],
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(streamTextMock).not.toHaveBeenCalled();
+    expect(appendMessageMock).not.toHaveBeenCalled();
   });
 
   it("does NOT synthesize a skip-result when the last row's client-tool call is already resolved", async () => {

@@ -4,7 +4,6 @@ import {
   PERSONA_ANGLE_LABELS,
   personaImageUrl,
   personaNodeData,
-  personaPickerItem,
 } from "@/lib/personas";
 
 describe("personas helpers", () => {
@@ -26,15 +25,5 @@ describe("personas helpers", () => {
         right: "/api/personas/image?id=p1&angle=right",
       },
     });
-  });
-
-  it("builds a chat library item from the first angle, or nothing without photos", () => {
-    expect(personaPickerItem({ id: "p1", label: "Antoine", angles: ["left", "right"] })).toEqual({
-      source: "stored:persona_p1",
-      preview_url: "/api/personas/image?id=p1&angle=left",
-      label: "Antoine",
-    });
-    expect(personaPickerItem({ id: "p2", label: "", angles: ["front"] })?.label).toBe("Personnage");
-    expect(personaPickerItem({ id: "p3", label: "Vide", angles: [] })).toBeNull();
   });
 });

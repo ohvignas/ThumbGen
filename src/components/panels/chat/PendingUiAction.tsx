@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import LibraryPickerModal from "./LibraryPickerModal";
+import LibraryPickerDialog from "@/components/library/LibraryPickerDialog";
+import type { LibraryKind } from "@/components/library/picker-tabs";
+import { libraryPickToAttachment, UNKNOWN_LIBRARY_IMAGE_ERROR } from "@/lib/library/library-pick-source";
 import AskUserCard from "./AskUserCard";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,13 @@ import type { UIMessage } from "ai";
  * `part.input`/`part.type` to type-check.
  */
 export type PendingToolPart = Extract<UIMessage["parts"][number], { type: `tool-${string}` }>;
+
+/** request_user_image's `suggested_kind` → the library tab opened first. */
+const SUGGESTED_LIBRARY_KIND: ReadonlyMap<string, LibraryKind> = new Map([
+  ["face", "personnages"],
+  ["logo", "logos"],
+  ["reference", "inspirations"],
+]);
 
 const SKETCH_SENTINEL_NODE_ID = "__chat_sketch__";
 
@@ -134,12 +143,17 @@ export default function PendingUiAction({
           <Button size="sm" variant="outline" onClick={() => setShowLib(true)}>Bibliothèque</Button>
           <Button size="sm" variant="ghost" onClick={skip}>Skip</Button>
         </div>
-        {showLib && (
-          <LibraryPickerModal
-            onClose={() => setShowLib(false)}
-            onPick={(source) => { onResolve(toolCallId, { source_ids: [source] }); setShowLib(false); }}
-          />
-        )}
+        <LibraryPickerDialog
+          open={showLib}
+          onOpenChange={setShowLib}
+          kind="all"
+          initialKind={SUGGESTED_LIBRARY_KIND.get(input?.suggested_kind ?? "")}
+          onPick={(pick) => {
+            const attachment = libraryPickToAttachment(pick);
+            if (!attachment) throw new Error(UNKNOWN_LIBRARY_IMAGE_ERROR);
+            onResolve(toolCallId, { source_ids: [attachment.source] });
+          }}
+        />
       </div>
     );
   }

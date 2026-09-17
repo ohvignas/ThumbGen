@@ -217,12 +217,15 @@ export function findRetriedUserRowIndex(rows: StoredRow[], text: string): number
   return -1;
 }
 
+/** Next's middleware/proxy client body limit (10 MB): a larger body arrives truncated. */
+const MAX_CHAT_BODY_BYTES = 10 * 1024 * 1024;
+
 type ChatRequestBody = {
   conversation_id?: string;
   /** Ignored: the project comes from the stored conversation. */
   project_id?: string;
-  // The wire shape useChat/DefaultChatTransport sends: the full UIMessage[] the
-  // client holds. Only the LAST entry (the new turn) is read; prior history is
+  // The wire shape the chat transport sends: only the LAST UIMessage, trimmed to
+  // what is read here (chat-transport.ts trimMessageForServer); prior history is
   // rebuilt from the DB. `attachments` carries this app's own `stored:<id>`
   // references (AttachButton.tsx / resolveImageSource), not AI SDK file parts.
   messages?: Array<{
@@ -248,7 +251,19 @@ export async function postV2(req: NextRequest): Promise<Response> {
   const notJson = rejectNonJsonRequest(req);
   if (notJson) return notJson;
 
-  const body = (await req.json().catch(() => null)) as ChatRequestBody | null;
+  const parsed = await req.json().then(
+    (value: unknown) => ({ ok: true as const, value }),
+    () => ({ ok: false as const }),
+  );
+  if (!parsed.ok) {
+    // Next's proxy truncates a body over its 10 MB limit: say so instead of a
+    // misleading « Missing conversation_id ».
+    const contentLength = Number(req.headers.get("content-length") ?? "0");
+    return contentLength > MAX_CHAT_BODY_BYTES
+      ? new Response("Requête trop volumineuse", { status: 413 })
+      : new Response("Corps JSON invalide", { status: 400 });
+  }
+  const body = parsed.value as ChatRequestBody | null;
   if (!body?.conversation_id) {
     return new Response("Missing conversation_id", { status: 400 });
   }
