@@ -260,3 +260,55 @@ describe("saveProject", () => {
     expect(useCanvasStore.getState().recentOwnSaveUpdatedAts).toEqual(["S3", "S4", "S5", "S6", "S7"]);
   });
 });
+
+describe("undo/redo vs React Flow view changes", () => {
+  it("keeps redo when React Flow reports measured dimensions and selection after an undo", () => {
+    seed([]);
+    const id = useCanvasStore.getState().addNode("prompt", { x: 0, y: 0 });
+    vi.advanceTimersByTime(300);
+    expect(useCanvasStore.getState().historyIndex).toBe(1);
+
+    useCanvasStore.getState().undo();
+    expect(useCanvasStore.getState().nodes).toHaveLength(0);
+    // Remount after undo: React Flow measures and (de)selects without any user edit.
+    useCanvasStore.getState().onNodesChange([
+      { type: "dimensions", id, dimensions: { width: 200, height: 100 } },
+    ]);
+    useCanvasStore.getState().onNodesChange([{ type: "select", id, selected: false }]);
+    useCanvasStore.getState().onEdgesChange([{ type: "select", id: "missing-edge", selected: true }]);
+    vi.advanceTimersByTime(300);
+
+    const state = useCanvasStore.getState();
+    expect(state.historyIndex).toBe(0);
+    expect(state.history).toHaveLength(2);
+    expect(state.canRedo()).toBe(true);
+
+    state.redo();
+    expect(useCanvasStore.getState().nodes.map((n) => n.id)).toEqual([id]);
+  });
+
+  it("still applies view changes to the nodes without an entry or a save, but records a user resize", () => {
+    const node: AppNode = { id: "n1", type: "prompt", position: { x: 0, y: 0 }, data: {} };
+    seed([node]);
+
+    useCanvasStore.getState().onNodesChange([
+      { type: "dimensions", id: "n1", dimensions: { width: 300, height: 120 } },
+      { type: "select", id: "n1", selected: true },
+    ]);
+    vi.advanceTimersByTime(2500);
+    let state = useCanvasStore.getState();
+    expect(state.nodes[0].measured).toEqual({ width: 300, height: 120 });
+    expect(state.nodes[0].selected).toBe(true);
+    expect(state.historyIndex).toBe(0);
+    expect(state.dirty).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    useCanvasStore.getState().onNodesChange([
+      { type: "dimensions", id: "n1", dimensions: { width: 400, height: 120 }, resizing: true, setAttributes: true },
+    ]);
+    vi.advanceTimersByTime(300);
+    state = useCanvasStore.getState();
+    expect(state.historyIndex).toBe(1);
+    expect(state.dirty).toBe(true);
+  });
+});
