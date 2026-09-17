@@ -7,7 +7,7 @@ import { placeInterviewNode } from "@/lib/agent/place-node";
 
 type Node = { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> };
 type Edge = { id: string; source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null };
-type SaveBody = { success: boolean; updatedAt: string; reinjected: Node[]; reinjectedEdges: Edge[] };
+type SaveBody = { success: boolean; updatedAt: string; reinjected: Node[]; reinjectedEdges: Edge[]; refreshed: Node[] };
 
 let projectId: string;
 
@@ -143,6 +143,31 @@ describe("POST /api/project — agent nodes newer than the client base", () => {
     expect(body.reinjectedEdges).toEqual([]);
     expect(dbCanvas().nodes.map((n) => n.id)).toEqual(["user-1", "iv-prompt"]);
     expect(dbCanvas().edges).toEqual([]);
+  });
+
+  it("keeps the agent's newer data when a stale payload contains iv-prompt", async () => {
+    const first = await placeInterviewNode(projectId, { node: { id: "iv-prompt", type: "prompt", data: { prompt: "Premier jet" } } } as never);
+    expect(first.ok).toBe(true);
+    const seen = await load();
+    const base = seen.updatedAt!;
+    // The agent completes the prompt after the client's state was taken; the client then saves its stale copy, moved.
+    const update = await placeInterviewNode(projectId, { node: { id: "iv-prompt", type: "prompt", data: { prompt: "Texte « ÇA CHANGE TOUT »" } } } as never);
+    expect(update.ok).toBe(true);
+    const stale = seen.nodes.map((n) => (n.id === "iv-prompt" ? { ...n, position: { x: 7, y: 8 } } : n));
+
+    const body = await save(stale, seen.edges, base);
+    const saved = dbCanvas().nodes.find((n) => n.id === "iv-prompt")!;
+    expect(saved.position).toEqual({ x: 7, y: 8 });
+    expect(saved.data.prompt).toBe("Texte « ÇA CHANGE TOUT »");
+    expect(body.refreshed).toEqual([saved]);
+    expect(body.reinjected).toEqual([]);
+
+    // A payload based on the agent's write keeps the client's own data.
+    const current = await load();
+    const edited = current.nodes.map((n) => (n.id === "iv-prompt" ? { ...n, data: { ...n.data, prompt: "Ma version" } } : n));
+    const second = await save(edited, current.edges, current.updatedAt!);
+    expect(second.refreshed).toEqual([]);
+    expect(dbCanvas().nodes.find((n) => n.id === "iv-prompt")!.data.prompt).toBe("Ma version");
   });
 
   it("compares a legacy SQLite base as an instant", async () => {

@@ -22,13 +22,13 @@ export async function POST(request: NextRequest) {
       /** The `updated_at` the client's canvas was based on (chantier F2): agent nodes placed after it are kept. */
       baseUpdatedAt?: unknown;
     };
-    const { updatedAt, reinjected, reinjectedEdges } = saveProject(
+    const { updatedAt, reinjected, reinjectedEdges, refreshed } = saveProject(
       projectId,
       nodes || [],
       edges || [],
       typeof baseUpdatedAt === "string" ? baseUpdatedAt : null,
     );
-    return NextResponse.json({ success: true, updatedAt, reinjected, reinjectedEdges });
+    return NextResponse.json({ success: true, updatedAt, reinjected, reinjectedEdges, refreshed });
   } catch (err) {
     console.error("Save project error:", err);
     return NextResponse.json({ error: "Failed to save project" }, { status: 500 });
