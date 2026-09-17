@@ -26,7 +26,7 @@ vi.mock("ai", async (importOriginal) => {
 
 import { setSetting } from "@/lib/settings";
 import { rowsToUIMessages } from "@/components/panels/chat/history-to-ui-messages";
-import { HISTORY_IMAGE_PLACEHOLDER, trimToolResultImages } from "@/lib/agent/v2/history-images";
+import { HISTORY_IMAGE_PLACEHOLDER, lastResolvedAskUserRowIndex, trimToolResultImages } from "@/lib/agent/v2/history-images";
 // Imported up front: loading the route (and the tool registry) can take seconds on a busy machine.
 import { postV2 } from "@/lib/agent/v2/route-handler";
 import { resetRunRegistry } from "@/lib/agent/v2/run-registry";
@@ -91,8 +91,35 @@ describe("trimToolResultImages", () => {
   });
 
   it("leaves other tools' images alone", () => {
-    const messages = JSON.parse(toolRow("b", "generate_sketch", "sketch").content_json);
+    const messages = JSON.parse(toolRow("b", "list_past_generations", "générations").content_json);
     expect(trimToolResultImages(messages)).toEqual(messages);
+  });
+
+  it("also trims imported thumbnails, sketches and previews", () => {
+    for (const tool of ["import_youtube_thumbnail", "generate_sketch", "preview_thumbnail"]) {
+      const trimmed = trimToolResultImages(JSON.parse(toolRow("c", tool, "header").content_json)) as Array<{
+        content: Array<{ output: { value: unknown[] } }>;
+      }>;
+      expect(trimmed[1].content[0].output.value).toEqual([
+        { type: "text", text: "header" },
+        { type: "text", text: HISTORY_IMAGE_PLACEHOLDER },
+      ]);
+    }
+  });
+
+  it("finds the last row holding an answered ask_user", () => {
+    const answer = (id: string) => ({
+      id: "",
+      conversation_id: "c1",
+      role: "assistant" as const,
+      content_json: JSON.stringify([
+        { role: "tool", content: [{ type: "tool-result", toolCallId: id, toolName: "ask_user", output: { type: "json", value: { selected: ["a"] } } }] },
+      ]),
+      interrupted: 0,
+    });
+    expect(lastResolvedAskUserRowIndex([userRow("x"), toolRow("v", "view_canvas_images", "h")])).toBe(-1);
+    expect(lastResolvedAskUserRowIndex([userRow("x"), answer("q1"), toolRow("v", "view_canvas_images", "h"), answer("q2"), userRow("y")])).toBe(3);
+    expect(lastResolvedAskUserRowIndex([{ content_json: "not json" }])).toBe(-1);
   });
 });
 
@@ -110,7 +137,7 @@ describe("postV2 — images of earlier turns are trimmed from the model input", 
       userRow("Regarde le canvas"),
       toolRow("v1", "view_canvas_images", "node s1 (sketch, S) — image 1/1 — stored:gi_1"),
       toolRow("y1", "search_youtube", "8 vidéos"),
-      toolRow("g1", "generate_sketch", "croquis"),
+      toolRow("g1", "list_past_generations", "générations"),
     ];
     const before = rows.map((row) => row.content_json);
     const uiBefore = JSON.stringify(rowsToUIMessages(rows as never));
@@ -125,7 +152,7 @@ describe("postV2 — images of earlier turns are trimmed from the model input", 
       { type: "text", text: "8 vidéos" },
       { type: "text", text: HISTORY_IMAGE_PLACEHOLDER },
     ]);
-    expect(resultValue("generate_sketch").map((p) => p.type)).toEqual(["text", "file"]);
+    expect(resultValue("list_past_generations").map((p) => p.type)).toEqual(["text", "file"]);
 
     // Stored rows and what the chat shows are unchanged.
     expect(rows.slice(0, 4).map((row) => row.content_json)).toEqual(before);

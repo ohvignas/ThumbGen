@@ -1,14 +1,21 @@
 /**
  * Earlier turns' tool-result images are re-sent to the model on every turn
  * unless trimmed. For the tools whose images only serve the turn that looked
- * at them (view_canvas_images, search_youtube), the model input of later
+ * at them (view_canvas_images, search_youtube, import_youtube_thumbnail,
+ * generate_sketch, preview_thumbnail), the model input of later
  * turns replaces each image with a short text part and keeps every text part
  * (headers, refs). Only the model input changes: stored rows and the chat
  * history are never rewritten.
  */
 export const HISTORY_IMAGE_PLACEHOLDER = "[image retirée de l'historique — rappelle l'outil si besoin]";
 
-export const HISTORY_IMAGE_TRIMMED_TOOLS: readonly string[] = ["view_canvas_images", "search_youtube"];
+export const HISTORY_IMAGE_TRIMMED_TOOLS: readonly string[] = [
+  "view_canvas_images",
+  "search_youtube",
+  "import_youtube_thumbnail",
+  "generate_sketch",
+  "preview_thumbnail",
+];
 
 type Json = Record<string, unknown>;
 
@@ -34,4 +41,30 @@ export function trimToolResultImages(messages: unknown[]): unknown[] {
     });
     return changed ? { ...message, content } : message;
   });
+}
+
+/**
+ * Index of the last stored row holding an ask_user tool-result — an answered
+ * question of the thumbnail journey — or -1. During a journey every answer is
+ * a continuation of the same turn: images before it are no longer re-sent.
+ */
+export function lastResolvedAskUserRowIndex(rows: ReadonlyArray<{ content_json: string }>): number {
+  for (let index = rows.length - 1; index >= 0; index--) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rows[index].content_json);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(parsed)) continue;
+    const answered = parsed.some(
+      (message) =>
+        isObject(message) &&
+        message.role === "tool" &&
+        Array.isArray(message.content) &&
+        message.content.some((part) => isObject(part) && part.type === "tool-result" && part.toolName === "ask_user"),
+    );
+    if (answered) return index;
+  }
+  return -1;
 }

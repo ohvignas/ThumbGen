@@ -15,6 +15,8 @@ import { BLUEPRINT_MODELS } from "@/lib/agent/blueprint/models";
 import { formatUsdEstimate } from "@/lib/canvas/generate-action";
 import { imageModelLabel } from "@/lib/image-models";
 import { MODEL_COSTS } from "@/lib/model-costs";
+import { buildThumbnailBriefBlock } from "@/lib/brief/context";
+import type { ThumbnailBrief } from "@/lib/brief/schema";
 
 /**
  * Prices of the model options at step 7 of the thumbnail journey (16x9, one
@@ -190,12 +192,13 @@ export function buildChannelProfileBlock(
  * Returns the "system" parameter as an array of blocks. The first block is the
  * static persona+rules with cache_control set, so it's cached across turns.
  * The following blocks are per-turn: reply language, channel profile, project
- * id, canvas snapshot.
+ * id, canvas snapshot, and the thumbnail brief when the conversation has one.
  */
 export function buildSystemMessages(
   canvasSnapshot: unknown,
   projectId?: string,
   prefs: AgentPromptPrefs = DEFAULT_AGENT_PROMPT_PREFS,
+  brief: ThumbnailBrief | null = null,
 ): Array<{
   type: "text";
   text: string;
@@ -221,5 +224,6 @@ export function buildSystemMessages(
     type: "text",
     text: `<canvas_state>\n${JSON.stringify(canvasSnapshot, null, 2)}\n</canvas_state>`,
   });
+  if (brief) blocks.push({ type: "text", text: buildThumbnailBriefBlock(brief) });
   return blocks;
 }
