@@ -8,7 +8,10 @@ import { getDb } from "./db";
  * src/lib/agent/migrations.ts.
  */
 
+/** Agent snapshots (`apply_workflow`) kept per project. */
 export const MAX_SNAPSHOTS_PER_PROJECT = 20;
+/** Pre-restore snapshots kept per project, on their own quota so restores never push agent snapshots out. */
+export const MAX_RESTORE_SNAPSHOTS_PER_PROJECT = 5;
 
 /** `apply_workflow`: state before an agent write. `restore`: state before a restore. */
 export type SnapshotReason = "apply_workflow" | "restore";
@@ -21,19 +24,17 @@ export type CanvasSnapshotSummary = {
   edge_count: number;
 };
 
-function countItems(json: string): number {
-  try {
-    const value = JSON.parse(json);
-    return Array.isArray(value) ? value.length : 0;
-  } catch {
-    return 0;
-  }
-}
+const QUOTAS: Record<SnapshotReason, number> = {
+  apply_workflow: MAX_SNAPSHOTS_PER_PROJECT,
+  restore: MAX_RESTORE_SNAPSHOTS_PER_PROJECT,
+};
 
 /**
  * Stores the given canvas (JSON strings exactly as in `projects`) and purges
- * the project's snapshots beyond the most recent MAX_SNAPSHOTS_PER_PROJECT.
- * Call it inside the same transaction as the write it protects.
+ * the project's snapshots of that reason beyond its quota. A canvas identical
+ * to the project's newest snapshot is not stored again: that snapshot is
+ * returned instead. Call it inside the same transaction as the write it
+ * protects.
  */
 export function createCanvasSnapshot(
   projectId: string,
@@ -42,34 +43,38 @@ export function createCanvasSnapshot(
   reason: SnapshotReason,
   db: Database.Database = getDb(),
 ): { id: string; created_at: string } {
+  // rowid breaks ties between snapshots created within the same millisecond.
+  const newest = db
+    .prepare(
+      "SELECT id, created_at, nodes, edges FROM canvas_snapshots WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+    )
+    .get(projectId) as { id: string; created_at: string; nodes: string; edges: string } | undefined;
+  if (newest && newest.nodes === nodesJson && newest.edges === edgesJson) {
+    return { id: newest.id, created_at: newest.created_at };
+  }
   const id = uuid();
   const createdAt = new Date().toISOString();
   db.prepare(
     "INSERT INTO canvas_snapshots (id, project_id, created_at, nodes, edges, reason) VALUES (?, ?, ?, ?, ?, ?)",
   ).run(id, projectId, createdAt, nodesJson, edgesJson, reason);
-  // rowid breaks ties between snapshots created within the same millisecond.
   db.prepare(
-    `DELETE FROM canvas_snapshots WHERE project_id = ? AND id NOT IN (
-       SELECT id FROM canvas_snapshots WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
+    `DELETE FROM canvas_snapshots WHERE project_id = ? AND reason = ? AND id NOT IN (
+       SELECT id FROM canvas_snapshots WHERE project_id = ? AND reason = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
      )`,
-  ).run(projectId, projectId, MAX_SNAPSHOTS_PER_PROJECT);
+  ).run(projectId, reason, projectId, reason, QUOTAS[reason]);
   return { id, created_at: createdAt };
 }
 
-/** Newest first, without the canvas payloads. */
+/** Newest first. Counts come from SQL: the canvas payloads are never loaded or parsed here. */
 export function listCanvasSnapshots(projectId: string): CanvasSnapshotSummary[] {
-  const rows = getDb()
+  return getDb()
     .prepare(
-      "SELECT id, created_at, reason, nodes, edges FROM canvas_snapshots WHERE project_id = ? ORDER BY created_at DESC, rowid DESC",
+      `SELECT id, created_at, reason,
+         CASE WHEN json_valid(nodes) AND json_type(nodes) = 'array' THEN json_array_length(nodes) ELSE 0 END AS node_count,
+         CASE WHEN json_valid(edges) AND json_type(edges) = 'array' THEN json_array_length(edges) ELSE 0 END AS edge_count
+       FROM canvas_snapshots WHERE project_id = ? ORDER BY created_at DESC, rowid DESC`,
     )
-    .all(projectId) as Array<{ id: string; created_at: string; reason: SnapshotReason; nodes: string; edges: string }>;
-  return rows.map((row) => ({
-    id: row.id,
-    created_at: row.created_at,
-    reason: row.reason,
-    node_count: countItems(row.nodes),
-    edge_count: countItems(row.edges),
-  }));
+    .all(projectId) as CanvasSnapshotSummary[];
 }
 
 export function projectExists(projectId: string): boolean {

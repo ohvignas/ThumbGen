@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { getDb } from "@/lib/db";
+import { createProject, deleteProject } from "@/lib/local-storage";
 import {
+  MAX_RESTORE_SNAPSHOTS_PER_PROJECT,
   MAX_SNAPSHOTS_PER_PROJECT,
   createCanvasSnapshot,
   listCanvasSnapshots,
@@ -64,6 +66,43 @@ describe("canvas snapshots store", () => {
     const ids = kept.map((row) => JSON.parse(row.nodes)[0].id);
     expect(ids).not.toContain("n0");
     expect(ids).toContain(`n${MAX_SNAPSHOTS_PER_PROJECT + 2}`);
+  });
+
+  it("counts nodes and edges in SQL, tolerating a payload that is not a JSON array", () => {
+    createCanvasSnapshot(projectId, "not json", "{}", "apply_workflow");
+    expect(listCanvasSnapshots(projectId)[0]).toMatchObject({ node_count: 0, edge_count: 0 });
+  });
+
+  it("does not store a snapshot identical to the newest one", () => {
+    const first = createCanvasSnapshot(projectId, JSON.stringify([{ id: "a" }]), "[]", "apply_workflow");
+    const again = createCanvasSnapshot(projectId, JSON.stringify([{ id: "a" }]), "[]", "apply_workflow");
+    expect(again.id).toBe(first.id);
+    expect(listCanvasSnapshots(projectId)).toHaveLength(1);
+    createCanvasSnapshot(projectId, JSON.stringify([{ id: "b" }]), "[]", "apply_workflow");
+    createCanvasSnapshot(projectId, JSON.stringify([{ id: "a" }]), "[]", "apply_workflow");
+    expect(listCanvasSnapshots(projectId)).toHaveLength(3);
+  });
+
+  it(`keeps ${MAX_RESTORE_SNAPSHOTS_PER_PROJECT} restore snapshots apart from the agent snapshots`, () => {
+    for (let i = 0; i < MAX_SNAPSHOTS_PER_PROJECT; i++) {
+      createCanvasSnapshot(projectId, JSON.stringify([{ id: `agent${i}` }]), "[]", "apply_workflow");
+    }
+    for (let i = 0; i < MAX_RESTORE_SNAPSHOTS_PER_PROJECT + 2; i++) {
+      createCanvasSnapshot(projectId, JSON.stringify([{ id: `restore${i}` }]), "[]", "restore");
+    }
+    expect(MAX_RESTORE_SNAPSHOTS_PER_PROJECT).toBe(5);
+    const list = listCanvasSnapshots(projectId);
+    expect(list.filter((s) => s.reason === "apply_workflow")).toHaveLength(MAX_SNAPSHOTS_PER_PROJECT);
+    expect(list.filter((s) => s.reason === "restore")).toHaveLength(MAX_RESTORE_SNAPSHOTS_PER_PROJECT);
+  });
+
+  it("deleteProject deletes the project's snapshots too", () => {
+    const { id } = createProject("Snapshots à supprimer");
+    createCanvasSnapshot(id, JSON.stringify([{ id: "a" }]), "[]", "apply_workflow");
+    createCanvasSnapshot(projectId, JSON.stringify([{ id: "keep" }]), "[]", "apply_workflow");
+    deleteProject(id);
+    expect(listCanvasSnapshots(id)).toHaveLength(0);
+    expect(listCanvasSnapshots(projectId)).toHaveLength(1);
   });
 
   it("restores a snapshot after snapshotting the current state", () => {
