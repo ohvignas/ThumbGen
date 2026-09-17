@@ -39,6 +39,16 @@ export function compareUpdatedAt(a: string, b: string): number {
   return a === b ? 0 : a < b ? -1 : 1;
 }
 
+/**
+ * A new ISO `updated_at` strictly after `previous`: two writes in the same
+ * millisecond (a save and an agent placement) must never share a timestamp,
+ * or a client base equal to one would wrongly cover the other.
+ */
+export function nextUpdatedAt(previous: string | null | undefined, nowMs: number = Date.now()): string {
+  const previousMs = previous ? parseTimestamp(previous) : null;
+  return new Date(previousMs !== null && previousMs >= nowMs ? previousMs + 1 : nowMs).toISOString();
+}
+
 /** The later of two `updated_at` values (either may be null). */
 export function laterUpdatedAt(a: string | null, b: string | null): string | null {
   if (a === null) return b;

@@ -9,7 +9,6 @@ vi.mock("youtube-transcript", () => ({
 import "@/lib/agent/tools/all";
 import { listTools } from "@/lib/agent/tools";
 import { getDb } from "@/lib/db";
-import { createProject } from "@/lib/local-storage";
 import { listCanvasSnapshots } from "@/lib/canvas-snapshots";
 import { interviewHandle, placeInterviewNode, placeNodeInputSchema } from "@/lib/agent/place-node";
 import { PLACE_NODE_TOOL_NAME, buildPlaceNodeTool } from "@/lib/agent/v2/place-node-tool";
@@ -51,7 +50,11 @@ async function placed(value: unknown) {
 }
 
 beforeEach(() => {
-  projectId = createProject(`Interview ${uuid()}`).id;
+  // createProject's id is proj_<Date.now()>: two tests in the same millisecond would collide.
+  projectId = `proj_test_${uuid()}`;
+  const createdAt = new Date().toISOString();
+  getDb().prepare("INSERT INTO projects_meta (id, name, description, created_at, updated_at) VALUES (?, ?, '', ?, ?)").run(projectId, "Interview", createdAt, createdAt);
+  getDb().prepare("INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, '[]', '[]', ?)").run(projectId, createdAt);
   personaId = uuid();
   getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Antoine");
   getDb()

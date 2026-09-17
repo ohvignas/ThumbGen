@@ -11,7 +11,7 @@ import {
 import { imageExists, markAttached } from "@/lib/agent/tools/_helpers/image-source";
 import { NODE_W } from "@/lib/agent/tools/_helpers/auto-layout";
 import { createCanvasSnapshot, writeProjectCanvas } from "@/lib/canvas-snapshots";
-import type { CanvasPatch, CanvasPatchEdge, CanvasPatchNode } from "@/lib/canvas/canvas-patch";
+import { nextUpdatedAt, type CanvasPatch, type CanvasPatchEdge, type CanvasPatchNode } from "@/lib/canvas/canvas-patch";
 
 /**
  * `place_node` (chantier F2): places or completes ONE guided-interview node
@@ -150,7 +150,9 @@ function parseArray<T>(json: string): T[] {
 }
 
 const readCanvas = (projectId: string) =>
-  getDb().prepare("SELECT nodes, edges FROM projects WHERE id = ?").get(projectId) as { nodes: string; edges: string } | undefined;
+  getDb().prepare("SELECT nodes, edges, updated_at FROM projects WHERE id = ?").get(projectId) as
+    | { nodes: string; edges: string; updated_at: string }
+    | undefined;
 
 const fail = (error: string): PlaceNodeOutcome => ({ ok: false, error });
 
@@ -203,10 +205,10 @@ export async function placeInterviewNode(projectId: string, input: PlaceNodeInpu
   }
 
   const db = getDb();
-  const updatedAt = new Date().toISOString();
   const written = db.transaction(() => {
     const fresh = readCanvas(projectId);
     if (!fresh) return fail(`Project not found: ${projectId}`);
+    const updatedAt = nextUpdatedAt(fresh.updated_at);
     const nodes = parseArray<StoredNode>(fresh.nodes);
     const edges = parseArray<StoredEdge>(fresh.edges);
     const index = nodes.findIndex((node) => node.id === id);

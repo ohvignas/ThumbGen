@@ -54,3 +54,14 @@ describe("isCanvasPatch", () => {
     expect(isCanvasPatch({ ...patch("t"), edges: [{ id: "e" }] })).toBe(false);
   });
 });
+
+describe("nextUpdatedAt", () => {
+  it("is now, or 1 ms after a previous value that is not in the past", async () => {
+    const { nextUpdatedAt } = await import("@/lib/canvas/canvas-patch");
+    const now = Date.parse("2026-09-17T10:00:00.000Z");
+    expect(nextUpdatedAt(null, now)).toBe("2026-09-17T10:00:00.000Z");
+    expect(nextUpdatedAt("2026-09-17 09:00:00", now)).toBe("2026-09-17T10:00:00.000Z");
+    expect(nextUpdatedAt("2026-09-17T10:00:00.000Z", now)).toBe("2026-09-17T10:00:00.001Z");
+    expect(nextUpdatedAt("2026-09-17T10:00:05.000Z", now)).toBe("2026-09-17T10:00:05.001Z");
+  });
+});
