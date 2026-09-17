@@ -73,4 +73,49 @@ describe("buildAiSdkTools", () => {
       ],
     });
   });
+
+  it("toModelOutput maps an isError result to error-text, so the failure survives persistence", () => {
+    const tools = buildAiSdkTools();
+    const out = tools.generate_sketch.toModelOutput!({
+      toolCallId: "t1",
+      input: {},
+      output: {
+        isError: true,
+        content: [
+          { type: "text" as const, text: "OpenRouter API error 500" },
+          { type: "text" as const, text: "retry later" },
+        ],
+      },
+    } as never);
+    expect(out).toEqual({ type: "error-text", value: "OpenRouter API error 500\nretry later" });
+    const wrapped = {
+      role: "tool" as const,
+      content: [{ type: "tool-result" as const, toolCallId: "t1", toolName: "generate_sketch", output: out }],
+    };
+    expect(toolModelMessageSchema.safeParse(wrapped).success).toBe(true);
+  });
+
+  it("toModelOutput keeps a successful visual result as content with its file part", () => {
+    const tools = buildAiSdkTools();
+    const out = tools.generate_sketch.toModelOutput!({
+      toolCallId: "t1",
+      input: {},
+      output: {
+        isError: false,
+        content: [
+          { type: "text" as const, text: "Sketch generated." },
+          { type: "image" as const, mimeType: "image/png", data: "AAA=" },
+          { type: "text" as const, text: "result_id: t1" },
+        ],
+      },
+    } as never);
+    expect(out).toEqual({
+      type: "content",
+      value: [
+        { type: "text", text: "Sketch generated." },
+        { type: "file", mediaType: "image/png", data: { type: "data", data: "AAA=" } },
+        { type: "text", text: "result_id: t1" },
+      ],
+    });
+  });
 });

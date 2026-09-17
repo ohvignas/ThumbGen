@@ -43,6 +43,18 @@ const sketch = (toolCallId: string) =>
     },
   });
 
+const reopenedSketch = (toolCallId: string) =>
+  tool("generate_sketch", toolCallId, {
+    output: {
+      type: "content",
+      value: [
+        { type: "text", text: "Sketch generated." },
+        { type: "file", mediaType: "image/png", data: { type: "data", data: PNG } },
+        { type: "text", text: `result_id: ${toolCallId}` },
+      ],
+    },
+  });
+
 const finish = (input: unknown) => tool("finish_turn", "fin", { input, output: { content: [{ type: "text", text: '{"ok":true}' }] } });
 
 const ids = (parts: ToolPart[]) => parts.map((part) => part.toolCallId);
@@ -149,16 +161,80 @@ describe("splitAssistantTurn without finish_turn", () => {
     expect(turn.steps[1]).toMatchObject({ status: "error", errorText: "OpenRouter API error 500" });
   });
 
-  it("shows every successful visual output as a result", () => {
+  it("shows every successful visual output with an image as a result", () => {
     const turn = splitAssistantTurn(
       assistant([
-        tool("search_youtube", "c1"),
+        tool("search_youtube", "c1", { output: { content: [{ type: "text", text: "1 vidéo" }, { type: "image", mimeType: "image/jpeg", data: PNG }] } }),
         sketch("c2"),
+        tool("search_youtube", "c5"),
         tool("generate_sketch", "c3", { output: { isError: true, content: [{ type: "text", text: "boom" }] } }),
         tool("apply_workflow", "c4"),
       ]),
     );
     expect(ids(turn.results)).toEqual(["c1", "c2"]);
+  });
+
+  it("answers with the text written after a failed tool", () => {
+    const turn = splitAssistantTurn(
+      assistant([
+        { type: "tool-generate_sketch", toolCallId: "c1", state: "output-error", input: {}, errorText: "boom" },
+        text("Le croquis a échoué, je réessaie plus tard."),
+      ]),
+    );
+    expect(turn.answer).toBe("Le croquis a échoué, je réessaie plus tard.");
+    expect(turn.steps).toHaveLength(1);
+  });
+
+  it("falls back when finish_turn is still streaming its input", () => {
+    const message = assistant([
+      text("Je dessine."),
+      sketch("c1"),
+      text("Voici le croquis."),
+      { type: "tool-finish_turn", toolCallId: "fin", state: "input-streaming", input: { summary: "Voici" } },
+    ]);
+    const turn = splitAssistantTurn(message);
+    expect(turn.hasFinishTurn).toBe(false);
+    expect(turn.answer).toBe("Voici le croquis.");
+    expect(ids(turn.results)).toEqual(["c1"]);
+    expect(stepNames(message)).toEqual(["text:Je dessine.", "tool:generate_sketch"]);
+  });
+
+  it("leaves empty or whitespace reasoning out of the steps", () => {
+    const turn = splitAssistantTurn(
+      assistant([{ type: "reasoning", text: "" }, { type: "reasoning", text: "  \n " }, tool("get_canvas_state", "c1"), text("Fini.")]),
+    );
+    expect(turn.steps.map((step) => step.kind)).toEqual(["tool"]);
+    expect(turn.stepCount).toBe(1);
+  });
+});
+
+describe("reopened outputs", () => {
+  it("shows a reopened content output with an image as a done result", () => {
+    const turn = splitAssistantTurn(assistant([reopenedSketch("c1"), finish({ summary: "Prêt.", results: ["c1"] })]));
+    expect(ids(turn.results)).toEqual(["c1"]);
+    expect(turn.steps[0]).toMatchObject({ kind: "tool", status: "done", shownInResults: true });
+  });
+
+  it("never shows a failed visual as a result, even when finish_turn cites it", () => {
+    const failed = tool("generate_sketch", "c1", { output: { type: "error-text", value: "Clé OpenRouter absente" } });
+    const withFinish = splitAssistantTurn(assistant([failed, finish({ summary: "Raté.", results: ["c1"] })]));
+    expect(withFinish.results).toEqual([]);
+    expect(withFinish.steps[0]).toMatchObject({ status: "error", errorText: "Clé OpenRouter absente", shownInResults: false });
+    const withoutFinish = splitAssistantTurn(assistant([failed]));
+    expect(withoutFinish.results).toEqual([]);
+    expect(withoutFinish.answer).toBe("Échec de l'étape « Dessine le croquis » : Clé OpenRouter absente");
+  });
+
+  it("never shows a visual output without any image as a result", () => {
+    const turn = splitAssistantTurn(
+      assistant([tool("generate_sketch", "c1", { output: { type: "content", value: [{ type: "text", text: "rien" }] } }), finish({ summary: "x", results: ["c1"] })]),
+    );
+    expect(turn.results).toEqual([]);
+  });
+
+  it("resolves a result id copied with its result_id prefix", () => {
+    const turn = splitAssistantTurn(assistant([sketch("c1"), sketch("c2"), finish({ summary: "Deux.", results: ["result_id: c2", " c1 "] })]));
+    expect(ids(turn.results)).toEqual(["c2", "c1"]);
   });
 });
 
@@ -173,6 +249,18 @@ describe("client requests", () => {
     expect(ids(turn.pending)).toEqual(["c1"]);
     expect(turn.steps).toEqual([]);
     expect(turn.answer).toBe("Il me faut ton logo.");
+  });
+
+  it("keeps a pending sketch request out of the steps and the count", () => {
+    const turn = splitAssistantTurn(
+      assistant([
+        tool("get_canvas_state", "c0"),
+        { type: "tool-request_user_sketch", toolCallId: "c1", state: "input-streaming" },
+      ]),
+    );
+    expect(ids(turn.pending)).toEqual(["c1"]);
+    expect(turn.stepCount).toBe(1);
+    expect(turn.steps.map((step) => (step.kind === "tool" ? step.toolName : step.kind))).toEqual(["get_canvas_state"]);
   });
 
   it("lists an answered request as a step", () => {
@@ -209,6 +297,7 @@ describe("toolStatus", () => {
     expect(status({ type: "tool-x", toolCallId: "c", state: "output-denied" })).toEqual({ status: "error", errorText: "Refusé" });
     expect(status(tool("x", "c", { output: { isError: true, content: [{ type: "text", text: "clé absente" }] } }))).toEqual({ status: "error", errorText: "clé absente" });
     expect(status(tool("x", "c", { output: { type: "error-text", value: "abandon" } }))).toEqual({ status: "error", errorText: "abandon" });
+    expect(status(tool("x", "c", { output: { type: "error-json", value: { code: 42 } } }))).toEqual({ status: "error", errorText: '{"code":42}' });
     expect(status(tool("x", "c"))).toEqual({ status: "done", errorText: null });
   });
 });

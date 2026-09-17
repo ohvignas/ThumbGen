@@ -54,6 +54,13 @@ function toAiSdkTool(name: string): Tool {
     // write-up for the full trace.
     toModelOutput: ({ output }: any) => {
       const result = output as ToolResult;
+      // Registry failures ({ isError: true }) become an error-text output: a
+      // "content" output would drop isError once persisted, and the reopened
+      // chat would show the failed step as ✓ (and a failed visual as a result).
+      if (result.isError === true) {
+        const text = result.content.flatMap((c: ToolContent) => (c.type === "text" ? [c.text] : [])).join("\n");
+        return { type: "error-text" as const, value: text || "Erreur" };
+      }
       return {
         type: "content" as const,
         value: result.content.map((c: ToolContent) =>

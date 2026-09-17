@@ -2,6 +2,7 @@ import type { ChatStatus, UIMessage } from "ai";
 import { toolLabel } from "@/lib/agent/tool-labels";
 import {
   FINISH_TURN_TOOL_NAME,
+  RESULT_ID_PREFIX,
   isVisualResultTool,
   parseFinishTurnInput,
   type FinishTurnInput,
@@ -117,6 +118,7 @@ export function toolStatus(part: ToolPart): { status: ToolStatus; errorText: str
     const errorText = errorTextOfOutput(part.output);
     return errorText === null ? { status: "done", errorText: null } : { status: "error", errorText };
   }
+  // input-streaming, input-available and approval-* (the app doesn't use tool approvals today).
   return { status: "running", errorText: null };
 }
 
@@ -134,8 +136,33 @@ function isPendingClientRequest(part: ToolPart): boolean {
   return CLIENT_TOOL_NAMES.has(toolNameOf(part)) && (part.state === "input-streaming" || part.state === "input-available");
 }
 
+/** Content items that carry an image: live ToolResult `image`, or a reopened `{ type: "content" }` file/media item. */
+const IMAGE_ITEM_TYPES: ReadonlySet<string> = new Set(["image", "file", "file-data", "file-url", "image-data", "image-url"]);
+
+function hasImageContent(output: unknown): boolean {
+  if (!output || typeof output !== "object") return false;
+  const o = output as Record<string, unknown>;
+  // Live: ToolResult { content: [...] }. Reopened: tool-adapter's toModelOutput { type: "content", value: [...] }.
+  const items = Array.isArray(o.content) ? o.content : o.type === "content" && Array.isArray(o.value) ? o.value : [];
+  return items.some(
+    (item) => !!item && typeof item === "object" && IMAGE_ITEM_TYPES.has(String((item as { type?: unknown }).type)),
+  );
+}
+
 function isShowableResult(part: ToolPart): boolean {
-  return isVisualResultTool(toolNameOf(part)) && part.state === "output-available" && toolStatus(part).status === "done";
+  return (
+    isVisualResultTool(toolNameOf(part)) &&
+    part.state === "output-available" &&
+    toolStatus(part).status === "done" &&
+    hasImageContent(part.output)
+  );
+}
+
+/** A finish_turn result id, tolerating a copied « result_id: » prefix. */
+function normalizeResultId(id: string): string {
+  const trimmed = id.trim();
+  const prefix = RESULT_ID_PREFIX.trim(); // "result_id:"
+  return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length).trim() : trimmed;
 }
 
 function toNextAction(action: FinishTurnInput["next_actions"][number]): NextAction | null {
@@ -203,7 +230,7 @@ export function splitAssistantTurn(message: UIMessage): AssistantTurn {
     const byId = new Map(stepTools.map((part) => [part.toolCallId, part]));
     results = [];
     for (const id of finish.results) {
-      const part = byId.get(id);
+      const part = byId.get(normalizeResultId(id));
       if (part && isShowableResult(part) && !results.includes(part)) results.push(part);
     }
   } else {
