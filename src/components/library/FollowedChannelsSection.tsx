@@ -11,13 +11,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import ChannelBar from "./followed-channels/ChannelBar";
 import ClassificationNotice from "./followed-channels/ClassificationNotice";
 import FollowChannelDialog from "./followed-channels/FollowChannelDialog";
+import TypesSummary from "./followed-channels/TypesSummary";
 import { useFollowedChannels } from "./followed-channels/useFollowedChannels";
+import VideoGrid from "./followed-channels/VideoGrid";
 
 const GOOGLE_KEY_HELP = "https://console.cloud.google.com/apis/credentials";
 
 /** Inspirations → « Chaînes suivies » (chantier D). Default export without props: chantier C's contract. */
 export default function FollowedChannelsSection() {
-  const { data, error, reload } = useFollowedChannels();
+  const { data, error, reload, version } = useFollowedChannels();
   const [followOpen, setFollowOpen] = useState(false);
 
   return (
@@ -58,7 +60,12 @@ export default function FollowedChannelsSection() {
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
-          ) : null}
+          ) : (
+            <>
+              <TypesSummary channels={data.channels} version={version} />
+              <VideoGrid channels={data.channels} version={version} />
+            </>
+          )}
         </>
       )}
 
