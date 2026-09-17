@@ -25,6 +25,7 @@ describe("channel tables", () => {
         "playlist_id",
         "backfill_page_token",
         "backfill_done",
+        "sync_page_token",
         "created_at",
       ]),
     );
@@ -69,7 +70,7 @@ describe("channel tables", () => {
       );
     `);
     migrateChannelTables(db);
-    expect(columns(db, "followed_channels")).toEqual(expect.arrayContaining(["playlist_id", "backfill_page_token", "backfill_done"]));
+    expect(columns(db, "followed_channels")).toEqual(expect.arrayContaining(["playlist_id", "backfill_page_token", "backfill_done", "sync_page_token"]));
     expect(columns(db, "channel_videos")).toEqual(expect.arrayContaining(["classify_attempts", "classify_approved", "swipe_file_id"]));
     db.close();
   });

@@ -23,6 +23,8 @@ export type ChannelRow = {
   playlist_id: string | null;
   backfill_page_token: string | null;
   backfill_done: number;
+  /** Where an interrupted newest-first walk (not the first import) resumes. */
+  sync_page_token: string | null;
   created_at: string;
 };
 
@@ -153,6 +155,10 @@ export function setBackfill(id: string, state: { pageToken: string | null; done:
   getDb()
     .prepare("UPDATE followed_channels SET backfill_page_token = ?, backfill_done = ? WHERE id = ?")
     .run(state.pageToken, state.done ? 1 : 0, id);
+}
+
+export function setSyncPageToken(id: string, pageToken: string | null): void {
+  getDb().prepare("UPDATE followed_channels SET sync_page_token = ? WHERE id = ?").run(pageToken, id);
 }
 
 export function finishSync(id: string, result: { medianViews: number | null; syncedAt: string }): void {

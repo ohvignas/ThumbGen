@@ -10,11 +10,14 @@ import {
   estimateClassificationCostUsd,
   tokenCostUsd,
 } from "./classification-pricing";
+import { channelRuntime } from "./runtime";
 import { THUMB_TYPES, THUMB_TYPE_IDS, parseClassification } from "./thumb-types";
 import { youtubeThumbnailUrl, type ClassificationStatus } from "./types";
 
 export const CLASSIFY_BATCH_SIZE = 20;
 export const CLASSIFY_CONCURRENCY = 4;
+/** One call must not hang the queue; our own retry policy (3 attempts across runs) replaces the SDK's. */
+export const CLASSIFY_REQUEST_OPTIONS = { timeout: 30_000, maxRetries: 0 } as const;
 
 export const CLASSIFY_SYSTEM_PROMPT = [
   "Tu classes des miniatures YouTube selon leur composition visuelle.",
@@ -87,7 +90,7 @@ export async function classifyVideo(client: ClassifierClient, videoId: string): 
           ],
         },
       ],
-    });
+    }, CLASSIFY_REQUEST_OPTIONS);
     const type = parseClassification(completion.choices[0]?.message?.content);
     const usage = (completion.usage ?? {}) as OpenRouterUsage;
     const inputTokens = usage.prompt_tokens ?? 0;
@@ -140,6 +143,9 @@ async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, run:
 /**
  * Classifies pending thumbnails until none is left. 200 unapproved thumbnails
  * or fewer are approved on the spot; more wait for « Lancer le classement ».
+ * Nothing is approved while a channel import is running: the import adds 50
+ * rows per page, so the count is only final once it ends (the sync kicks the
+ * worker again when it is done).
  * A thumbnail that fails is not retried within the same run.
  */
 export async function runClassificationQueue(
@@ -153,7 +159,8 @@ export async function runClassificationQueue(
     const client = deps.getClient();
     if (!client) break;
     const { unapproved } = store.countPendingClassification();
-    if (unapproved > 0 && unapproved <= CLASSIFY_CONFIRM_THRESHOLD) store.approvePendingClassification();
+    const importing = channelRuntime().locks.size > 0;
+    if (!importing && unapproved > 0 && unapproved <= CLASSIFY_CONFIRM_THRESHOLD) store.approvePendingClassification();
     const batch = store
       .nextClassificationBatch(CLASSIFY_BATCH_SIZE + attempted.size)
       .filter((videoId) => !attempted.has(videoId))

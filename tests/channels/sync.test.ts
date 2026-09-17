@@ -169,6 +169,35 @@ describe("syncChannel", () => {
     expect(store.getChannel(channelId)).toMatchObject({ backfill_page_token: null, backfill_done: 1 });
   });
 
+  it("finishes a newest-first walk that an error interrupted, instead of stopping at the first known page", async () => {
+    useFake(longVideos(10));
+    const channelId = follow();
+    await syncChannel(channelId, at(0));
+
+    for (let index = 0; index < 130; index += 1) {
+      fake.addVideo({ id: `nw${String(index).padStart(9, "0")}`, channelId: CHANNEL, publishedAt: daysBefore(7 - index / 100), views: 10 });
+    }
+    // 140 videos = 3 playlist pages. Page 1 and its videos go through, page 2 hits the quota.
+    fake.setQuotaAfter(2);
+    expect(await syncChannel(channelId, at(1))).toEqual({ status: "quota" });
+    expect(store.knownVideoIds(channelId).size).toBe(60);
+    expect(store.getChannel(channelId)?.sync_page_token).toBe("50");
+
+    fake.setQuotaAfter(null);
+    expect(await syncChannel(channelId, at(25))).toMatchObject({ status: "done", imported: 80 });
+    expect(store.knownVideoIds(channelId).size).toBe(140);
+    expect(store.getChannel(channelId)?.sync_page_token).toBeNull();
+  });
+
+  it("stops the stale queue when refreshing the channel details hits the quota, without failing the sync", async () => {
+    useFake(longVideos(3));
+    const channelId = follow();
+    fake.setQuotaAfter(3); // probe, page 1, videos — channels.list hits the quota
+
+    expect(await syncChannel(channelId, at(0))).toMatchObject({ status: "done", imported: 3 });
+    expect(isQuotaBlocked(at(0)())).toBe(true);
+  });
+
   it("runs one sync at a time per channel", async () => {
     useFake(longVideos(3));
     const channelId = follow();

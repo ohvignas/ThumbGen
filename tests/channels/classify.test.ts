@@ -11,6 +11,7 @@ import {
   type ClassificationDeps,
   type ClassifierClient,
 } from "@/lib/youtube/classify";
+import { acquireChannelLock, releaseChannelLock, resetChannelRuntime } from "@/lib/youtube/runtime";
 
 type CreateArgs = {
   model: string;
@@ -71,6 +72,7 @@ beforeEach(() => {
   db.exec("DELETE FROM followed_channels");
   db.exec("DELETE FROM generations_log");
   db.exec("DELETE FROM settings");
+  resetChannelRuntime();
   channelId = store.insertChannel({
     youtubeChannelId: `UC${"k".repeat(22)}`,
     title: "Classement",
@@ -113,6 +115,7 @@ describe("classifyVideo", () => {
     expect(args.model).toBe("google/gemini-2.5-flash-lite");
     expect(args.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "thumbnail_type", strict: true } });
     expect(JSON.stringify(args.messages)).toContain("https://i.ytimg.com/vi/vid00000001/mqdefault.jpg");
+    expect((create.mock.calls[0] as unknown[])[1]).toEqual({ timeout: 30_000, maxRetries: 0 });
     expect(store.getVideo("vid00000001")).toMatchObject({ thumb_type: "before_after", thumb_type_source: "ai" });
     expect(classifyLogs()).toEqual([
       { model: CLASSIFY_MODEL, endpoint: "classify-thumbnail", status: "success", cost_estimate: 0.0000632, input_tokens: 600, output_tokens: 8, image_count: 0 },
@@ -220,5 +223,18 @@ describe("runClassificationQueue", () => {
 
     expect(buildClassificationStatus(false, deps(client)).awaitingConfirmation).toBe(0);
     expect(await runClassificationQueue(deps(client))).toEqual({ classified: 200, failed: 0 });
+  });
+
+  it("never approves on its own while a channel import is still running, then does once it is done", async () => {
+    seedVideos(Array.from({ length: 50 }, (_, index) => `run${String(index).padStart(8, "0")}`));
+    const { client, create } = fakeClient(() => completion('{"type":"object"}'));
+    expect(acquireChannelLock("importing-channel")).toBe(true);
+
+    expect(await runClassificationQueue(deps(client))).toEqual({ classified: 0, failed: 0 });
+    expect(create).not.toHaveBeenCalled();
+    expect(store.countPendingClassification()).toEqual({ pending: 50, unapproved: 50 });
+
+    releaseChannelLock("importing-channel");
+    expect(await runClassificationQueue(deps(client))).toEqual({ classified: 50, failed: 0 });
   });
 });

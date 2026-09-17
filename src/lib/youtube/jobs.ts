@@ -38,8 +38,9 @@ function runSync(channelId: string): Promise<void> {
   const runtime = channelRuntime();
   const job: Promise<void> = syncChannel(channelId)
     .then((outcome) => {
-      if (outcome.status === "done") kickClassification();
-      if (outcome.status === "quota") runtime.staleQueue.length = 0;
+      // Rows are imported page by page, so an interrupted sync may also have added thumbnails to classify.
+      if (outcome.status === "done" || outcome.status === "quota" || outcome.status === "error") kickClassification();
+      if (outcome.status === "quota" || isQuotaBlocked(new Date())) runtime.staleQueue.length = 0;
     })
     .catch((err) => logFailure(`sync ${channelId} failed`, err))
     .finally(() => {

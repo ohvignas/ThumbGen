@@ -54,7 +54,8 @@ async function choosePlaylist(apiKey: string, channel: store.ChannelRow): Promis
 /**
  * Walks the playlist from the newest video until a known one (everything on
  * the first import), then resumes an import the quota interrupted from its
- * saved page token. Rows are written page by page so a stop keeps them.
+ * saved page token. A later walk interrupted midway saves its own page token
+ * (sync_page_token) and is finished before the next newest-first walk. Rows are written page by page so a stop keeps them.
  */
 async function importNewVideos(
   apiKey: string,
@@ -77,6 +78,20 @@ async function importNewVideos(
   };
 
   const firstImport = channel.backfill_done === 0 && channel.backfill_page_token === null;
+
+  // A later newest-first walk that stopped midway (quota, network) saved where it was: finish it first,
+  // otherwise the next walk would stop on the already imported first page and leave a permanent gap.
+  if (!firstImport && channel.sync_page_token) {
+    let resumeToken: string | null = channel.sync_page_token;
+    while (resumeToken) {
+      const page = await fetchPlaylistPage(apiKey, playlist.id, resumeToken);
+      const reachedKnown = page.videoIds.some((videoId) => known.has(videoId));
+      await importPage(page.videoIds);
+      resumeToken = reachedKnown ? null : page.nextPageToken;
+      store.setSyncPageToken(channel.id, resumeToken);
+    }
+  }
+
   let pageToken: string | null = null;
   do {
     const page = await fetchPlaylistPage(apiKey, playlist.id, pageToken);
@@ -84,6 +99,7 @@ async function importNewVideos(
     await importPage(page.videoIds);
     pageToken = page.nextPageToken;
     if (firstImport) store.setBackfill(channel.id, { pageToken, done: pageToken === null });
+    else store.setSyncPageToken(channel.id, reachedKnown ? null : pageToken);
     if (reachedKnown) break;
   } while (pageToken);
 
@@ -117,13 +133,17 @@ async function refreshStats(apiKey: string, channelId: string, stamp: string): P
   return { updated, removed };
 }
 
-/** Name, avatar and subscribers change over time; failing to refresh them never fails the sync. */
-async function refreshChannelDetails(apiKey: string, channel: store.ChannelRow): Promise<void> {
+/**
+ * Name, avatar and subscribers change over time; failing to refresh them never fails the sync. An exhausted
+ * quota is still recorded so the stale queue stops instead of spending the next channels' calls on errors.
+ */
+async function refreshChannelDetails(apiKey: string, channel: store.ChannelRow, now: Date): Promise<void> {
   try {
     const details = await fetchChannelDetails(apiKey, channel.youtube_channel_id);
     if (details) store.updateChannelDetails(channel.id, details);
-  } catch {
+  } catch (err) {
     // Cosmetic data: keep the previous values.
+    if (err instanceof YouTubeApiError && err.isQuota) markQuotaBlocked(now);
   }
 }
 
@@ -144,7 +164,7 @@ export async function syncChannel(channelId: string, now: () => Date = () => new
       const playlist = await choosePlaylist(apiKey, channel);
       const imported = await importNewVideos(apiKey, channel, playlist, stamp);
       const { updated, removed } = await refreshStats(apiKey, channelId, stamp);
-      await refreshChannelDetails(apiKey, channel);
+      await refreshChannelDetails(apiKey, channel, now());
       if (!store.channelExists(channelId)) return { status: "missing" };
       store.finishSync(channelId, {
         medianViews: channelMedianViews(store.viewSamples(channelId), now()),

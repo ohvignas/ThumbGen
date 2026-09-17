@@ -106,6 +106,19 @@ describe("queueChannelSyncs", () => {
     expect(store.getChannel(b)?.last_synced_at).not.toBe(NOW.toISOString());
   });
 
+  it("stops the queue when a sync only hits the quota while refreshing the channel details", async () => {
+    const first = follow(B, null);
+    const second = follow(A, null);
+    fake.setQuotaAfter(3); // B: probe, page 1, videos — its channels.list call hits the quota
+
+    expect(queueChannelSyncs({ all: true, now: NOW })).toEqual({ queued: 2, throttled: false });
+    await waitForChannelJobs();
+
+    expect(store.getChannelListItem(first)).toMatchObject({ syncStatus: "idle", videoCount: 1 });
+    expect(store.getChannelListItem(second)?.videoCount).toBe(0);
+    expect(fake.calls.some((call) => (call.params.get("playlistId") ?? "").endsWith(A.slice(2)))).toBe(false);
+  });
+
   it("does nothing while the quota is exhausted or without a YouTube key", () => {
     follow(A, null);
     markQuotaBlocked(NOW);

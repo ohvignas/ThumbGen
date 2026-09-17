@@ -20,6 +20,7 @@ export const CHANNEL_TABLES_DDL = `
     playlist_id         TEXT,
     backfill_page_token TEXT,
     backfill_done       INTEGER NOT NULL DEFAULT 0,
+    sync_page_token     TEXT,
     created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   );
 
@@ -53,6 +54,7 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; definition: 
   { table: "followed_channels", column: "playlist_id", definition: "TEXT" },
   { table: "followed_channels", column: "backfill_page_token", definition: "TEXT" },
   { table: "followed_channels", column: "backfill_done", definition: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "followed_channels", column: "sync_page_token", definition: "TEXT" },
   { table: "channel_videos", column: "classify_attempts", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "channel_videos", column: "classify_approved", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "channel_videos", column: "swipe_file_id", definition: "TEXT" },
