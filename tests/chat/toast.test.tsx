@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { Toaster, toast } from "@/components/ui/toast";
+import { Toaster, toast, toastManager } from "@/components/ui/toast";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,5 +36,13 @@ describe("toast", () => {
       toast({ id: "run-1", title: "L'agent a fini — Vidéo F1" });
     });
     expect(document.body.textContent?.split("L'agent a fini — Vidéo F1").length).toBe(2);
+  });
+
+  it("keeps a toast with an action until closed; plain info toasts close after 8 s", () => {
+    const add = vi.spyOn(toastManager, "add").mockImplementation(() => "id");
+    toast({ title: "L'agent a fini — Vidéo F1", action: { label: "Ouvrir", onClick: () => {} } });
+    toast({ title: "L'agent travaille déjà ici" });
+    expect(add.mock.calls.map((call) => call[0].timeout)).toEqual([0, 8000]);
+    add.mockRestore();
   });
 });
