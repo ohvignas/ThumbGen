@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getTypedSettings } from "@/lib/settings";
 import { resolveChannelInput } from "@/lib/youtube/api";
 import * as store from "@/lib/youtube/channel-store";
-import { missingYouTubeKeyResponse, youtubeErrorResponse } from "@/lib/youtube/route-errors";
+import { missingYouTubeKeyResponse, rejectNonJsonRequest, youtubeErrorResponse } from "@/lib/youtube/route-errors";
 import type { ChannelPreview } from "@/lib/youtube/types";
 
 export const runtime = "nodejs";
@@ -11,6 +11,8 @@ export const runtime = "nodejs";
 const PreviewSchema = z.object({ input: z.string().trim().min(1).max(300) });
 
 export async function POST(request: Request) {
+  const notJson = rejectNonJsonRequest(request);
+  if (notJson) return notJson;
   const apiKey = getTypedSettings().youtubeApiKey;
   if (!apiKey) return missingYouTubeKeyResponse();
   const parsed = PreviewSchema.safeParse(await request.json().catch(() => null));

@@ -27,6 +27,8 @@ export type ChannelRuntime = {
   myChannel: { input: string; youtubeChannelId: string | null } | null;
   /** « Ma chaîne » input not to resolve again before `until` (ms since epoch): not found, or YouTube failed. */
   myChannelBackoff: { input: string; until: number; notFound: boolean } | null;
+  /** « Utiliser comme référence » copies in flight by video id → library id (null: no thumbnail on YouTube). */
+  thumbnailCopies: Map<string, Promise<string | null>>;
 };
 
 declare global {
@@ -45,6 +47,7 @@ function createRuntime(): ChannelRuntime {
     classificationRequested: false,
     myChannel: null,
     myChannelBackoff: null,
+    thumbnailCopies: new Map(),
   };
 }
 

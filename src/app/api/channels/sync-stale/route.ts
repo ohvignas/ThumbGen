@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getTypedSettings } from "@/lib/settings";
 import { kickClassification, queueChannelSyncs } from "@/lib/youtube/jobs";
 import { reconcileMyChannel } from "@/lib/youtube/my-channel";
+import { rejectNonJsonRequest } from "@/lib/youtube/route-errors";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,8 @@ const Schema = z.object({ all: z.boolean().optional() });
 
 /** Called once per app load (ChannelSyncTrigger), and with { all: true } by « Tout actualiser ». */
 export async function POST(request: Request) {
+  const notJson = rejectNonJsonRequest(request);
+  if (notJson) return notJson;
   const parsed = Schema.safeParse(await request.json().catch(() => ({})));
   const all = parsed.success && parsed.data.all === true;
   if (getTypedSettings().youtubeApiKey) {

@@ -5,7 +5,7 @@ import { fetchChannelDetails } from "@/lib/youtube/api";
 import * as store from "@/lib/youtube/channel-store";
 import { getClassificationStatus, reconcileSyncStatuses, startChannelSync } from "@/lib/youtube/jobs";
 import { reconcileMyChannel } from "@/lib/youtube/my-channel";
-import { missingYouTubeKeyResponse, youtubeErrorResponse } from "@/lib/youtube/route-errors";
+import { missingYouTubeKeyResponse, rejectNonJsonRequest, youtubeErrorResponse } from "@/lib/youtube/route-errors";
 import type { ChannelDetails, ChannelsResponse } from "@/lib/youtube/types";
 
 export const runtime = "nodejs";
@@ -31,6 +31,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const notJson = rejectNonJsonRequest(request);
+  if (notJson) return notJson;
   const apiKey = getTypedSettings().youtubeApiKey;
   if (!apiKey) return missingYouTubeKeyResponse();
   const parsed = FollowSchema.safeParse(await request.json().catch(() => null));

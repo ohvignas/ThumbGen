@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChannelsResponse } from "@/lib/youtube/types";
 import { channelsApi } from "./api";
 import { channelsDataVersion } from "./view";
@@ -12,7 +12,11 @@ export function useFollowedChannels() {
   const [data, setData] = useState<ChannelsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // A slow GET (it may resolve « Ma chaîne » on YouTube) must not pile up behind 3 s poll ticks.
+  const inFlight = useRef(0);
+
   const reload = useCallback(() => {
+    inFlight.current += 1;
     return channelsApi
       .list()
       .then((next) => {
@@ -21,6 +25,9 @@ export function useFollowedChannels() {
       })
       .catch(() => {
         setError("Impossible de charger les chaînes suivies.");
+      })
+      .finally(() => {
+        inFlight.current -= 1;
       });
   }, []);
 
@@ -34,7 +41,9 @@ export function useFollowedChannels() {
 
   useEffect(() => {
     if (!busy) return;
-    const timer = setInterval(() => void reload(), CHANNELS_POLL_MS);
+    const timer = setInterval(() => {
+      if (inFlight.current === 0) void reload();
+    }, CHANNELS_POLL_MS);
     return () => clearInterval(timer);
   }, [busy, reload]);
 

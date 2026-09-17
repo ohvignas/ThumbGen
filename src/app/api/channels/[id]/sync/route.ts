@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { getTypedSettings } from "@/lib/settings";
 import * as store from "@/lib/youtube/channel-store";
 import { startChannelSync } from "@/lib/youtube/jobs";
-import { missingYouTubeKeyResponse } from "@/lib/youtube/route-errors";
+import { missingYouTubeKeyResponse, rejectNonJsonRequest } from "@/lib/youtube/route-errors";
 
 export const runtime = "nodejs";
 
 /** « Actualiser » / « Réessayer ». */
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const notJson = rejectNonJsonRequest(request);
+  if (notJson) return notJson;
   const { id } = await params;
   if (!getTypedSettings().youtubeApiKey) return missingYouTubeKeyResponse();
   if (!store.channelExists(id)) return NextResponse.json({ error: "Chaîne inconnue" }, { status: 404 });

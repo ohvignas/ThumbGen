@@ -28,6 +28,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+// Every POST says application/json: the routes that spend quota or credit refuse anything else (415).
 const json = (method: string, body: unknown): RequestInit => ({
   method,
   headers: { "Content-Type": "application/json" },
@@ -42,7 +43,7 @@ export const channelsApi = {
   unfollow: (channelId: string) =>
     request<{ success: true }>(`/api/channels/${encodeURIComponent(channelId)}`, { method: "DELETE" }),
   sync: (channelId: string) =>
-    request<{ started: true; channel: ChannelListItem }>(`/api/channels/${encodeURIComponent(channelId)}/sync`, { method: "POST" }),
+    request<{ started: true; channel: ChannelListItem }>(`/api/channels/${encodeURIComponent(channelId)}/sync`, json("POST", {})),
   syncAll: () => request<{ queued: number; throttled: boolean }>("/api/channels/sync-stale", json("POST", { all: true })),
   videos: (query: Partial<VideoQuery>) => request<VideoListResponse>(`/api/channels/videos?${videoQueryToSearch(query)}`),
   setType: (videoId: string, thumbType: ThumbType) =>
@@ -51,7 +52,7 @@ export const channelsApi = {
       json("PATCH", { thumbType }),
     ),
   use: (videoId: string) =>
-    request<UseVideoResponse>(`/api/channels/videos/${encodeURIComponent(videoId)}/use`, { method: "POST" }),
+    request<UseVideoResponse>(`/api/channels/videos/${encodeURIComponent(videoId)}/use`, json("POST", {})),
   typesSummary: (scope: string) =>
     request<TypesSummaryResponse>(`/api/channels/types-summary?scope=${encodeURIComponent(scope)}`),
   approveClassification: () =>

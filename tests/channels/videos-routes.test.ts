@@ -19,7 +19,8 @@ const patch = (videoId: string, body: unknown) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-const use = (videoId: string) => new Request(`http://localhost/api/channels/videos/${videoId}/use`, { method: "POST" });
+const use = (videoId: string, contentType = "application/json") =>
+  new Request(`http://localhost/api/channels/videos/${videoId}/use`, { method: "POST", headers: { "content-type": contentType } });
 
 function video(videoId: string, days: number, viewCount: number) {
   return {
@@ -101,6 +102,24 @@ describe("POST /api/channels/videos/[videoId]/use", () => {
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual(copy);
     expect(fake.fetch.mock.calls.length).toBe(downloads);
+  });
+
+  it("makes a single copy when the same video is used twice at the same time", async () => {
+    const countCopies = () => (getDb().prepare("SELECT COUNT(*) AS n FROM swipe_files").get() as { n: number }).n;
+    const before = countCopies();
+    const [first, second] = await Promise.all([
+      useVideo(use("routevid001"), videoParams("routevid001")),
+      useVideo(use("routevid001"), videoParams("routevid001")),
+    ]);
+    const bodies = [(await first.json()) as UseVideoResponse, (await second.json()) as UseVideoResponse];
+    expect(bodies[0].swipeFileId).toBe(bodies[1].swipeFileId);
+    expect(countCopies()).toBe(before + 1);
+    expect(store.getVideo("routevid001")?.swipe_file_id).toBe(bodies[0].swipeFileId);
+  });
+
+  it("refuses a request that is not declared as JSON", async () => {
+    expect((await useVideo(use("routevid001", "text/plain"), videoParams("routevid001"))).status).toBe(415);
+    expect(fake.fetch).not.toHaveBeenCalled();
   });
 
   it("answers 404 for an unknown video or a thumbnail YouTube does not serve", async () => {

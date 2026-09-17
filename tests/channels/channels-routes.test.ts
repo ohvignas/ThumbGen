@@ -162,7 +162,7 @@ describe("DELETE /api/channels/[id]", () => {
 describe("POST /api/channels/[id]/sync", () => {
   it("starts a sync, refuses one already running and ignores unknown channels", async () => {
     const { channel } = store.insertChannel(TIERCE_DETAILS);
-    const request = () => new Request(`http://localhost/api/channels/${channel.id}/sync`, { method: "POST" });
+    const request = () => jsonRequest(`http://localhost/api/channels/${channel.id}/sync`, "POST");
 
     acquireChannelLock(channel.id);
     expect((await syncOne(request(), idParams(channel.id))).status).toBe(409);
@@ -193,8 +193,8 @@ describe("POST /api/channels/sync-stale", () => {
     expect(await (await syncStale(jsonRequest(url, "POST", { all: true }))).json()).toEqual({ queued: 1, throttled: false });
   });
 
-  it("accepts a request without a body", async () => {
-    expect((await syncStale(new Request(url, { method: "POST" }))).status).toBe(202);
+  it("accepts a JSON request without a body", async () => {
+    expect((await syncStale(jsonRequest(url, "POST"))).status).toBe(202);
   });
 });
 
@@ -223,5 +223,39 @@ describe("POST /api/channels/classification", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ approved: 1, classification: { pending: 1 } });
     expect((await classificationAction(jsonRequest(url, "POST", { action: "nope" }))).status).toBe(400);
+  });
+});
+
+describe("cross-site POST protection", () => {
+  // A plain HTML form or no-cors fetch from another site can only send text/plain, form or multipart bodies.
+  const crossSite = (url: string, contentType?: string) =>
+    new Request(url, {
+      method: "POST",
+      headers: contentType ? { "content-type": contentType } : {},
+      body: contentType ? JSON.stringify({ youtubeChannelId: TIERCE, input: "@tierce", action: "approve", all: true }) : undefined,
+    });
+
+  it("answers 415 without doing anything unless the body is declared as JSON", async () => {
+    const { channel } = store.insertChannel(TIERCE_DETAILS);
+    for (const contentType of ["text/plain", "application/x-www-form-urlencoded", undefined]) {
+      expect((await followChannel(crossSite("http://localhost/api/channels", contentType))).status).toBe(415);
+      expect((await previewChannel(crossSite("http://localhost/api/channels/preview", contentType))).status).toBe(415);
+      expect((await syncOne(crossSite(`http://localhost/api/channels/${channel.id}/sync`, contentType), idParams(channel.id))).status).toBe(415);
+      expect((await syncStale(crossSite("http://localhost/api/channels/sync-stale", contentType))).status).toBe(415);
+      expect((await classificationAction(crossSite("http://localhost/api/channels/classification", contentType))).status).toBe(415);
+    }
+    expect(fake.calls).toHaveLength(0);
+    expect(store.getChannelListItem(channel.id)?.syncStatus).toBe("idle");
+  });
+
+  it("accepts application/json with a charset", async () => {
+    const res = await classificationAction(
+      new Request("http://localhost/api/channels/classification", {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ action: "approve" }),
+      }),
+    );
+    expect(res.status).toBe(200);
   });
 });

@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Loader2 } from "lucide-react";
 import { Alert, AlertTitle } from "@/components/ui/alert";
@@ -30,6 +30,16 @@ export default function UseAsReferenceDialog({ video, onClose }: Props) {
   const router = useRouter();
   const [state, setState] = useState<CopyState>({ status: "copying" });
   const [projects, setProjects] = useState<ProjectOption[] | null>(null);
+  // Only the first click navigates: a second one would queue another route change.
+  const [opening, setOpening] = useState(false);
+  const openingRef = useRef(false);
+
+  const openProject = (projectId: string, swipeFileId: string) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpening(true);
+    router.push(referenceLinkFor(projectId, swipeFileId));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -99,7 +109,8 @@ export default function UseAsReferenceDialog({ video, onClose }: Props) {
                       key={project.id}
                       variant="ghost"
                       className="justify-start"
-                      onClick={() => router.push(referenceLinkFor(project.id, state.copy.swipeFileId))}
+                      disabled={opening}
+                      onClick={() => openProject(project.id, state.copy.swipeFileId)}
                     >
                       <ImagePlus />
                       <span className="truncate">{project.name}</span>

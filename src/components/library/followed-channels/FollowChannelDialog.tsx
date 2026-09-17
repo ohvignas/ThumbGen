@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Loader2, Search } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,9 @@ export default function FollowChannelDialog({ open, onOpenChange, onFollowed }: 
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [following, setFollowing] = useState(false);
+  // State updates land on the next render: a double Enter or double click must not send two requests.
+  const searchingRef = useRef(false);
+  const followingRef = useRef(false);
 
   const close = () => {
     setInput("");
@@ -38,7 +41,8 @@ export default function FollowChannelDialog({ open, onOpenChange, onFollowed }: 
   const search = async (event: FormEvent) => {
     event.preventDefault();
     const value = input.trim();
-    if (!value) return;
+    if (!value || searchingRef.current) return;
+    searchingRef.current = true;
     setSearching(true);
     setError(null);
     setPreview(null);
@@ -48,12 +52,14 @@ export default function FollowChannelDialog({ open, onOpenChange, onFollowed }: 
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Recherche impossible");
     } finally {
+      searchingRef.current = false;
       setSearching(false);
     }
   };
 
   const follow = async () => {
-    if (!preview) return;
+    if (!preview || followingRef.current) return;
+    followingRef.current = true;
     setFollowing(true);
     setError(null);
     try {
@@ -63,6 +69,8 @@ export default function FollowChannelDialog({ open, onOpenChange, onFollowed }: 
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Impossible de suivre cette chaîne");
       setFollowing(false);
+    } finally {
+      followingRef.current = false;
     }
   };
 
