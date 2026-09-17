@@ -469,3 +469,19 @@ One rebuild from `/Users/antoinevigneau/thumbgen-real`: `docker compose build th
 - **Erreurs**: `place_node` error-text and re-ask → Tasks 7, 12; leaving the page during a question or a placement → F1 + N2 + N5; deleted interview node respected / recreated → Tasks 7–9.
 - **Coût**: no automatic call beyond the click-driven resume; no sketch or generation during the interview → Global Constraints, Tasks 10, 12, N4–N6.
 - **Tests** listed by the spec: schemas → Tasks 2, 7; `place_node` → Task 7; `list_followed_videos` → Task 5; save route → Task 8; store → Task 9; chat route resume/abandon → N1; card rendering → Task 3; turn-model → Tasks 1, 3, 10; TurnActions → Task 10; prompt → Task 12; browser → N5.
+
+---
+
+## Fix round 1 (review « With fixes ») — contracts that supersede the rulings above
+
+- **CanvasPatch** (`src/lib/canvas/canvas-patch.ts`): `{ projectId, updatedAt, created: boolean, node: { id, type, position, data }, removedDataKeys: string[], edges }`. `created: true` → `node.data` is the whole data; `false` → only the fields this placement changed (always `placedByAgentAt`, plus `agentLinks` when a link was recorded). `removedDataKeys`: data fields the placement deleted (stale image fields). `edges`: only the edges this placement added.
+- **Store**: `applyAgentPatch(patch: CanvasPatch)` (was `(node, edges, updatedAt)`): merges changed fields, deletes `removedDataKeys`, never builds a node from an update of a node deleted locally, keeps only edges whose two ends exist, no longer pushes into `recentOwnSaveUpdatedAts`. `loading: boolean` is true while `loadProject` runs; patches applied meanwhile are replayed over the loaded canvas when newer than its `updatedAt`. `shouldApplyCanvasPatch(patch, { openProjectId, loaded, loading?, knownUpdatedAt })` accepts `loaded || loading` (N3 passes `loading`).
+- **Poller**: no reload when the server `updated_at` is known or older than `knownUpdatedAt` (`isKnownUpdatedAt`, strict ISO/SQLite parsing only).
+- **Save**: response adds `refreshed` — payload nodes whose stored `placedByAgentAt` is after `baseUpdatedAt` are written with the stored data and the payload position; the store replaces the local data of those ids (no history entry). Reinjected edges are merged only when both ends exist locally.
+- **Links**: `place_node` records links in the placed node's `data.agentLinks` (`{ node, handle, at }`) and stamps `data.agentCreatedAt` on creation. Placing `iv-generator` links every interview node; placing an input links that input only. A link recorded (on either end, after the other end's creation) and now missing was removed by the user and is never re-added; a recreated node links again.
+- **Mid-call deletion**: an update whose node disappeared before the write fails with « nœud supprimé entre-temps », nothing written.
+- **updated_at**: `apply_workflow` and snapshot restore also write `nextUpdatedAt(stored)`.
+- **Prompt**: GUIDED INTERVIEW first checks `<canvas_state>` for `iv-*` nodes and asks « Reprendre l'interview » / « Repartir de zéro » (the latter = `apply_workflow` with an empty blueprint and `remove_node_ids` of the old `iv-*` nodes, the only exception to « never apply_workflow / never remove »).
+- **UI**: « Construire avec l'agent » disabled after a click (freed after 10 s if no turn started). `AskUserCard` shows « Jusqu'à N choix », unlocks when `onAnswer` throws or its promise rejects (`PendingUiAction.onResolve` may return the sending promise — N3 should return `addToolOutput`'s promise), and is keyed by `toolCallId`.
+- **list_followed_videos** `scope: "mine"` = every `is_mine = 1` channel (`VideoQuery.mine`), like `typesSummary`.
+- **Merge gate**: do not merge or deploy `feat/f2` before N1 **and** N3.
