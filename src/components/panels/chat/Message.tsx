@@ -1,61 +1,116 @@
 "use client";
-import { Message as MessageRow, MessageContent } from "@/components/ui/message";
+import { useMemo, type ReactNode } from "react";
+import type { ChatStatus, UIMessage } from "ai";
+import { Message as MessageRow, MessageAvatar, MessageContent } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ai-elements/reasoning";
-import ToolCallCard from "./ToolCallCard";
-import { TextMarkdown } from "./TextMarkdown";
 import { useChatStore } from "@/store/chat-store";
-import type { UIMessage } from "ai";
+import AgentAvatar from "./AgentAvatar";
+import AssistantTurn from "./AssistantTurn";
+import TurnProgress from "./TurnProgress";
+import { TextMarkdown } from "./TextMarkdown";
+import { splitAssistantTurn, turnDisplay } from "./turn-model";
+import type { LiveTurnStart } from "./chat-view-model";
 
-export default function Message({ message, isStreaming }: { message: UIMessage; isStreaming: boolean }) {
+/** What every message row needs from ChatPanel. */
+export type ChatTurnControls = {
+  status: ChatStatus;
+  errorMessage: string | null;
+  /** Start of the running turn, for the live timer. */
+  turnStartedAt: number | null;
+  /** The user pressed « Arrêter » in this conversation since the last send. */
+  stoppedLive: boolean;
+  /** Messages present when the running turn started, so a stop never marks an older turn. */
+  liveTurnStart: LiveTurnStart | null;
+  /** Reopened on a user message the server never answered, with no turn running (« Tour interrompu »). */
+  orphanUserTurn?: boolean;
+  onAskAgent: (message: string) => void;
+  /** Re-runs the last user message; null when there is nothing to retry. */
+  onRetry: (() => void) | null;
+};
+
+function UserMessage({ message }: { message: UIMessage }) {
   const openAnnotate = useChatStore((s) => s.openAnnotate);
-  const isUser = message.role === "user";
-
-  if (isUser) {
-    return (
-      <MessageRow align="end">
-        <MessageContent>
-          <Bubble align="end" variant="tinted">
-            <BubbleContent>
-              {message.parts.map((part, i) => {
-                if (part.type === "text") return <TextMarkdown key={i} text={part.text} openAnnotate={openAnnotate} />;
-                if (part.type === "file" && part.mediaType?.startsWith("image/")) {
-                  return (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={i} src={part.url} alt="image" onClick={() => openAnnotate(part.url)}
-                      className="max-w-[240px] rounded my-1" style={{ border: "1px solid var(--line)", cursor: "zoom-in" }} />
-                  );
-                }
-                return null;
-              })}
-            </BubbleContent>
-          </Bubble>
-        </MessageContent>
-      </MessageRow>
-    );
-  }
-
   return (
-    <MessageRow align="start">
+    <MessageRow align="end">
       <MessageContent>
-        {message.parts.map((part, i) => {
-          if (part.type === "text") return <TextMarkdown key={i} text={part.text} openAnnotate={openAnnotate} />;
-          if (part.type.startsWith("tool-")) {
-            return <ToolCallCard key={i} part={part as Extract<UIMessage["parts"][number], { type: `tool-${string}` }>} />;
-          }
-          if (part.type === "reasoning") {
-            return (
-              <Reasoning key={i} isStreaming={isStreaming}>
-                <ReasoningTrigger getThinkingMessage={(streaming, duration) =>
-                  streaming ? "réfléchit…" : duration !== undefined ? `a réfléchi ${duration}s` : "a réfléchi"
-                } />
-                <ReasoningContent>{part.text}</ReasoningContent>
-              </Reasoning>
-            );
-          }
-          return null;
-        })}
+        <Bubble align="end" variant="tinted">
+          <BubbleContent>
+            {message.parts.map((part, i) => {
+              if (part.type === "text") return <TextMarkdown key={i} text={part.text} openAnnotate={openAnnotate} />;
+              if (part.type === "file" && part.mediaType?.startsWith("image/")) {
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={part.url} alt="image" onClick={() => openAnnotate(part.url)}
+                    className="max-w-[240px] rounded my-1 border border-border cursor-zoom-in" />
+                );
+              }
+              return null;
+            })}
+          </BubbleContent>
+        </Bubble>
       </MessageContent>
     </MessageRow>
   );
+}
+
+/** An assistant row: the agent's avatar (empty slot for earlier messages of a group) and the turn. */
+export function AssistantRow({ showAvatar, children }: { showAvatar: boolean; children: ReactNode }) {
+  return (
+    <MessageRow align="start">
+      <MessageAvatar className="min-w-9 rounded-xl bg-transparent">{showAvatar && <AgentAvatar />}</MessageAvatar>
+      <MessageContent>{children}</MessageContent>
+    </MessageRow>
+  );
+}
+
+function AssistantMessage({
+  message,
+  isLast,
+  showAvatar,
+  controls,
+}: {
+  message: UIMessage;
+  isLast: boolean;
+  showAvatar: boolean;
+  controls: ChatTurnControls;
+}) {
+  const turn = useMemo(() => splitAssistantTurn(message), [message]);
+  const display = turnDisplay({
+    isLast,
+    status: controls.status,
+    errorMessage: controls.errorMessage,
+    stoppedLive: controls.stoppedLive,
+    interrupted: turn.interrupted,
+  });
+
+  return (
+    <AssistantRow showAvatar={showAvatar}>
+      {display.mode === "progress" ? (
+        <TurnProgress message={message} status={controls.status} startedAt={controls.turnStartedAt} steps={turn.steps} />
+      ) : (
+        <AssistantTurn
+          turn={turn}
+          error={display.error}
+          showActions={display.showActions}
+          onRetry={display.canRetry ? controls.onRetry : null}
+          onAskAgent={controls.onAskAgent}
+        />
+      )}
+    </AssistantRow>
+  );
+}
+
+export default function Message({
+  message,
+  isLast,
+  showAvatar,
+  controls,
+}: {
+  message: UIMessage;
+  isLast: boolean;
+  showAvatar: boolean;
+  controls: ChatTurnControls;
+}) {
+  if (message.role === "user") return <UserMessage message={message} />;
+  return <AssistantMessage message={message} isLast={isLast} showAvatar={showAvatar} controls={controls} />;
 }

@@ -2,49 +2,32 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { FolderOpen, ChevronDown, Pencil, Trash2, Plus } from "lucide-react";
 
-type ProjectMeta = {
-  id: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
-};
+type ProjectMeta = { id: string; name: string; createdAt: string; updatedAt: string };
 
 export default function ProjectBar() {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
-  const [currentId, setCurrentId] = useState("default");
+  // The canvas store is the source of truth: /m/<id> loads a project straight
+  // into it, so reading settings here instead would race that route load and
+  // leave the bar naming the previously-opened project.
+  const currentId = useCanvasStore((s) => s.currentProjectId);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const menuRef = useRef<HTMLDivElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
   const loadProject = useCanvasStore((s) => s.loadProject);
 
   const loadProjects = () => {
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then(setProjects)
-      .catch(() => {});
+    fetch("/api/projects").then((r) => r.json()).then(setProjects).catch(() => {});
   };
 
   useEffect(() => {
     loadProjects();
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((s) => { if (s.currentProjectId) setCurrentId(s.currentProjectId); })
-      .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [menuOpen]);
 
   useEffect(() => {
     if (renaming && renameRef.current) {
@@ -54,7 +37,6 @@ export default function ProjectBar() {
   }, [renaming]);
 
   const switchProject = async (projectId: string) => {
-    setCurrentId(projectId);
     setMenuOpen(false);
     await loadProject(projectId);
     fetch("/api/settings", {
@@ -90,7 +72,6 @@ export default function ProjectBar() {
     await fetch(`/api/projects?id=${projectId}`, { method: "DELETE" });
     const remaining = projects.filter((p) => p.id !== projectId);
     if (remaining.length === 0 || currentId === projectId) {
-      // If no projects left or deleted current, create a fresh one
       if (remaining.length === 0) {
         await createProject();
       } else {
@@ -105,141 +86,70 @@ export default function ProjectBar() {
   const currentProject = projects.find((p) => p.id === currentId);
 
   return (
-    <div className="relative" ref={menuRef}>
-      <button
-        onClick={() => setMenuOpen(!menuOpen)}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all"
-        style={{
-          background: "var(--node-bg)",
-          color: "var(--text-secondary)",
-          border: "1px solid var(--surface)",
-        }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-        </svg>
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenuTrigger render={<Button variant="outline" className="gap-2" />}>
+        <FolderOpen className="size-3.5" />
         {currentProject?.name || "Mon projet"}
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
-
-      {menuOpen && (
-        <div
-          className="absolute left-0 top-full mt-2 rounded-xl overflow-hidden z-50"
-          style={{
-            background: "var(--node-bg)",
-            border: "1px solid var(--surface)",
-            minWidth: 260,
-          }}
-        >
-          {/* Project list */}
-          <div className="py-1 max-h-64 overflow-y-auto">
-            {projects.map((p) => (
-              <div
-                key={p.id}
-                className="group flex items-center gap-2 px-3 py-2 transition-all cursor-pointer"
-                style={{
-                  background: p.id === currentId ? "var(--surface)" : "transparent",
+        <ChevronDown className="size-2.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-[260px] max-h-64 overflow-y-auto">
+        {projects.map((p) => (
+          <DropdownMenuItem
+            key={p.id}
+            className="group gap-2"
+            closeOnClick={renaming !== p.id}
+            onClick={() => {
+              if (renaming === p.id) return;
+              switchProject(p.id);
+            }}
+          >
+            {p.id === currentId && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+            {renaming === p.id ? (
+              <Input
+                ref={renameRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => { if (renameValue.trim()) renameProject(p.id, renameValue.trim()); else setRenaming(null); }}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" && renameValue.trim()) renameProject(p.id, renameValue.trim());
+                  if (e.key === "Escape") setRenaming(null);
                 }}
-                onMouseEnter={(e) => {
-                  if (p.id !== currentId) e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                }}
-                onMouseLeave={(e) => {
-                  if (p.id !== currentId) e.currentTarget.style.background = "transparent";
-                }}
-                onClick={() => switchProject(p.id)}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="h-6 flex-1 text-xs"
+              />
+            ) : (
+              <span className={`flex-1 truncate text-xs ${p.id === currentId ? "text-foreground" : "text-muted-foreground pl-[14px]"}`}>{p.name}</span>
+            )}
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); setRenameValue(p.name); setRenaming(p.id); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="p-1 rounded text-muted-foreground hover:text-foreground"
+                title="Renommer"
               >
-                {p.id === currentId && (
-                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--brand)" }} />
-                )}
-                {renaming === p.id ? (
-                  <input
-                    ref={renameRef}
-                    type="text"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={() => {
-                      if (renameValue.trim()) renameProject(p.id, renameValue.trim());
-                      else setRenaming(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && renameValue.trim()) renameProject(p.id, renameValue.trim());
-                      if (e.key === "Escape") setRenaming(null);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex-1 text-xs bg-transparent focus:outline-none px-1 rounded"
-                    style={{ color: "var(--text-primary)", border: "1px solid var(--bone-soft)" }}
-                  />
-                ) : (
-                  <span
-                    className="flex-1 text-xs truncate"
-                    style={{
-                      color: p.id === currentId ? "var(--text-primary)" : "var(--text-secondary)",
-                      paddingLeft: p.id !== currentId ? "14px" : 0,
-                    }}
-                  >
-                    {p.name}
-                  </span>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setRenameValue(p.name);
-                      setRenaming(p.id);
-                    }}
-                    className="p-1 rounded"
-                    style={{ color: "var(--text-muted)" }}
-                    title="Renommer"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                  </button>
-                  {projects.length > 0 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteProject(p.id);
-                      }}
-                      className="p-1 rounded"
-                      style={{ color: "var(--ember)" }}
-                      title="Supprimer"
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* New project button */}
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                createProject();
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-all"
-              style={{ color: "var(--bone-soft)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Nouveau projet
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+                <Pencil className="size-2.5" />
+              </button>
+              {projects.length > 0 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteProject(p.id); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="p-1 rounded text-destructive"
+                  title="Supprimer"
+                >
+                  <Trash2 className="size-2.5" />
+                </button>
+              )}
+            </div>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => createProject()} className="gap-2 text-muted-foreground">
+          <Plus className="size-3" />
+          Nouveau projet
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

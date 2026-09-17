@@ -12,6 +12,7 @@ export default function NodeShell({
   onRemoveBg,
   removingBg,
   accentColor,
+  headerExtra,
   width = 460,
 }: {
   children: ReactNode;
@@ -23,6 +24,7 @@ export default function NodeShell({
   onRemoveBg?: () => void;
   removingBg?: boolean;
   accentColor?: string;
+  headerExtra?: ReactNode;
   width?: number;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -59,7 +61,7 @@ export default function NodeShell({
 
   return (
     <div
-      className="node-card rounded-xl border transition-all"
+      className="node-card dark rounded-xl border transition-all text-(--text-primary)"
       style={{
         width,
         background: "var(--node-bg)",
@@ -102,6 +104,7 @@ export default function NodeShell({
             </span>
           )}
         </div>
+        {headerExtra && <div className="ml-auto mr-1 flex min-w-0 items-center">{headerExtra}</div>}
         <div className="relative flex-shrink-0" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}

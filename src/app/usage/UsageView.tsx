@@ -1,67 +1,31 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ReactFlowProvider } from "@xyflow/react";
-import Sidebar from "@/components/panels/Sidebar";
+import AppSidebar from "@/components/panels/AppSidebar";
+import { SidebarInset } from "@/components/ui/sidebar";
 import { PROVIDER_COLORS } from "@/lib/model-costs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 
 type Period = "today" | "7d" | "30d" | "all";
 
-type Totals = {
-  totalCost: number;
-  totalGenerations: number;
-  totalImages: number;
-  totalTokens: number;
-  avgTimeMs: number;
-  errorCount: number;
-};
-
-type ModelBreakdown = {
-  provider: string;
-  model: string;
-  count: number;
-  images: number;
-  cost: number;
-  avgTimeMs: number;
-  totalTokens: number;
-};
-
+type Totals = { totalCost: number; totalGenerations: number; totalImages: number; totalTokens: number; avgTimeMs: number; errorCount: number };
+type ModelBreakdown = { provider: string; model: string; count: number; images: number; cost: number; avgTimeMs: number; totalTokens: number };
 type LogRow = {
-  id: string;
-  created_at: string;
-  provider: string;
-  model: string;
-  endpoint: string;
-  cost_estimate: number;
-  time_ms: number;
-  total_tokens: number;
-  image_count: number;
-  prompt: string | null;
-  status: string;
-  error_message: string | null;
+  id: string; created_at: string; provider: string; model: string; endpoint: string;
+  cost_estimate: number; time_ms: number; total_tokens: number; image_count: number;
+  prompt: string | null; status: string; error_message: string | null;
 };
-
 type DailyPoint = { day: string; cost: number; count: number };
-
-type AgentTotals = {
-  totalCost: number;
-  totalMessages: number;
-  totalConversations: number;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  totalTokens: number;
-};
-
+type AgentTotals = { totalCost: number; totalMessages: number; totalConversations: number; totalInputTokens: number; totalOutputTokens: number; totalTokens: number };
 type AgentDailyPoint = { day: string; cost: number; messages: number };
-
 type ApiResponse = {
-  period: Period;
-  totals: Totals;
-  byModel: ModelBreakdown[];
-  log: LogRow[];
-  daily: DailyPoint[];
-  agentTotals?: AgentTotals;
-  agentDaily?: AgentDailyPoint[];
+  period: Period; totals: Totals; byModel: ModelBreakdown[]; log: LogRow[]; daily: DailyPoint[];
+  agentTotals?: AgentTotals; agentDaily?: AgentDailyPoint[];
 };
 
 const PERIODS: { id: Period; label: string }[] = [
@@ -82,11 +46,11 @@ const MODEL_LABELS: Record<string, string> = {
   "gpt-image-2": "GPT Image 2",
   "gpt-image-2.5-flare": "GPT Image 2.5 Flare",
   "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst",
-  "grok-imagine-image": "Grok Imagine",
+  "grok-imagine-image-2.0": "Grok Imagine 2.0",
+  "bytedance-seed/seedream-4.5": "Seedream 4.5",
 };
 
 const modelLabel = (m: string) => MODEL_LABELS[m] || m;
-
 const fmtNum = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n));
 const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)}s`);
 
@@ -155,613 +119,246 @@ function UsageInner() {
   const costPerImage = totals && totals.totalImages > 0 ? totals.totalCost / totals.totalImages : 0;
 
   return (
-    <div className="usage-shell">
-      <Sidebar />
-
-      <main className="usage-main">
-        {/* — Page header — */}
-        <header className="head">
-          <div className="eyebrow">
-            <span className="eyebrow-rule" />
-            <span>Generation Ledger</span>
-          </div>
-          <div className="head-row">
-            <h1 className="page-title">Usage</h1>
-            <nav className="period-pills" aria-label="Time period">
-              {PERIODS.map((p) => (
-                <button
-                  key={p.id}
-                  className="pill"
-                  data-active={period === p.id}
-                  onClick={() => setPeriod(p.id)}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </nav>
-          </div>
-        </header>
-
-        {/* — Hero number (grand total) — */}
-        <section className="hero">
-          <div className="hero-label">Cumulative cost · estimate</div>
-          <div className="big-number" aria-label={`${intPart}.${decPart} dollars`}>
-            <span className="ccy">$</span>
-            {loading ? (
-              <span className="bn-skeleton" aria-hidden />
-            ) : (
-              <>
-                <span className="bn-int">{intPart}</span>
-                <span className="bn-dot">.</span>
-                <span className="bn-dec">{decPart}</span>
-                <span className="unit">USD</span>
-              </>
-            )}
-          </div>
-
-          {/* Category split — images vs agent */}
-          <div className="cat-split">
-            <div className="cat-card">
-              <div className="cat-eyebrow">
-                <span className="cat-rule" /> Génération · images
-              </div>
-              <div className="cat-cost">${imagesCost.toFixed(2)}</div>
-              <div className="cat-meta">
-                <span>{fmtNum(totals?.totalImages ?? 0)} images</span>
-                <span>·</span>
-                <span>{fmtNum(totals?.totalGenerations ?? 0)} calls</span>
-              </div>
+    <>
+      <AppSidebar />
+      <SidebarInset>
+        <main className="px-6 sm:px-8 py-10 sm:py-14 max-w-[1200px] mx-auto w-full">
+          {/* Header */}
+          <header className="mb-14">
+            <div className="inline-flex items-center gap-3 text-[11px] tracking-[0.22em] uppercase text-muted-foreground mb-4">
+              <span className="w-7 h-px bg-primary" />
+              <span>Generation Ledger</span>
             </div>
-            <div className="cat-card">
-              <div className="cat-eyebrow">
-                <span className="cat-rule" /> Agent IA · chat
-              </div>
-              <div className="cat-cost">${agentCost.toFixed(2)}</div>
-              <div className="cat-meta">
-                <span>{fmtNum(agentTotals?.totalConversations ?? 0)} conv.</span>
-                <span>·</span>
-                <span>{fmtNum(agentTotals?.totalMessages ?? 0)} msgs</span>
-                <span>·</span>
-                <span>{fmtNum(agentTotals?.totalTokens ?? 0)} tokens</span>
-              </div>
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 sm:gap-8 pb-7 border-b border-border">
+              <h1 className="text-4xl sm:text-5xl font-bold text-foreground">Usage</h1>
+              <ToggleGroup
+                value={[period]}
+                onValueChange={(v) => {
+                  const next = v[0] as Period | undefined;
+                  if (next) setPeriod(next);
+                }}
+                aria-label="Time period"
+              >
+                {PERIODS.map((p) => (
+                  <ToggleGroupItem key={p.id} value={p.id} className="text-xs">
+                    {p.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </div>
-          </div>
-
-          <ul className="meta">
-            <li><span className="m-num">{loading ? "—" : fmtNum((totals?.totalGenerations ?? 0) + (agentTotals?.totalMessages ?? 0))}</span><span className="m-lbl">total calls</span></li>
-            <li><span className="m-num">{loading ? "—" : fmtNum(totals?.totalImages ?? 0)}</span><span className="m-lbl">images</span></li>
-            <li><span className="m-num">{loading ? "—" : fmtNum((totals?.totalTokens ?? 0) + (agentTotals?.totalTokens ?? 0))}</span><span className="m-lbl">tokens</span></li>
-            <li><span className="m-num">{loading ? "—" : fmtMs(totals?.avgTimeMs ?? 0)}</span><span className="m-lbl">avg latency</span></li>
-            <li><span className="m-num">{loading || costPerImage === 0 ? "—" : `$${costPerImage.toFixed(3)}`}</span><span className="m-lbl">cost / image</span></li>
-            {totals && totals.errorCount > 0 && (
-              <li className="m-error"><span className="m-num">{totals.errorCount}</span><span className="m-lbl">errors</span></li>
-            )}
-          </ul>
-
-          {daily.length > 0 && (
-            <div className="spark" aria-label="Daily cost trend">
-              {daily.map((d) => (
-                <span
-                  key={d.day}
-                  className="spark-bar"
-                  style={{ height: `${Math.max(4, (d.cost / maxDaily) * 100)}%` }}
-                  title={`${d.day} · $${d.cost.toFixed(2)} · ${d.count} gen`}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* — Section 01: Breakdown by model — */}
-        <section className="section">
-          <header className="section-head">
-            <span className="section-num">01</span>
-            <h2 className="section-title">By model</h2>
-            <span className="section-meta">{byModel.length} model{byModel.length !== 1 ? "s" : ""} · sorted by cost</span>
           </header>
 
-          {byModel.length === 0 ? (
-            <div className="empty">— No generations in this window —</div>
-          ) : (
-            <div className="model-list">
-              {byModel.map((b) => {
-                const color = PROVIDER_COLORS[b.provider] || "#FFFFFF";
-                const widthPct = (b.cost / maxBar) * 100;
-                return (
-                  <div className="model-row" key={`${b.provider}-${b.model}`}>
-                    <div className="m-name">
-                      <span className="m-swatch" style={{ background: color }} />
-                      <span className="m-label">{modelLabel(b.model)}</span>
-                      <span className="m-prov">{b.provider}</span>
-                    </div>
-                    <div className="m-bar"><span className="m-bar-fill" style={{ width: `${widthPct}%`, background: color }} /></div>
-                    <div className="m-num cost">${b.cost.toFixed(b.cost < 1 ? 3 : 2)}</div>
-                    <div className="m-num">{fmtNum(b.images)} <span className="m-num-tag">img</span></div>
-                    <div className="m-num">{fmtMs(b.avgTimeMs)} <span className="m-num-tag">avg</span></div>
+          {/* Hero */}
+          <section className="pb-12 mb-14 border-b border-border">
+            <div className="text-[11px] tracking-[0.18em] uppercase text-muted-foreground mb-5">Cumulative cost · estimate</div>
+            <div className="flex items-baseline gap-1 flex-wrap" aria-label={`${intPart}.${decPart} dollars`}>
+              <span className="text-2xl text-muted-foreground font-mono mr-3 self-start">$</span>
+              {loading ? (
+                <Skeleton className="h-16 w-48" />
+              ) : (
+                <>
+                  <span className="text-6xl sm:text-7xl font-bold text-foreground tabular-nums">{intPart}</span>
+                  <span className="text-6xl sm:text-7xl font-bold text-primary">.</span>
+                  <span className="text-6xl sm:text-7xl font-bold text-muted-foreground tabular-nums">{decPart}</span>
+                  <span className="text-xs font-mono tracking-widest text-muted-foreground ml-4 self-end mb-2">USD</span>
+                </>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    <span className="w-4 h-px bg-primary" /> Génération · images
                   </div>
-                );
-              })}
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-foreground tabular-nums">${imagesCost.toFixed(2)}</div>
+                  <div className="flex flex-wrap gap-2 mt-2 text-xs font-mono text-muted-foreground">
+                    <span>{fmtNum(totals?.totalImages ?? 0)} images</span>
+                    <span>·</span>
+                    <span>{fmtNum(totals?.totalGenerations ?? 0)} calls</span>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    <span className="w-4 h-px bg-primary" /> Agent IA · chat
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-foreground tabular-nums">${agentCost.toFixed(2)}</div>
+                  <div className="flex flex-wrap gap-2 mt-2 text-xs font-mono text-muted-foreground">
+                    <span>{fmtNum(agentTotals?.totalConversations ?? 0)} conv.</span>
+                    <span>·</span>
+                    <span>{fmtNum(agentTotals?.totalMessages ?? 0)} msgs</span>
+                    <span>·</span>
+                    <span>{fmtNum(agentTotals?.totalTokens ?? 0)} tokens</span>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          )}
-        </section>
 
-        {/* — Section 02: Activity log — */}
-        <section className="section">
-          <header className="section-head">
-            <span className="section-num">02</span>
-            <h2 className="section-title">Recent activity</h2>
-            <span className="section-meta">{log.length} entr{log.length === 1 ? "y" : "ies"} · most recent first</span>
-          </header>
+            <ul className="flex flex-wrap gap-6 sm:gap-8 mt-7 list-none p-0 font-mono text-xs">
+              <li className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{loading ? "—" : fmtNum((totals?.totalGenerations ?? 0) + (agentTotals?.totalMessages ?? 0))}</span>
+                <span className="text-muted-foreground uppercase tracking-[0.16em] text-[10px]">total calls</span>
+              </li>
+              <li className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{loading ? "—" : fmtNum(totals?.totalImages ?? 0)}</span>
+                <span className="text-muted-foreground uppercase tracking-[0.16em] text-[10px]">images</span>
+              </li>
+              <li className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{loading ? "—" : fmtNum((totals?.totalTokens ?? 0) + (agentTotals?.totalTokens ?? 0))}</span>
+                <span className="text-muted-foreground uppercase tracking-[0.16em] text-[10px]">tokens</span>
+              </li>
+              <li className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{loading ? "—" : fmtMs(totals?.avgTimeMs ?? 0)}</span>
+                <span className="text-muted-foreground uppercase tracking-[0.16em] text-[10px]">avg latency</span>
+              </li>
+              <li className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{loading || costPerImage === 0 ? "—" : `$${costPerImage.toFixed(3)}`}</span>
+                <span className="text-muted-foreground uppercase tracking-[0.16em] text-[10px]">cost / image</span>
+              </li>
+              {totals && totals.errorCount > 0 && (
+                <li className="flex items-baseline gap-2">
+                  <span className="text-destructive tabular-nums">{totals.errorCount}</span>
+                  <span className="text-muted-foreground uppercase tracking-[0.16em] text-[10px]">errors</span>
+                </li>
+              )}
+            </ul>
 
-          {log.length === 0 ? (
-            <div className="empty">— No entries in this window —</div>
-          ) : (
-            <div className="log-wrap">
-              <table className="log-table">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th aria-label="Time ago" />
-                    <th>Model</th>
-                    <th>Prompt</th>
-                    <th className="num">Cost</th>
-                    <th className="num">Latency</th>
-                    <th className="num">Tokens</th>
-                    <th className="num">Img</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {log.map((row) => {
-                    const color = PROVIDER_COLORS[row.provider] || "#fff";
-                    return (
-                      <tr key={row.id}>
-                        <td className="t-time">{fmtTime(row.created_at)}</td>
-                        <td className="t-ago">{timeAgo(row.created_at)}</td>
-                        <td className="t-model">
-                          <span className="badge"><span className="b-swatch" style={{ background: color }} />{modelLabel(row.model)}</span>
-                          <span className="endpoint">/{row.endpoint}</span>
-                        </td>
-                        <td className="t-prompt">
-                          {row.status === "error" ? (
-                            <span className="t-error" title={row.error_message || ""}>ERR · {row.error_message || "—"}</span>
-                          ) : row.prompt ? (
-                            <span className="t-clip" title={row.prompt}>{row.prompt}</span>
-                          ) : (
-                            <span className="t-empty">—</span>
-                          )}
-                        </td>
-                        <td className="num cost">${row.cost_estimate.toFixed(3)}</td>
-                        <td className="num">{fmtMs(row.time_ms)}</td>
-                        <td className="num">{row.total_tokens > 0 ? fmtNum(row.total_tokens) : <span className="t-empty">—</span>}</td>
-                        <td className="num">{row.image_count}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+            {daily.length > 0 && (
+              <div className="flex items-end gap-[3px] h-14 mt-8" aria-label="Daily cost trend">
+                {daily.map((d) => (
+                  <span
+                    key={d.day}
+                    className="flex-1 min-w-1 bg-muted-foreground/30 hover:bg-primary transition-colors"
+                    style={{ height: `${Math.max(4, (d.cost / maxDaily) * 100)}%` }}
+                    title={`${d.day} · $${d.cost.toFixed(2)} · ${d.count} gen`}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
 
-        <footer className="page-foot">
-          <span className="foot-mark" />
-          <span>Costs are estimates from per-image pricing. Real billing may differ.</span>
-        </footer>
-      </main>
+          {/* Section 01: Breakdown by model */}
+          <section className="mb-20">
+            <header className="flex items-baseline gap-5 pb-4 mb-6 border-b border-border flex-wrap">
+              <span className="font-mono text-[11px] tracking-[0.2em] text-primary">01</span>
+              <h2 className="text-2xl font-semibold text-foreground">By model</h2>
+              <span className="ml-auto font-mono text-[11px] text-muted-foreground">{byModel.length} model{byModel.length !== 1 ? "s" : ""} · sorted by cost</span>
+            </header>
 
-      <style jsx>{`
-        .usage-shell {
-          position: relative;
-          min-height: 100vh;
-          background: var(--ink-1);
-          color: var(--bone);
-          font-family: Arial, Helvetica, sans-serif;
-        }
+            {byModel.length === 0 ? (
+              <Empty className="border border-dashed">
+                <EmptyHeader>
+                  <EmptyTitle className="text-xs font-mono tracking-widest text-muted-foreground">— No generations in this window —</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="flex flex-col">
+                {byModel.map((b) => {
+                  const color = PROVIDER_COLORS[b.provider] || "#FFFFFF";
+                  const widthPct = (b.cost / maxBar) * 100;
+                  return (
+                    <div key={`${b.provider}-${b.model}`} className="grid grid-cols-2 lg:grid-cols-[220px_1fr_90px_90px_90px] items-center gap-3 lg:gap-6 py-4 border-b border-border last:border-b-0">
+                      <div className="flex items-center gap-3 min-w-0 col-span-2 lg:col-span-1">
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+                        <span className="text-sm text-foreground truncate">{modelLabel(b.model)}</span>
+                        <span className="font-mono text-[9px] tracking-[0.18em] uppercase text-muted-foreground/70">{b.provider}</span>
+                      </div>
+                      <div className="h-px bg-border relative hidden lg:block">
+                        <span className="absolute left-0 -top-[1px] h-[3px] opacity-85" style={{ width: `${widthPct}%`, background: color }} />
+                      </div>
+                      <div className="font-mono text-[13px] text-right text-foreground tabular-nums">${b.cost.toFixed(b.cost < 1 ? 3 : 2)}</div>
+                      <div className="font-mono text-[13px] text-right text-muted-foreground tabular-nums">{fmtNum(b.images)} <span className="text-[10px] uppercase text-muted-foreground/70">img</span></div>
+                      <div className="font-mono text-[13px] text-right text-muted-foreground tabular-nums">{fmtMs(b.avgTimeMs)} <span className="text-[10px] uppercase text-muted-foreground/70">avg</span></div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
-        .usage-main {
-          padding: 56px 64px 80px 128px; /* extra left for the 64px sidebar rail */
-          max-width: 1344px;
-          margin: 0 auto;
-          width: 100%;
-          box-sizing: border-box;
-        }
+          {/* Section 02: Activity log */}
+          <section className="mb-20">
+            <header className="flex items-baseline gap-5 pb-4 mb-6 border-b border-border flex-wrap">
+              <span className="font-mono text-[11px] tracking-[0.2em] text-primary">02</span>
+              <h2 className="text-2xl font-semibold text-foreground">Recent activity</h2>
+              <span className="ml-auto font-mono text-[11px] text-muted-foreground">{log.length} entr{log.length === 1 ? "y" : "ies"} · most recent first</span>
+            </header>
 
-        /* — Header — */
-        .head { margin-bottom: 56px; }
-        .eyebrow {
-          display: inline-flex;
-          align-items: center;
-          gap: 12px;
-          font-family: var(--font-mono), 'JetBrains Mono', monospace;
-          font-size: 11px;
-          letter-spacing: 0.22em;
-          text-transform: uppercase;
-          color: var(--bone-muted);
-          margin-bottom: 18px;
-        }
-        .eyebrow-rule {
-          width: 28px;
-          height: 1px;
-          background: var(--brand);
-        }
-        .head-row {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          gap: 32px;
-          padding-bottom: 28px;
-          border-bottom: 1px solid var(--line);
-        }
-        .page-title {
-          font-family: var(--font-display), 'Fraunces', serif;
-          font-style: italic;
-          font-weight: 300;
-          font-size: 96px;
-          line-height: 0.85;
-          letter-spacing: -0.04em;
-          color: var(--bone);
-          margin: 0;
-        }
-        .period-pills { display: inline-flex; align-items: center; gap: 4px; padding-bottom: 4px; }
-        :global(.usage-main .pill) {
-          background: transparent;
-          border: 0;
-          padding: 8px 14px;
-          color: var(--bone-muted);
-          font-family: Arial, Helvetica, sans-serif;
-          font-size: 12px;
-          letter-spacing: 0.06em;
-          cursor: pointer;
-          position: relative;
-          transition: color 0.15s ease;
-        }
-        :global(.usage-main .pill:hover) { color: var(--bone); }
-        :global(.usage-main .pill[data-active="true"]) { color: var(--bone); }
-        :global(.usage-main .pill[data-active="true"]::after) {
-          content: "";
-          position: absolute;
-          left: 14px;
-          right: 14px;
-          bottom: -4px;
-          height: 1px;
-          background: var(--brand);
-        }
+            {log.length === 0 ? (
+              <Empty className="border border-dashed">
+                <EmptyHeader>
+                  <EmptyTitle className="text-xs font-mono tracking-widest text-muted-foreground">— No entries in this window —</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="w-full overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead aria-label="Time ago" />
+                      <TableHead>Model</TableHead>
+                      <TableHead>Prompt</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead className="text-right">Latency</TableHead>
+                      <TableHead className="text-right">Tokens</TableHead>
+                      <TableHead className="text-right">Img</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {log.map((row) => {
+                      const color = PROVIDER_COLORS[row.provider] || "#fff";
+                      return (
+                        <TableRow key={row.id}>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">{fmtTime(row.created_at)}</TableCell>
+                          <TableCell className="text-[10px] text-muted-foreground/70 text-right">{timeAgo(row.created_at)}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <Badge variant="outline" className="gap-1.5">
+                              <span className="w-1 h-1 rounded-full" style={{ background: color }} />
+                              {modelLabel(row.model)}
+                            </Badge>
+                            <span className="text-muted-foreground/70 text-[10px] ml-2">/{row.endpoint}</span>
+                          </TableCell>
+                          <TableCell className="max-w-[380px] text-muted-foreground">
+                            {row.status === "error" ? (
+                              <span className="text-destructive text-[11px]" title={row.error_message || ""}>ERR · {row.error_message || "—"}</span>
+                            ) : row.prompt ? (
+                              <span className="line-clamp-1" title={row.prompt}>{row.prompt}</span>
+                            ) : (
+                              <span className="text-muted-foreground/50">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-foreground">${row.cost_estimate.toFixed(3)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{fmtMs(row.time_ms)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
+                            {row.total_tokens > 0 ? fmtNum(row.total_tokens) : <span className="text-muted-foreground/50">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{row.image_count}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </section>
 
-        /* — Hero — */
-        .hero {
-          padding: 56px 0 48px;
-          border-bottom: 1px solid var(--line);
-          margin-bottom: 56px;
-        }
-        .hero-label {
-          font-family: var(--font-mono), monospace;
-          font-size: 11px;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          color: var(--bone-muted);
-          margin-bottom: 22px;
-        }
-
-        .big-number {
-          font-family: var(--font-display), 'Fraunces', serif;
-          font-style: italic;
-          font-weight: 300;
-          font-size: clamp(96px, 14vw, 200px);
-          line-height: 0.86;
-          letter-spacing: -0.045em;
-          color: var(--bone);
-          display: flex;
-          align-items: baseline;
-          flex-wrap: wrap;
-          gap: 0;
-        }
-        .ccy {
-          font-style: normal;
-          font-family: var(--font-mono), monospace;
-          font-size: 0.22em;
-          color: var(--bone-muted);
-          letter-spacing: 0;
-          margin-right: 14px;
-          transform: translateY(-0.55em);
-          font-weight: 400;
-        }
-        .bn-int { display: inline-block; }
-        .bn-dot {
-          color: var(--brand);
-          margin: 0 -0.04em;
-          font-style: normal;
-        }
-        .bn-dec { color: var(--bone-soft); display: inline-block; }
-        .unit {
-          font-family: var(--font-mono), monospace;
-          font-style: normal;
-          font-size: 0.13em;
-          letter-spacing: 0.12em;
-          color: var(--bone-muted);
-          margin-left: 18px;
-          align-self: flex-end;
-          margin-bottom: 0.18em;
-        }
-        .bn-skeleton {
-          display: inline-block;
-          width: 0.7em;
-          height: 0.7em;
-          border-radius: 4px;
-          background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%);
-          background-size: 200% 100%;
-          animation: shimmer 1.4s linear infinite;
-          align-self: center;
-        }
-        @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
-
-        /* Category split — Images vs Agent IA */
-        .cat-split {
-          margin-top: 32px;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-        }
-        .cat-card {
-          padding: 16px 18px;
-          background: var(--ink-2);
-          border: 1px solid var(--line-faint);
-          border-radius: 10px;
-        }
-        .cat-eyebrow {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-family: var(--font-mono), monospace;
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.2em;
-          color: var(--bone-muted);
-          margin-bottom: 10px;
-        }
-        .cat-rule {
-          width: 18px;
-          height: 1px;
-          background: var(--brand);
-          display: inline-block;
-        }
-        .cat-cost {
-          font-family: var(--font-display), 'Fraunces', serif;
-          font-style: italic;
-          font-weight: 300;
-          font-size: 28px;
-          letter-spacing: -0.025em;
-          color: var(--bone);
-          font-variant-numeric: tabular-nums;
-          line-height: 1;
-        }
-        .cat-meta {
-          margin-top: 8px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          font-family: var(--font-mono), monospace;
-          font-size: 11px;
-          color: var(--bone-muted);
-          letter-spacing: 0.04em;
-        }
-        @media (max-width: 768px) {
-          .cat-split { grid-template-columns: 1fr; }
-        }
-
-        /* Meta line */
-        .meta {
-          list-style: none; padding: 0; margin: 28px 0 0;
-          display: flex; flex-wrap: wrap; gap: 32px;
-          font-family: var(--font-mono), monospace;
-          font-size: 12px;
-          letter-spacing: 0.04em;
-        }
-        .meta li { display: flex; align-items: baseline; gap: 8px; }
-        .m-num { color: var(--bone); font-variant-numeric: tabular-nums; }
-        .m-lbl { color: var(--bone-muted); text-transform: uppercase; letter-spacing: 0.16em; font-size: 10px; }
-        .m-error .m-num { color: var(--ember); }
-
-        /* Sparkline */
-        .spark {
-          margin-top: 32px;
-          height: 56px;
-          display: flex;
-          align-items: flex-end;
-          gap: 3px;
-        }
-        .spark-bar {
-          flex: 1;
-          min-width: 4px;
-          background: var(--bone-faint);
-          transition: background 0.15s;
-        }
-        .spark-bar:hover { background: var(--brand); }
-
-        /* — Section heading — */
-        .section { margin-bottom: 80px; }
-        .section-head {
-          display: flex;
-          align-items: baseline;
-          gap: 20px;
-          padding-bottom: 16px;
-          margin-bottom: 24px;
-          border-bottom: 1px solid var(--line);
-        }
-        .section-num {
-          font-family: var(--font-mono), monospace;
-          font-size: 11px;
-          letter-spacing: 0.2em;
-          color: var(--brand);
-        }
-        .section-title {
-          font-family: var(--font-display), serif;
-          font-style: italic;
-          font-weight: 400;
-          font-size: 28px;
-          letter-spacing: -0.015em;
-          color: var(--bone);
-          margin: 0;
-        }
-        .section-meta {
-          margin-left: auto;
-          font-family: var(--font-mono), monospace;
-          font-size: 11px;
-          color: var(--bone-muted);
-          letter-spacing: 0.06em;
-        }
-
-        /* — By model rows — */
-        .model-list { display: flex; flex-direction: column; }
-        .model-row {
-          display: grid;
-          grid-template-columns: 220px 1fr 90px 90px 90px;
-          align-items: center;
-          gap: 24px;
-          padding: 18px 0;
-          border-bottom: 1px solid var(--line-faint);
-          transition: background 0.1s ease;
-        }
-        .model-row:last-child { border-bottom: 0; }
-        .model-row:hover { background: rgba(255, 255, 255, 0.012); }
-        .m-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
-        .m-swatch { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-        .m-label { font-size: 14px; color: var(--bone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .m-prov {
-          font-family: var(--font-mono), monospace;
-          font-size: 9px;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          color: var(--bone-faint);
-        }
-        .m-bar {
-          height: 1px;
-          background: var(--line);
-          position: relative;
-          overflow: visible;
-        }
-        .m-bar-fill {
-          position: absolute;
-          left: 0;
-          top: -1px;
-          height: 3px;
-          opacity: 0.85;
-          animation: barIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-        }
-        @keyframes barIn { from { width: 0 !important; } }
-        .m-num {
-          font-family: var(--font-mono), monospace;
-          font-size: 13px;
-          text-align: right;
-          color: var(--bone-soft);
-          font-variant-numeric: tabular-nums;
-        }
-        .m-num.cost { color: var(--bone); }
-        .m-num-tag { color: var(--bone-faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
-
-        /* — Log table — */
-        .log-wrap { width: 100%; overflow-x: auto; }
-        .log-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-family: var(--font-mono), monospace;
-          font-size: 12px;
-        }
-        .log-table thead th {
-          text-align: left;
-          padding: 12px;
-          font-weight: 400;
-          font-size: 10px;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          color: var(--bone-muted);
-          border-bottom: 1px solid var(--line);
-          white-space: nowrap;
-        }
-        .log-table thead th.num { text-align: right; }
-        .log-table tbody td {
-          padding: 12px;
-          border-bottom: 1px solid var(--line-faint);
-          color: var(--bone-soft);
-          vertical-align: middle;
-        }
-        .log-table tbody tr { transition: background 0.08s; }
-        .log-table tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
-        .t-time { color: var(--bone-soft); width: 110px; white-space: nowrap; }
-        .t-ago { color: var(--bone-muted); font-size: 10px; width: 56px; text-align: right; }
-        .t-model { white-space: nowrap; }
-        .badge {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 3px 9px;
-          border-radius: 3px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--line);
-          font-size: 11px;
-          letter-spacing: 0.02em;
-        }
-        .b-swatch { width: 5px; height: 5px; border-radius: 50%; }
-        .endpoint { color: var(--bone-faint); margin-left: 8px; font-size: 10px; }
-        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .num.cost { color: var(--bone); }
-        .t-prompt { color: var(--bone-soft); max-width: 380px; }
-        .t-clip {
-          display: -webkit-box;
-          -webkit-line-clamp: 1;
-          line-clamp: 1;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .t-empty { color: var(--bone-faint); }
-        .t-error { color: var(--ember); font-size: 11px; }
-
-        /* — Empty state — */
-        .empty {
-          padding: 60px 24px;
-          text-align: center;
-          border: 1px dashed var(--line-faint);
-          color: var(--bone-muted);
-          font-family: var(--font-mono), monospace;
-          font-size: 12px;
-          letter-spacing: 0.1em;
-        }
-
-        /* — Footer note — */
-        .page-foot {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding-top: 24px;
-          border-top: 1px solid var(--line-faint);
-          font-family: var(--font-mono), monospace;
-          font-size: 10px;
-          letter-spacing: 0.12em;
-          color: var(--bone-faint);
-          text-transform: uppercase;
-        }
-        .foot-mark {
-          width: 4px; height: 4px; border-radius: 50%;
-          background: var(--brand);
-        }
-
-        /* — Responsive — */
-        @media (max-width: 1024px) {
-          .usage-main { padding: 40px 32px 64px 96px; }
-          .head-row { flex-direction: column; align-items: flex-start; gap: 24px; }
-          .page-title { font-size: 64px; }
-          .model-row { grid-template-columns: 1fr; gap: 8px; }
-          .m-bar { display: none; }
-          .meta { gap: 20px; }
-        }
-      `}</style>
-    </div>
+          <footer className="flex items-center gap-3 pt-6 border-t border-border font-mono text-[10px] tracking-[0.12em] uppercase text-muted-foreground/70">
+            <span className="w-1 h-1 rounded-full bg-primary" />
+            <span>Costs are estimates from per-image pricing. Real billing may differ.</span>
+          </footer>
+        </main>
+      </SidebarInset>
+    </>
   );
 }
 
 export default function UsageView() {
-  // ReactFlowProvider lets the shared <Sidebar /> mount safely on this page.
-  return (
-    <ReactFlowProvider>
-      <UsageInner />
-    </ReactFlowProvider>
-  );
+  return <UsageInner />;
 }

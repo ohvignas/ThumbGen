@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
 import { buildEnhanceRubric } from "@/lib/prompt-engineering";
+import { getOpenRouterClient } from "@/lib/agent/llm-client";
 
-const MODEL = "gemini-3-flash-preview";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+// Cheap/fast text model — this is a single-shot rubric rewrite, not the main
+// agent chat, so it doesn't need to match the user's chosen agentModel.
+const MODEL = "google/gemini-3.8-flash";
 
 export async function POST(request: NextRequest) {
   try {
-    const GEMINI_API_KEY = getSetting("geminiApiKey");
-    if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
+    const client = getOpenRouterClient();
+    if (!client) {
+      return NextResponse.json({ error: "OPENROUTER_API_KEY not configured" }, { status: 500 });
     }
 
     const language = getSetting("language") || "fr";
@@ -44,24 +46,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const res = await fetch(`${ENDPOINT}?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: buildEnhanceRubric(language) }] },
-        contents: [{ role: "user", parts: [{ text: userMessage }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
-      }),
+    const completion = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0.7,
+      max_tokens: 1024,
+      messages: [
+        { role: "system", content: buildEnhanceRubric(language) },
+        { role: "user", content: userMessage },
+      ],
     });
 
-    if (!res.ok) {
-      const err = await res.json();
-      console.error("Enhance prompt error:", err);
-      return NextResponse.json({ error: "API error" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const enhanced = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const enhanced = completion.choices[0]?.message?.content || "";
 
     return NextResponse.json({ enhanced: enhanced.trim() });
   } catch (err) {

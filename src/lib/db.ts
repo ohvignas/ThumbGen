@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { AGENT_TABLES_DDL } from "./agent/migrations";
+import { migrateChannelTables } from "./youtube/migrations";
 
 const DB_FILE = process.env.THUMBGEN_DB_PATH || path.join(process.cwd(), "data", "thumbgen.db");
 const DATA_DIR = path.dirname(DB_FILE);
@@ -114,6 +115,7 @@ function init(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_generations_log_provider   ON generations_log(provider);
   `);
   database.exec(AGENT_TABLES_DDL);
+  migrateChannelTables(database);
 
   // `CREATE TABLE IF NOT EXISTS` never alters a table that already exists —
   // a face_reactions table created before the `tags` column was added above
@@ -123,6 +125,58 @@ function init(database: Database.Database) {
   if (!faceReactionsColumns.some((c) => c.name === "tags")) {
     database.exec("ALTER TABLE face_reactions ADD COLUMN tags TEXT");
   }
+
+  // Generated images predate the miniatures gallery and were stored with no
+  // link back to the project they belong to. Add the column, then backfill it
+  // once from the canvases themselves: a generator node keeps its results as
+  // /api/generated-images/image?id=<uuid> URLs, so the canvas is the only
+  // existing record of which project produced which image.
+  const generatedImageColumns = database.prepare("PRAGMA table_info(generated_images)").all() as { name: string }[];
+  if (!generatedImageColumns.some((c) => c.name === "project_id")) {
+    database.exec("ALTER TABLE generated_images ADD COLUMN project_id TEXT");
+    database.exec("CREATE INDEX IF NOT EXISTS idx_generated_images_project ON generated_images(project_id)");
+    backfillGeneratedImageProjects(database);
+  }
+
+  const projectMetaColumns = database.prepare("PRAGMA table_info(projects_meta)").all() as { name: string }[];
+  if (!projectMetaColumns.some((c) => c.name === "description")) {
+    database.exec("ALTER TABLE projects_meta ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+  }
+
+  pruneRemovedSettingsKeys(database);
+}
+
+const REMOVED_SETTINGS_KEYS = ["geminiApiKey", "ideogramApiKey", "grokApiKey", "anthropicApiKey", "sitePassword"];
+
+/**
+ * The Réglages rework (2026-09-16) dropped geminiApiKey/ideogramApiKey/
+ * grokApiKey/anthropicApiKey/sitePassword from the settings schema — the
+ * OpenRouter Unified Image API replaced the direct provider keys, and
+ * sitePassword is now env-only. Rows written before that change linger in
+ * an existing settings table (CREATE TABLE IF NOT EXISTS never removes a
+ * column/row) and get copied into every backup, including any leftover
+ * secret values. The DELETE is naturally idempotent, so this can run on
+ * every startup with no separate "already ran" guard needed — exported so
+ * tests can exercise it directly without needing to reopen the database.
+ */
+export function pruneRemovedSettingsKeys(database: Database.Database): void {
+  const placeholders = REMOVED_SETTINGS_KEYS.map(() => "?").join(",");
+  database.prepare(`DELETE FROM settings WHERE key IN (${placeholders})`).run(...REMOVED_SETTINGS_KEYS);
+}
+
+function backfillGeneratedImageProjects(database: Database.Database) {
+  const projects = database.prepare("SELECT id, nodes FROM projects").all() as Array<{ id: string; nodes: string }>;
+  const link = database.prepare("UPDATE generated_images SET project_id = ? WHERE id = ? AND project_id IS NULL");
+  const run = database.transaction(() => {
+    for (const project of projects) {
+      const ids = new Set<string>();
+      for (const match of project.nodes.matchAll(/generated-images\/image\?id=([0-9a-f-]{36})/g)) {
+        ids.add(match[1]);
+      }
+      for (const imageId of ids) link.run(project.id, imageId);
+    }
+  });
+  run();
 }
 
 function open(): Database.Database {
@@ -136,6 +190,11 @@ export function getDb(): Database.Database {
     global.__thumbgen_db = open();
   }
   return global.__thumbgen_db;
+}
+
+/** Absolute path of the SQLite file (THUMBGEN_DB_PATH or data/thumbgen.db). */
+export function getDbFilePath(): string {
+  return DB_FILE;
 }
 
 export type ImageMime = "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/svg+xml";

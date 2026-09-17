@@ -7,7 +7,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   // Seed the API key into settings so the tool finds it
   getDb().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
-    .run("geminiApiKey", "test-key");
+    .run("openrouterApiKey", "test-key");
 });
 
 afterEach(() => {
@@ -24,16 +24,8 @@ describe("generate_sketch", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        candidates: [
-          {
-            content: {
-              parts: [
-                { inlineData: { mimeType: "image/png", data: onePxPng } },
-              ],
-            },
-          },
-        ],
-        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+        data: [{ b64_json: onePxPng, media_type: "image/png" }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       }),
     });
 
@@ -56,14 +48,14 @@ describe("generate_sketch", () => {
   });
 
   it("returns error when API key is missing", async () => {
-    getDb().prepare("DELETE FROM settings WHERE key = ?").run("geminiApiKey");
+    getDb().prepare("DELETE FROM settings WHERE key = ?").run("openrouterApiKey");
     const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
     const r = await generateSketchTool.handler({ prompt: "x" });
     expect(r.isError).toBe(true);
-    expect((r.content[0] as { text: string }).text).toMatch(/API key/i);
+    expect((r.content[0] as { text: string }).text).toMatch(/API key|Clé API/i);
   });
 
-  it("returns error on Gemini failure", async () => {
+  it("returns error on OpenRouter failure", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -81,14 +73,36 @@ describe("generate_sketch", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: onePxPng } }] } }],
+        data: [{ b64_json: onePxPng, media_type: "image/png" }],
       }),
     });
     const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
     const r = await generateSketchTool.handler({ prompt: "x" });
     expect(r.isError).toBeFalsy();
-    // verify the call body included 16:9
+    // verify the call body included 16:9 and hit OpenRouter's images endpoint
+    expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/images");
     const callBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(callBody.generationConfig.imageConfig.aspectRatio).toBe("16:9");
+    expect(callBody.aspect_ratio).toBe("16:9");
+    expect(callBody.model).toBe("google/gemini-2.5-flash-image");
+  });
+
+  it("wraps a face/reference image as a tagged input_references object, not a bare string", async () => {
+    const bytes = Buffer.from(onePxPng, "base64");
+    getDb().prepare("INSERT OR REPLACE INTO personas (id, label) VALUES (?, ?)").run("test1", "Test persona");
+    getDb()
+      .prepare("INSERT OR REPLACE INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("test1-front", "test1", "front", "image/png", bytes.length, bytes);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ b64_json: onePxPng, media_type: "image/png" }] }),
+    });
+    const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
+    const r = await generateSketchTool.handler({ prompt: "x", face_source: "stored:persona_test1" });
+    expect(r.isError).toBeFalsy();
+    const callBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(callBody.input_references).toHaveLength(1);
+    expect(callBody.input_references[0]).toMatchObject({ type: "image_url" });
+    expect(callBody.input_references[0].image_url.url).toMatch(/^data:image\/png;base64,/);
   });
 });

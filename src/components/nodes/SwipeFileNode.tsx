@@ -3,6 +3,10 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { useCallback, useRef, useEffect, useState } from "react";
+import { Library } from "lucide-react";
+import LibraryPickerDialog from "@/components/library/LibraryPickerDialog";
+import type { LibraryPick } from "@/components/library/picker-tabs";
+import { catalogIdForNode } from "@/lib/canvas/node-catalog";
 import NodeShell from "./NodeShell";
 
 export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
@@ -10,12 +14,26 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
   const removeNode = useCanvasStore((s) => s.removeNode);
   const [removingBg, setRemovingBg] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // imageUrl answered 404: its library item was deleted. Shown as empty,
+  // the saved data is left untouched.
+  const [missingUrl, setMissingUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (data.imageUrl && !data.imageBase64) {
-      fetch(data.imageUrl)
-        .then((r) => r.blob())
+      const url = data.imageUrl;
+      // no-cache: the image route serves a long-lived immutable Cache-Control,
+      // so a cached 200 would otherwise hide a 404 once the item is deleted.
+      fetch(url, { cache: "no-cache" })
+        .then((r) => {
+          if (r.status === 404) {
+            setMissingUrl(url);
+            return null;
+          }
+          return r.ok ? r.blob() : null;
+        })
         .then((blob) => {
+          if (!blob) return;
           const reader = new FileReader();
           reader.onload = () => {
             updateNodeData(id, { imageBase64: reader.result as string });
@@ -32,8 +50,10 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
+        // Drop any library URL: saveProject strips imageBase64 while imageUrl is set.
         updateNodeData(id, {
           imageBase64: reader.result as string,
+          imageUrl: undefined,
           label: file.name,
         });
       };
@@ -42,7 +62,20 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
     [id, updateNodeData]
   );
 
-  const displayTitle = data.label || "Image";
+  const isLogo = catalogIdForNode({ type: "swipeFile", data }) === "logo";
+  const hasImage = Boolean(data.imageBase64 || (data.imageUrl && data.imageUrl !== missingUrl));
+  const displayTitle = data.label || (isLogo ? "Logo" : "Image");
+
+  // Same data as a drag from the former sidebar: the library route, no copy of the file.
+  const pickFromLibrary = (item: LibraryPick) => {
+    setMissingUrl(null);
+    updateNodeData(id, {
+      imageUrl: item.imageUrl,
+      imageBase64: undefined,
+      label: item.label,
+      kind: isLogo ? "logo" : "reference",
+    });
+  };
 
   const handleRemoveBg = async () => {
     const src = data.imageBase64 || data.imageUrl;
@@ -75,17 +108,17 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
       title={displayTitle}
       onDelete={() => removeNode(id)}
       onRename={(newName) => updateNodeData(id, { label: newName })}
-      onRemoveBg={(data.imageBase64 || data.imageUrl) ? handleRemoveBg : undefined}
+      onRemoveBg={hasImage ? handleRemoveBg : undefined}
       removingBg={removingBg}
       width={280}
       icon={
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <path d="M3 15l5-5 4 4 4-6 5 7" />
         </svg>
       }
     >
-      {data.imageBase64 || data.imageUrl ? (
+      {hasImage ? (
         <div className="relative group rounded-xl overflow-hidden">
           <img
             src={data.imageBase64 || data.imageUrl}
@@ -97,9 +130,9 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <svg className="animate-spin" width="32" height="32" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.2)" strokeWidth="3" />
-                <path d="M12 2a10 10 0 019.95 9" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" />
+                <path d="M12 2a10 10 0 019.95 9" stroke="var(--canvas-accent)" strokeWidth="3" strokeLinecap="round" />
               </svg>
-              <span className="text-xs font-medium" style={{ color: "var(--accent)" }}>
+              <span className="text-xs font-medium" style={{ color: "var(--canvas-accent)" }}>
                 Suppression du fond…
               </span>
             </div>
@@ -122,18 +155,18 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
             borderColor: "var(--surface)",
             color: "var(--text-muted)",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--canvas-accent)")}
           onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--surface)")}
         >
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <path d="M3 15l5-5 4 4 4-6 5 7" />
           </svg>
-          <span className="text-xs">Ajouter une miniature de référence</span>
+          <span className="text-xs">{isLogo ? "Ajouter un logo" : "Ajouter une miniature de référence"}</span>
         </button>
       )}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-      {(data.imageBase64 || data.imageUrl) && (
+      {hasImage && (
         <button
           onClick={() => inputRef.current?.click()}
           className="w-full mt-3 text-xs transition-colors"
@@ -144,6 +177,20 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
           + Ajouter d&apos;autres images
         </button>
       )}
+      <button
+        type="button"
+        onClick={() => setPickerOpen(true)}
+        className="nodrag nopan mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-(--line) py-1.5 text-xs text-(--text-secondary) transition-colors hover:border-(--canvas-accent) hover:text-(--text-primary)"
+      >
+        <Library className="size-3.5" />
+        Choisir dans la bibliothèque
+      </button>
+      <LibraryPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        kind={isLogo ? "logos" : "inspirations"}
+        onPick={pickFromLibrary}
+      />
       <Handle type="source" position={Position.Right} id="image" />
     </NodeShell>
   );

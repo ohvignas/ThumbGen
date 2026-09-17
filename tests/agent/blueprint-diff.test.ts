@@ -6,7 +6,7 @@ describe("diffBlueprints", () => {
     const current = {
       nodes: [
         { id: "a", type: "prompt" as const, data: { prompt: "old" } },
-        { id: "b", type: "generator" as const, data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "b", type: "generator" as const, data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [],
     };
@@ -36,8 +36,8 @@ describe("diffBlueprints", () => {
   });
 
   it("treats reordered keys in data as equal", () => {
-    const a = { nodes: [{ id: "x", type: "generator" as const, data: { model: "ideogram", aspectRatio: "16x9" } }], edges: [] };
-    const b = { nodes: [{ id: "x", type: "generator" as const, data: { aspectRatio: "16x9", model: "ideogram" } }], edges: [] };
+    const a = { nodes: [{ id: "x", type: "generator" as const, data: { model: "openai", aspectRatio: "16x9" } }], edges: [] };
+    const b = { nodes: [{ id: "x", type: "generator" as const, data: { aspectRatio: "16x9", model: "openai" } }], edges: [] };
     const ops = diffBlueprints(a, b);
     // Note: this test demonstrates a known limitation if the implementation uses naive JSON.stringify.
     // Either it's truly equal (preferred), or the test needs adjusting if the implementation chooses key order matters.

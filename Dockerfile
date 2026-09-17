@@ -18,17 +18,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build args → env vars for Next.js build
-ARG GEMINI_API_KEY
-ARG IDEOGRAM_API_KEY
 ARG OPENAI_API_KEY
-ARG GROK_API_KEY
 ARG YOUTUBE_API_KEY
 ARG SITE_PASSWORD
 
-ENV GEMINI_API_KEY=$GEMINI_API_KEY
-ENV IDEOGRAM_API_KEY=$IDEOGRAM_API_KEY
 ENV OPENAI_API_KEY=$OPENAI_API_KEY
-ENV GROK_API_KEY=$GROK_API_KEY
 ENV YOUTUBE_API_KEY=$YOUTUBE_API_KEY
 ENV SITE_PASSWORD=$SITE_PASSWORD
 
@@ -52,6 +46,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/bindings ./node_modules/bindings
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
+# resvg (logo SVG → PNG) loads @resvg/resvg-js-linux-*-gnu through a runtime
+# require the standalone trace can miss — same reason as better-sqlite3 above
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@resvg ./node_modules/@resvg
 
 # Create data directory for local persistence
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data

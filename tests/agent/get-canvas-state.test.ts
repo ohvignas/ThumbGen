@@ -12,32 +12,44 @@ describe("get_canvas_state", () => {
         projectId,
         JSON.stringify([
           { id: "p-1", type: "prompt", data: { prompt: "hello world", negativePrompt: "blur" } },
-          { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9", count: 4 } },
-          { id: "f-1", type: "faceReference", data: { imageBase64: "AAAA", label: "Excited" } },
+          { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9", count: 4 } },
+          {
+            id: "f-1",
+            type: "faceReference",
+            data: { personaId: "abc", personaAngles: { front: "data:image/png;base64,AAAA" }, label: "Antoine" },
+          },
+          { id: "s-1", type: "swipeFile", data: { imageBase64: "data:image/png;base64,BBBB", label: "Brand", kind: "logo" } },
         ]),
         JSON.stringify([
           { source: "p-1", target: "g-1", targetHandle: "prompt-in" },
           { source: "f-1", target: "g-1", targetHandle: "face-in" },
-        ])
+          { source: "s-1", target: "g-1", targetHandle: "logo-in" },
+        ]),
       );
   });
 
   it("returns blueprint with all nodes and edges", async () => {
     const r = await getCanvasStateTool.handler({ project_id: projectId });
-    const text = (r.content[0] as { text: string }).text;
-    const parsed = JSON.parse(text);
-    expect(parsed.nodes).toHaveLength(3);
-    expect(parsed.edges).toHaveLength(2);
+    const parsed = JSON.parse((r.content[0] as { text: string }).text);
+    expect(parsed.nodes).toHaveLength(4);
+    expect(parsed.edges).toHaveLength(3);
   });
 
   it("strips binary image data from node summaries", async () => {
     const r = await getCanvasStateTool.handler({ project_id: projectId });
     const text = (r.content[0] as { text: string }).text;
     expect(text).not.toContain("AAAA");
+    expect(text).not.toContain("BBBB");
     const parsed = JSON.parse(text);
+    const swipe = parsed.nodes.find((n: { id: string }) => n.id === "s-1");
+    expect(swipe.summary).toMatchObject({ hasImage: true, label: "Brand", kind: "logo" });
+  });
+
+  it("summarises a Personnage by its persona reference", async () => {
+    const r = await getCanvasStateTool.handler({ project_id: projectId });
+    const parsed = JSON.parse((r.content[0] as { text: string }).text);
     const face = parsed.nodes.find((n: { id: string }) => n.id === "f-1");
-    expect(face.summary.hasImage).toBe(true);
-    expect(face.summary.label).toBe("Excited");
+    expect(face.summary).toEqual({ persona: "stored:persona_abc", label: "Antoine" });
   });
 
   it("preserves prompt content in summary", async () => {
@@ -52,7 +64,7 @@ describe("get_canvas_state", () => {
     const r = await getCanvasStateTool.handler({ project_id: projectId });
     const parsed = JSON.parse((r.content[0] as { text: string }).text);
     const gen = parsed.nodes.find((n: { id: string }) => n.id === "g-1");
-    expect(gen.summary).toMatchObject({ model: "ideogram", aspectRatio: "16x9", count: 4 });
+    expect(gen.summary).toMatchObject({ model: "openai", aspectRatio: "16x9", count: 4 });
   });
 
   it("returns empty blueprint for unknown project", async () => {

@@ -46,7 +46,7 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
       onRename={(n) => updateNodeData(id, { label: n })}
       width={300}
       icon={
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent)" strokeWidth="1.5" strokeLinecap="round">
           <path d="M12 19l7-7 3 3-7 7-3-3z" />
           <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
         </svg>
@@ -82,7 +82,7 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
           onClick={openEditor}
           className="w-full h-48 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-3 transition-colors nopan nodrag"
           style={{ borderColor: "var(--surface)", color: "var(--text-muted)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--canvas-accent)")}
           onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--surface)")}
         >
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -95,7 +95,7 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
 
       <Handle type="source" position={Position.Right} id="image" />
       <div className="handle-label handle-label-right" style={{ top: "50%", right: -8, transform: "translateX(100%) translateY(-50%)" }}>
-        <span style={{ color: "var(--accent)", fontSize: 10 }}>Croquis</span>
+        <span style={{ color: "var(--canvas-accent)", fontSize: 10 }}>Croquis</span>
       </div>
     </NodeShell>
   );

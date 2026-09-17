@@ -20,7 +20,7 @@ describe("apply_workflow", () => {
     const blueprint = {
       nodes: [
         { id: "p-1", type: "prompt", data: { prompt: "hello" } },
-        { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [{ source: "p-1", target: "g-1", targetHandle: "prompt-in" }],
     };
@@ -32,6 +32,26 @@ describe("apply_workflow", () => {
     expect(persistedNodes).toHaveLength(2);
     // auto-layout adds positions
     expect(persistedNodes[0].position).toBeDefined();
+  });
+
+  it("accepts a JSON-stringified blueprint (some models send it this way)", async () => {
+    const blueprint = {
+      nodes: [
+        { id: "p-1", type: "prompt", data: { prompt: "hello" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
+      ],
+      edges: [{ source: "p-1", target: "g-1", targetHandle: "prompt-in" }],
+    };
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: JSON.stringify(blueprint) });
+    expect(r.isError).toBeFalsy();
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    expect(JSON.parse(row.nodes)).toHaveLength(2);
+  });
+
+  it("rejects a blueprint string that isn't valid JSON", async () => {
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: "{not json" });
+    expect(r.isError).toBe(true);
+    expect((r.content[0] as { text: string }).text).toMatch(/not valid JSON/i);
   });
 
   it("rejects an invalid blueprint with helpful error", async () => {
@@ -58,7 +78,7 @@ describe("apply_workflow", () => {
     const bp = {
       nodes: [
         { id: "f-1", type: "swipeFile", data: { kind: "logo", image_source: `stored:lg_${logoId}` } },
-        { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [{ source: "f-1", target: "g-1", targetHandle: "logo-in" }],
     };
@@ -79,6 +99,7 @@ describe("apply_workflow", () => {
     const swipe = nodes[0];
     expect(swipe.data.imageBase64).toMatch(/^data:image\/png;base64,/);
     expect(swipe.data.label).toBe("Brand");
+    expect(swipe.data.kind).toBe("logo"); // lets the canvas wire a Logo to logo-in
     expect(swipe.data.image_source).toBe(`stored:lg_${logoId}`); // kept for re-resolve
   });
 
@@ -100,7 +121,7 @@ describe("apply_workflow", () => {
     const bp = {
       nodes: [
         { id: "p-1", type: "prompt", data: { prompt: "hi" } },
-        { id: "g-1", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ],
       edges: [{ source: "p-1", target: "g-1", targetHandle: "prompt-in" }],
     };
@@ -113,12 +134,12 @@ describe("apply_workflow", () => {
     expect(edges[0].targetHandle).toBe("prompt-in");
   });
 
-  it("computes a diff against existing canvas (deletes b, creates c)", async () => {
+  it("merges into the existing canvas (keeps b, creates c, deletes nothing)", async () => {
     // Seed existing
     getDb().prepare("UPDATE projects SET nodes = ?, edges = ? WHERE id = ?")
       .run(JSON.stringify([
         { id: "a", type: "prompt", data: { prompt: "x" } },
-        { id: "b", type: "generator", data: { model: "ideogram", aspectRatio: "16x9" } },
+        { id: "b", type: "generator", data: { model: "openai", aspectRatio: "16x9" } },
       ]), JSON.stringify([]), projectId);
 
     const target = {
@@ -132,6 +153,35 @@ describe("apply_workflow", () => {
     expect(r.isError).toBeFalsy();
     const text = (r.content[0] as { text: string }).text;
     expect(text).toMatch(/1 created/);
-    expect(text).toMatch(/1 deleted/);
+    expect(text).toMatch(/0 removed \(kept 1 untouched\)/);
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    expect((JSON.parse(row.nodes) as Array<{ id: string }>).map((n) => n.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("stores a Personnage faceReference as its angle photos", async () => {
+    const personaId = uuid();
+    getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Antoine");
+    getDb()
+      .prepare("INSERT INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(uuid(), personaId, "front", "image/png", 1, Buffer.from([1]));
+    const bp = {
+      nodes: [{ id: "face-1", type: "faceReference", data: { image_source: `stored:persona_${personaId}` } }],
+      edges: [],
+    };
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
+    expect(r.isError).toBeFalsy();
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    const face = (JSON.parse(row.nodes) as Array<{ data: Record<string, unknown> }>)[0];
+    expect(face.data.personaId).toBe(personaId);
+    expect((face.data.personaAngles as Record<string, string>).front).toMatch(/^data:image\/png;base64,/);
+    expect(face.data.label).toBe("Antoine");
+    expect(face.data.imageBase64).toBeUndefined();
+  });
+
+  it("rejects a single face photo on a faceReference", async () => {
+    const bp = { nodes: [{ id: "face-1", type: "faceReference", data: { image_source: "stored:fr_legacy" } }], edges: [] };
+    const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
+    expect(r.isError).toBe(true);
+    expect((r.content[0] as { text: string }).text).toContain("stored:persona_");
   });
 });

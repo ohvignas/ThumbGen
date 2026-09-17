@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 type Angle = "front" | "left" | "right";
 
@@ -27,7 +28,7 @@ export default function WebcamCaptureModal({
   onComplete,
 }: {
   onClose: () => void;
-  onComplete: (photos: Record<Angle, string>) => void;
+  onComplete: (photos: Record<Angle, string>, name: string) => void | Promise<void>;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -35,6 +36,18 @@ export default function WebcamCaptureModal({
   const [shots, setShots] = useState<Partial<Record<Angle, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // Naming step (added recently, not legacy leftover): once all 3 angles are
+  // captured, the wizard advances here instead of saving immediately — the
+  // user names the persona before it's sent to the server. Keep this state
+  // and the JSX block below intact when a later task converts this modal's
+  // outer shell to a real Dialog; the naming step's content and behavior
+  // should carry over unchanged.
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+  // Guards finish() below against duplicate persona creation from a
+  // key-repeat Enter or an impatient double-click while the save (3
+  // base64-encoded photos POSTed to /api/personas) is in flight.
+  const [submitting, setSubmitting] = useState(false);
 
   const step = STEPS[stepIndex];
   const preview = shots[step.angle];
@@ -88,6 +101,10 @@ export default function WebcamCaptureModal({
   }, []);
 
   const capture = useCallback(() => {
+    // Defense in depth: "Capturer" below is already disabled via
+    // disabled={!ready || !!error}, but guard the handler itself too so a
+    // stray click can never start a capture against a denied/unready camera.
+    if (!ready || error) return;
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
     // Crop to the centered square the user actually saw in the (1:1) preview
@@ -103,7 +120,7 @@ export default function WebcamCaptureModal({
     ctx.drawImage(video, sx, sy, side, side, 0, 0, side, side);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
     setShots((prev) => ({ ...prev, [step.angle]: dataUrl }));
-  }, [step.angle]);
+  }, [step.angle, ready, error]);
 
   const retake = () => setShots((prev) => ({ ...prev, [step.angle]: undefined }));
 
@@ -111,12 +128,30 @@ export default function WebcamCaptureModal({
     if (stepIndex < STEPS.length - 1) {
       setStepIndex((i) => i + 1);
     } else {
-      // Don't stop the stream here: onComplete's save can fail, in which
-      // case the caller keeps this modal open so the user can retry or
-      // retake — stopping the camera now would leave them stuck with a
-      // dead feed. The mount effect's cleanup stops it once this component
+      // All 3 angles captured — advance to the naming step rather than
+      // saving immediately (see the `naming` state above).
+      setNaming(true);
+    }
+  };
+
+  const finish = async () => {
+    // Bail if a save is already in flight — prevents a key-repeat Enter or
+    // a double-click from firing onComplete (and thus POST /api/personas)
+    // more than once and creating duplicate personas.
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      // Don't stop the stream here: onComplete's save can fail, in which case
+      // the caller keeps this modal open so the user can retry or go back to
+      // retake — stopping the camera now would leave them stuck with a dead
+      // feed. The mount effect's cleanup stops it once this component
       // actually unmounts (close, or a successful save).
-      onComplete(shots as Record<Angle, string>);
+      await onComplete(shots as Record<Angle, string>, name.trim());
+    } finally {
+      // On success the caller unmounts this modal (harmless no-op state
+      // update if it beats this to it); on failure this re-enables the
+      // button so the user can retry.
+      setSubmitting(false);
     }
   };
 
@@ -125,117 +160,146 @@ export default function WebcamCaptureModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(8,8,12,0.85)" }}
-      onClick={onClose}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div
-        className="rounded-2xl p-5 w-full max-w-sm"
-        style={{ background: "var(--node-bg)", border: "1px solid var(--line)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-            Étape {stepIndex + 1} / {STEPS.length} — {step.title}
-          </span>
-          <button onClick={onClose} style={{ color: "var(--text-muted)" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+      <DialogContent className="max-w-sm">
+        <span className="text-xs font-medium mb-1 block text-muted-foreground">
+          {naming ? "Dernière étape — Nom" : `Étape ${stepIndex + 1} / ${STEPS.length} — ${step.title}`}
+        </span>
 
-        <div className="flex gap-1.5 mb-3">
-          {STEPS.map((s, i) => (
-            <div
-              key={s.angle}
-              className="flex-1 h-1 rounded-full"
-              style={{ background: shots[s.angle] ? "var(--accent)" : i === stepIndex ? "var(--bone-soft)" : "var(--surface)" }}
-            />
-          ))}
-        </div>
-
-        <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
-          {step.instruction}
-        </p>
-
-        <div
-          className="relative rounded-xl overflow-hidden mb-3"
-          style={{ aspectRatio: "1/1", background: "var(--ink-0)" }}
-        >
-          {/* The video stays mounted for the whole modal lifetime — steps only
-              toggle whether the preview image or the framing guide sits on top
-              of it. Unmounting/remounting <video> between steps loses srcObject. */}
-          <video
-            ref={attachStream}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ transform: "scaleX(-1)", visibility: error ? "hidden" : "visible" }}
-          />
-
-          {!error && !preview && (
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <ellipse cx="50" cy="48" rx="26" ry="34" fill="none" stroke="rgba(244,240,229,0.5)" strokeWidth="0.6" strokeDasharray="2 2" />
-            </svg>
-          )}
-
-          {/* Mirrored to match the live preview the user framed against —
-              purely a display flip, the bytes saved to the server are the
-              camera's true (unmirrored) frame. */}
-          {preview && (
-            <img src={preview} alt={step.title} className="absolute inset-0 w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
-          )}
-
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center p-4">
-              <p className="text-xs text-center" style={{ color: "var(--ember)" }}>{error}</p>
+        {naming ? (
+          // Naming step (added recently, not legacy leftover — see the
+          // `naming` state declaration above for why this exists and how it
+          // should survive a future Dialog conversion of this modal).
+          <>
+            <p className="text-xs mb-3 text-muted-foreground">
+              Donne un nom à ce personnage pour le reconnaître dans la liste.
+            </p>
+            <div className="grid grid-cols-3 gap-1.5 mb-3">
+              {STEPS.map((s) => (
+                <div key={s.angle} className="rounded-lg overflow-hidden" style={{ aspectRatio: "1/1" }}>
+                  <img src={shots[s.angle]} alt={s.title} className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+            <input
+              type="text"
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.repeat) finish(); }}
+              placeholder="Ex: Antoine, Moi, Perso vidéo…"
+              className="w-full px-3 py-2 rounded-xl text-sm mb-3 focus:outline-none bg-muted text-foreground border border-transparent"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setNaming(false)}
+                className="flex-1 py-2 rounded-xl text-xs font-medium bg-muted text-muted-foreground"
+              >
+                Précédent
+              </button>
+              <button
+                onClick={finish}
+                disabled={submitting}
+                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40 bg-primary text-primary-foreground"
+              >
+                {submitting ? "Enregistrement…" : "Créer le personnage"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex gap-1.5 mb-3">
+              {STEPS.map((s, i) => (
+                <div
+                  key={s.angle}
+                  className={`flex-1 h-1 rounded-full ${shots[s.angle] ? "bg-primary" : i === stepIndex ? "bg-muted-foreground" : "bg-muted"}`}
+                />
+              ))}
+            </div>
 
-        <div className="flex gap-2 mb-3">
-          {preview ? (
-            <button
-              onClick={retake}
-              className="flex-1 py-2 rounded-xl text-xs font-medium"
-              style={{ background: "var(--surface)", color: "var(--text-secondary)" }}
-            >
-              Reprendre
-            </button>
-          ) : (
-            <button
-              onClick={capture}
-              disabled={!ready || !!error}
-              className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40"
-              style={{ background: "var(--accent-yellow)", color: "var(--canvas-bg)" }}
-            >
-              Capturer
-            </button>
-          )}
-        </div>
+            <p className="text-xs mb-3 text-muted-foreground">
+              {step.instruction}
+            </p>
 
-        <div className="flex gap-2">
-          <button
-            onClick={prev}
-            disabled={stepIndex === 0}
-            className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30"
-            style={{ background: "var(--surface)", color: "var(--text-muted)" }}
-          >
-            Précédent
-          </button>
-          <button
-            onClick={next}
-            disabled={!preview}
-            className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30"
-            style={{ background: "var(--accent)", color: "var(--canvas-bg)" }}
-          >
-            {stepIndex < STEPS.length - 1 ? "Suivant" : "Terminer"}
-          </button>
-        </div>
-      </div>
-    </div>
+            <div
+              className="relative rounded-xl overflow-hidden mb-3 bg-background"
+              style={{ aspectRatio: "1/1" }}
+            >
+              {/* The video stays mounted for the whole modal lifetime — steps only
+                  toggle whether the preview image or the framing guide sits on top
+                  of it. Unmounting/remounting <video> between steps loses srcObject. */}
+              <video
+                ref={attachStream}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{ transform: "scaleX(-1)", visibility: error ? "hidden" : "visible" }}
+              />
+
+              {!error && !preview && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <ellipse cx="50" cy="48" rx="26" ry="34" fill="none" stroke="rgba(244,240,229,0.5)" strokeWidth="0.6" strokeDasharray="2 2" />
+                </svg>
+              )}
+
+              {/* Mirrored to match the live preview the user framed against —
+                  purely a display flip, the bytes saved to the server are the
+                  camera's true (unmirrored) frame. */}
+              {preview && (
+                <img src={preview} alt={step.title} className="absolute inset-0 w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
+              )}
+
+              {error && (
+                <div className="absolute inset-0 flex items-center justify-center p-4">
+                  <p className="text-xs text-center text-destructive">{error}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 mb-3">
+              {preview ? (
+                <button
+                  onClick={retake}
+                  className="flex-1 py-2 rounded-xl text-xs font-medium bg-muted text-muted-foreground"
+                >
+                  Reprendre
+                </button>
+              ) : (
+                <button
+                  onClick={capture}
+                  disabled={!ready || !!error}
+                  className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-40 bg-primary text-primary-foreground"
+                >
+                  Capturer
+                </button>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={prev}
+                disabled={stepIndex === 0}
+                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30 bg-muted text-muted-foreground"
+              >
+                Précédent
+              </button>
+              <button
+                onClick={next}
+                disabled={!preview}
+                className="flex-1 py-2 rounded-xl text-xs font-medium disabled:opacity-30 bg-primary text-primary-foreground"
+              >
+                {stepIndex < STEPS.length - 1 ? "Suivant" : "Terminer"}
+              </button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

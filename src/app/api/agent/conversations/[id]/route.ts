@@ -4,6 +4,7 @@ import {
   softDeleteConversation,
   updateConversationTitle,
 } from "@/lib/agent/conversation/store";
+import { stopRun } from "@/lib/agent/v2/run-registry";
 
 export async function PATCH(
   req: NextRequest,
@@ -30,5 +31,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
   softDeleteConversation(id);
+  // A turn still running there would keep paying for a conversation nobody can see.
+  stopRun(id);
   return NextResponse.json({ success: true });
 }

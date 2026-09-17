@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import type { TurnMetadata } from "./turn-model";
 
 type ModelMessageContent =
   | { type: "text"; text: string }
@@ -12,7 +13,40 @@ type PersistedModelMessage = {
   content: ModelMessageContent[];
 };
 
-type Row = { id: string; role: "user" | "assistant"; content_json: string };
+/** One row of GET /api/agent/conversations/:id/messages (a `messages` table row). */
+export type StoredMessageRow = {
+  id: string;
+  role: "user" | "assistant";
+  content_json: string;
+  /** SQLite `datetime('now')`: "YYYY-MM-DD HH:MM:SS", UTC. */
+  created_at?: string;
+  /** 1 when the turn was stopped or failed before it finished. */
+  interrupted?: number;
+};
+
+/** A SQLite `datetime('now')` value (UTC, no zone) or an ISO string, in ms; null when absent or invalid. */
+export function parseStoredTimestamp(value: string | undefined): number | null {
+  if (!value) return null;
+  const iso = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Metadata of the assistant message started by `rows[rowIndex]`. A turn's row
+ * is written when the turn ends, and the row before it (the user's message, or
+ * the client-tool result that resumed the turn) when it started — so their
+ * `created_at` gap is the turn's duration, to the second. Nothing new is stored.
+ */
+function assistantMetadata(rows: StoredMessageRow[], rowIndex: number): TurnMetadata | undefined {
+  const row = rows[rowIndex];
+  const metadata: TurnMetadata = {};
+  const endedAt = parseStoredTimestamp(row.created_at);
+  const startedAt = rowIndex > 0 ? parseStoredTimestamp(rows[rowIndex - 1].created_at) : null;
+  if (endedAt !== null && startedAt !== null && endedAt >= startedAt) metadata.durationMs = endedAt - startedAt;
+  if (row.interrupted === 1) metadata.interrupted = true;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
 
 /**
  * Converts persisted ModelMessage[] rows (Plan 1's storage format) into
@@ -22,15 +56,25 @@ type Row = { id: string; role: "user" | "assistant"; content_json: string };
  * exactly the part shapes this app's tools ever produce (text, file,
  * tool-call/tool-result pairs, reasoning).
  */
-export function rowsToUIMessages(rows: Row[]): UIMessage[] {
+export function rowsToUIMessages(rows: StoredMessageRow[]): UIMessage[] {
   const out: UIMessage[] = [];
   // Tool results arrive in a SEPARATE role:"tool" ModelMessage from the
   // assistant row that made the call (see Plan 1's persist-turn.ts) — merge
   // each tool-result back onto the matching tool-call by toolCallId so a
   // UIMessage's tool part carries both input AND output together, as
   // ToolCallCard's dispatcher (Task 9) expects from a single part.
-  for (const row of rows) {
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
     const persisted = JSON.parse(row.content_json) as PersistedModelMessage[];
+
+    // A turn that failed or was stopped before producing anything is stored
+    // as an empty, interrupted assistant row: keep it as an empty message so
+    // the chat can show « Tour interrompu » where the answer should be.
+    if (persisted.length === 0 && row.role === "assistant" && row.interrupted === 1) {
+      out.push({ id: row.id, role: "assistant", parts: [], metadata: assistantMetadata(rows, rowIndex) });
+      continue;
+    }
+
     for (const msg of persisted) {
       if (msg.role === "tool") {
         // Fold onto the immediately-preceding UIMessage's matching tool part.
@@ -89,7 +133,8 @@ export function rowsToUIMessages(rows: Row[]): UIMessage[] {
       if (prevForRow && prevForRow.id === row.id) {
         prevForRow.parts.push(...parts);
       } else {
-        out.push({ id: row.id, role: msg.role as "user" | "assistant", parts });
+        const metadata = row.role === "assistant" ? assistantMetadata(rows, rowIndex) : undefined;
+        out.push({ id: row.id, role: msg.role as "user" | "assistant", parts, ...(metadata ? { metadata } : {}) });
       }
     }
   }

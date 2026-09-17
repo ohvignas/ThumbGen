@@ -2,10 +2,14 @@ import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
 import { getCostPerImage } from "./model-costs";
 
+export type LogEndpoint = "generate" | "edit" | "remix" | "classify-thumbnail";
+
 export type LogInput = {
   provider: string;
   model: string;
-  endpoint: "generate" | "edit" | "remix";
+  endpoint: LogEndpoint;
+  /** Overrides the per-image estimate — token-priced calls such as thumbnail classification. */
+  costEstimate?: number;
   timeMs: number;
   imageCount: number;
   inputTokens?: number;
@@ -20,7 +24,7 @@ export type LogInput = {
 
 export function logGeneration(input: LogInput): string {
   const id = uuid();
-  const cost = getCostPerImage(input.model) * (input.imageCount || 0);
+  const cost = input.costEstimate ?? getCostPerImage(input.model) * (input.imageCount || 0);
   getDb()
     .prepare(`
       INSERT INTO generations_log

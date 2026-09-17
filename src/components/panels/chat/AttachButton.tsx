@@ -1,7 +1,10 @@
 "use client";
 import { useRef, useState } from "react";
-import LibraryPickerModal from "./LibraryPickerModal";
+import LibraryPickerDialog from "@/components/library/LibraryPickerDialog";
+import { libraryPickToAttachment, UNKNOWN_LIBRARY_IMAGE_ERROR } from "@/lib/library/library-pick-source";
 import { useChatStore } from "@/store/chat-store";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { InputGroupButton } from "@/components/ui/input-group";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -15,18 +18,25 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="p-1.5 rounded-lg transition-colors nopan nodrag"
-      style={{ color: "var(--text-tertiary)" }}
-      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
-      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-tertiary)")}
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <InputGroupButton
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={onClick}
+            aria-label={title}
+            className="nopan nodrag"
+          >
+            {children}
+          </InputGroupButton>
+        }
+      />
+      <TooltipContent>
+        <p>{title}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -81,23 +91,22 @@ export default function AttachButton() {
         onChange={(e) => onFiles(e.target.files)}
       />
       {error && (
-        <span
-          className="text-[10px] self-center"
-          style={{ color: "var(--ember)" }}
-          title={error}
-        >
-          ⚠
+        <span role="alert" className="line-clamp-2 min-w-0 max-w-[16rem] self-center text-xs text-destructive">
+          {error}
         </span>
       )}
-      {showLib && (
-        <LibraryPickerModal
-          onClose={() => setShowLib(false)}
-          onPick={(source, preview_url) => {
-            addAttachment({ source, preview_url });
-            setShowLib(false);
-          }}
-        />
-      )}
+      <LibraryPickerDialog
+        open={showLib}
+        onOpenChange={setShowLib}
+        kind="all"
+        onPick={(pick) => {
+          const attachment = libraryPickToAttachment(pick);
+          // Refused: the dialog stays open and shows the error itself.
+          if (!attachment) throw new Error(UNKNOWN_LIBRARY_IMAGE_ERROR);
+          setError(null);
+          addAttachment(attachment);
+        }}
+      />
     </>
   );
 }

@@ -3,11 +3,21 @@ import { getDb, parseDataUrl } from "./db";
 
 export type StoredImage = { id: string; mimeType: string; data: Buffer };
 
-export function saveGeneratedImage(dataUrl: string): { id: string; url: string } {
+export function saveGeneratedImage(dataUrl: string, projectId?: string | null): { id: string; url: string } {
   const { buffer, mimeType } = parseDataUrl(dataUrl);
   const id = uuid();
-  getDb().prepare("INSERT INTO generated_images (id, mime_type, data) VALUES (?, ?, ?)").run(id, mimeType, buffer);
+  getDb()
+    .prepare("INSERT INTO generated_images (id, mime_type, data, project_id) VALUES (?, ?, ?, ?)")
+    .run(id, mimeType, buffer, projectId ?? null);
   return { id, url: `/api/generated-images/image?id=${id}` };
+}
+
+/** How many thumbnails each project has generated, keyed by project id. */
+export function countImagesByProject(): Map<string, number> {
+  const rows = getDb()
+    .prepare("SELECT project_id, COUNT(*) AS n FROM generated_images WHERE project_id IS NOT NULL GROUP BY project_id")
+    .all() as Array<{ project_id: string; n: number }>;
+  return new Map(rows.map((r) => [r.project_id, r.n]));
 }
 
 export function getGeneratedImage(id: string): StoredImage | null {

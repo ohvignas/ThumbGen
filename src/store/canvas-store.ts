@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ImageResolution } from "@/lib/image-models";
 import {
   Node,
   Edge,
@@ -10,11 +11,24 @@ import {
   EdgeChange,
 } from "@xyflow/react";
 import { v4 as uuid } from "uuid";
+import { migrateCanvas } from "@/lib/canvas/migrate-canvas";
+import { compareUpdatedAt, laterUpdatedAt, type CanvasPatch } from "@/lib/canvas/canvas-patch";
+import {
+  edgesToRemoveForVariants,
+  normalizeVariants,
+  resolveVariantInputs,
+  type AbTest,
+  type ResolvedVariantInputs,
+  type VariantId,
+} from "@/lib/canvas/generator-variants";
 
 export type NodeData = {
   label?: string;
   imageUrl?: string;
   imageBase64?: string;
+  // swipeFile only: a logo plugs into the generator's logo-in, a reference
+  // image into ref-in. Older nodes have no kind (see catalogIdForNode).
+  kind?: "reference" | "logo";
   // Personnage: a reusable multi-angle face reference (front/left/right),
   // captured via webcam or uploaded. Populated instead of imageUrl/imageBase64
   // when the faceReference node represents a full persona rather than a
@@ -24,16 +38,11 @@ export type NodeData = {
   prompt?: string;
   negativePrompt?: string;
   model?: string;
-  ideogramMode?: "generate" | "remix" | "edit";
   aspectRatio?: string;
-  imageSize?: "2K" | "4K"; // Gemini output resolution
-  imageWeight?: number;
-  styleType?: string;
-  renderingSpeed?: string;
+  imageSize?: ImageResolution; // output resolution; unset → the defaultResolution setting
   isGenerating?: boolean;
   generatedImages?: string[];
   selectedImageIndex?: number;
-  maskDataUrl?: string;
   numImages?: number; // Number of images to generate per model
   favoriteModel?: string; // User's favorite model for quick access
   sketchElements?: string; // JSON string of Excalidraw elements
@@ -53,9 +62,27 @@ export type NodeData = {
   genTokens?: number;
   genCost?: string;
   genWarning?: string;
+  // Générateur — test A/B/C. Absent or fewer than 2 variants = normal mode.
+  abTest?: AbTest;
+  // Images of the last generation per variant; generatedImages keeps variant A's.
+  generatedImagesByVariant?: Partial<Record<VariantId, string[]>>;
 };
 
 export type AppNode = Node<NodeData>;
+
+/**
+ * « Ajouter une étape » panel. `free`: any step, placed at `flowPos` or at the
+ * centre of the view. `connect`: only steps compatible with the handle the
+ * wire comes from; the new node is wired to it and placed at `flowPos`, or
+ * 320px left (target handle) / right (source handle) of that node.
+ */
+export type NodePickerState =
+  | { mode: "free"; flowPos?: { x: number; y: number } }
+  | {
+      mode: "connect";
+      flowPos?: { x: number; y: number };
+      from: { nodeId: string; handleId: string; handleType: "source" | "target" };
+    };
 
 type Snapshot = { nodes: AppNode[]; edges: Edge[] };
 
@@ -63,7 +90,31 @@ interface CanvasState {
   nodes: AppNode[];
   edges: Edge[];
   loaded: boolean;
+  // True while loadProject's request runs: agent patches applied meanwhile are
+  // replayed over the loaded canvas when newer than it (chantier F2).
+  loading: boolean;
   saving: boolean;
+  // True from the moment a local edit happens until it's been persisted —
+  // useCanvasSync's poll checks this before reloading from the server, so an
+  // in-flight drag/delete/etc can't get clobbered by a reload of the
+  // not-yet-saved server state (which visually looks like the edit "didn't
+  // take" / snapped back).
+  dirty: boolean;
+  // The `updated_at` values the server returned from this app's own last few
+  // successful saves (see saveProject; bounded to MAX_RECENT_SELF_SAVES).
+  // useCanvasSync's poll checks an observed `updated_at` for membership here
+  // to tell "my own autosave landed" apart from "another client changed the
+  // project" — only the latter should trigger a reload (which resets the
+  // undo history). A single latest-value isn't enough: a poll GET issued
+  // before a second self-save can still be answered, after that save has
+  // already landed and overwritten a single-value baseline, with the
+  // *earlier* save's timestamp — which is still legitimately our own.
+  recentOwnSaveUpdatedAts: string[];
+  // The `updated_at` of the server canvas this store's state is based on
+  // (chantier F2): set on load, on a successful save and when an agent patch
+  // is applied. Sent as `baseUpdatedAt` with every save so the server keeps
+  // agent nodes placed after it; a patch not newer than it is ignored.
+  knownUpdatedAt: string | null;
   currentProjectId: string;
   history: Snapshot[];
   historyIndex: number;
@@ -81,7 +132,18 @@ interface CanvasState {
     newNodeIsTarget?: boolean,
   ) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
+  // A node the agent placed on the server (`data-canvas-patch`): created, or
+  // its changed data fields merged, with its new edges, as one history entry.
+  // The database already has it, so this neither marks the canvas dirty nor
+  // saves. Accept patches with shouldApplyCanvasPatch first.
+  applyAgentPatch: (patch: CanvasPatch) => void;
   removeNode: (nodeId: string) => void;
+  duplicateNode: (nodeId: string) => string;
+  setAllSelected: (selected: boolean) => void;
+  selectOnly: (ids: string[]) => void;
+  nodePicker: NodePickerState | null;
+  openNodePicker: (state: NodePickerState) => void;
+  closeNodePicker: () => void;
   getConnectedInputs: (nodeId: string) => {
     faceRefs: AppNode[];
     swipeRefs: AppNode[];
@@ -90,64 +152,173 @@ interface CanvasState {
     sketches: AppNode[];
     images: AppNode[];
   };
+  // Inputs of one variant of a generator (common + per-variant, B/C inheriting A).
+  getVariantInputs: (nodeId: string, variant: VariantId) => ResolvedVariantInputs<AppNode>;
+  // Sets a generator's variants (["A"] = normal mode) and removes, in the same
+  // history step, the edges plugged into handles of the variants dropped.
+  setGeneratorVariants: (nodeId: string, variants: VariantId[]) => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   loadProject: (projectId?: string) => Promise<void>;
   saveProject: (projectId?: string) => Promise<void>;
+  // Saves a local edit still waiting on its debounced autosave right away and
+  // cancels that autosave. Used before overwriting the canvas on the server
+  // (« Historique de l'agent » restore), so a late autosave can't write the
+  // pre-restore nodes back over the restored ones.
+  flushPendingSave: () => Promise<void>;
+  // Drops a scheduled autosave without saving (right before loadProject
+  // replaces the canvas with the server's state).
+  cancelPendingSave: () => void;
 }
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+// The save request currently running, if any (see flushPendingSave).
+let inFlightSave: Promise<void> | null = null;
 
-function debouncedSave(state: CanvasState) {
+function debouncedSave(state: CanvasState, set: (s: Partial<CanvasState>) => void) {
+  set({ dirty: true });
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
+    saveTimeout = null;
     state.saveProject();
   }, 2000);
 }
 
 const MAX_HISTORY = 50;
 
+// How many of the app's own recent save timestamps useCanvasSync's poll
+// remembers — see the recentOwnSaveUpdatedAts doc comment on CanvasState.
+const MAX_RECENT_SELF_SAVES = 5;
+
 let historyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const edgeKey = (edge: { source: string; target: string; targetHandle?: string | null }) =>
+  JSON.stringify([edge.source, edge.target, edge.targetHandle ?? ""]);
+
+/** Patches applied while loadProject runs, replayed over the loaded canvas when newer than it. */
+let patchesDuringLoad: CanvasPatch[] = [];
+/** The project loadProject is loading: only its patches are kept for the replay. */
+let loadingProjectId: string | null = null;
+/** A reload triggered by a patch that followed an unseen server write is running. */
+let resyncing = false;
+const MAX_PATCHES_DURING_LOAD = 30;
+
+/** The canvas with one agent patch applied (nodes and edges). */
+function withAgentPatch(state: Pick<CanvasState, "nodes" | "edges">, patch: CanvasPatch): { nodes: AppNode[]; edges: Edge[] } {
+  const { node } = patch;
+  const local = state.nodes.find((n) => n.id === node.id);
+  let nodes = state.nodes;
+  if (local) {
+    const data: Record<string, unknown> = { ...local.data, ...node.data };
+    for (const key of patch.removedDataKeys) if (!(key in node.data)) delete data[key];
+    nodes = state.nodes.map((n) => (n.id === node.id ? { ...n, data: data as NodeData } : n));
+  } else if (patch.created) {
+    nodes = [...state.nodes, { id: node.id, type: node.type, position: node.position, data: node.data as NodeData }];
+  }
+  // An update of a node deleted here carries only its changed fields: nothing to rebuild it from
+  // (the save that deleted it respects the deletion, or reinjects the whole node).
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges = [
+    ...state.edges,
+    ...newEdges(state.edges, patch.edges).filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
+  ];
+  return { nodes, edges };
+}
+
+/** `added` minus the edges already in `current` (same source, target and targetHandle), deduplicated. */
+function newEdges(current: Edge[], added: Edge[]): Edge[] {
+  const keys = new Set(current.map(edgeKey));
+  return added.filter((edge) => {
+    const key = edgeKey(edge);
+    if (keys.has(key)) return false;
+    keys.add(key);
+    return true;
+  });
+}
+
+function appendHistorySnapshot(get: () => CanvasState, set: (s: Partial<CanvasState>) => void) {
+  const { nodes, edges, history, historyIndex } = get();
+  const newSnapshot: Snapshot = {
+    nodes: JSON.parse(JSON.stringify(nodes)),
+    edges: JSON.parse(JSON.stringify(edges)),
+  };
+  // Discard any forward history after current index
+  const newHistory = [...history.slice(0, historyIndex + 1), newSnapshot].slice(-MAX_HISTORY);
+  set({ history: newHistory, historyIndex: newHistory.length - 1 });
+}
 
 function pushHistory(get: () => CanvasState, set: (s: Partial<CanvasState>) => void) {
   // Debounce history snapshots so rapid changes (e.g. dragging) collapse into one
   if (historyTimeout) clearTimeout(historyTimeout);
   historyTimeout = setTimeout(() => {
-    const { nodes, edges, history, historyIndex } = get();
-    const newSnapshot: Snapshot = {
-      nodes: JSON.parse(JSON.stringify(nodes)),
-      edges: JSON.parse(JSON.stringify(edges)),
-    };
-    // Discard any forward history after current index
-    const newHistory = [...history.slice(0, historyIndex + 1), newSnapshot].slice(-MAX_HISTORY);
-    set({ history: newHistory, historyIndex: newHistory.length - 1 });
+    historyTimeout = null;
+    appendHistorySnapshot(get, set);
   }, 300);
+}
+
+/** Records a pending debounced edit now, so the next change gets an undo step of its own. */
+function flushPendingHistory(get: () => CanvasState, set: (s: Partial<CanvasState>) => void) {
+  if (!historyTimeout) return;
+  clearTimeout(historyTimeout);
+  historyTimeout = null;
+  appendHistorySnapshot(get, set);
+}
+
+/**
+ * A patch followed a server write this canvas never saw (its previousUpdatedAt
+ * is unknown here): save any local edit, then reload the canvas from the
+ * database. One at a time.
+ */
+async function resyncAfterUnseenWrite(get: () => CanvasState, projectId: string) {
+  if (resyncing) return;
+  resyncing = true;
+  try {
+    await get().flushPendingSave();
+    if (get().currentProjectId === projectId) await get().loadProject(projectId);
+  } finally {
+    resyncing = false;
+  }
+}
+
+/**
+ * React Flow reports selection and measured sizes on its own, e.g. right
+ * after an undo remounts the nodes. They are view state: recording them would
+ * push a duplicate snapshot and wipe the redo stack. A resize by the user
+ * (dimensions with `resizing`) is a real edit.
+ */
+function isViewOnlyNodeChange(change: NodeChange<AppNode>): boolean {
+  return change.type === "select" || (change.type === "dimensions" && !change.resizing);
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
   nodes: [],
   edges: [],
   loaded: false,
+  loading: false,
   saving: false,
+  dirty: false,
+  recentOwnSaveUpdatedAts: [],
+  knownUpdatedAt: null,
   currentProjectId: "default",
   history: [],
   historyIndex: -1,
+  nodePicker: null,
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
-    if (get().loaded) {
+    if (get().loaded && !changes.every(isViewOnlyNodeChange)) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
   onEdgesChange: (changes) => {
     set({ edges: applyEdgeChanges(changes, get().edges) });
-    if (get().loaded) {
+    if (get().loaded && !changes.every((change) => change.type === "select")) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
@@ -157,7 +328,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
 
@@ -167,7 +338,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ nodes: [...get().nodes, newNode] });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
     return id;
   },
@@ -198,7 +369,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
     return id;
   },
@@ -211,8 +382,35 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
+  },
+
+  applyAgentPatch: (patch) => {
+    const state = get();
+    // While a load runs, the canvas is about to be replaced: keep the patch for
+    // the replay, only when it belongs to the project being loaded.
+    if (state.loading) {
+      if (patch.projectId === loadingProjectId) {
+        patchesDuringLoad = [...patchesDuringLoad, patch].slice(-MAX_PATCHES_DURING_LOAD);
+      }
+      return;
+    }
+    if (!state.loaded || patch.projectId !== state.currentProjectId) return;
+    // In sequence: this canvas knows the state the agent wrote over. Otherwise
+    // another write happened in between (e.g. « Repartir de zéro »): show the
+    // node, keep the older base (saves stay safe) and reload.
+    const inSequence =
+      state.knownUpdatedAt !== null && compareUpdatedAt(state.knownUpdatedAt, patch.previousUpdatedAt) >= 0;
+    // One undo step of its own: a pending user edit is recorded first.
+    flushPendingHistory(get, set);
+    // The poller recognizes this state through knownUpdatedAt (not the own-save list).
+    set({
+      ...withAgentPatch(get(), patch),
+      ...(inSequence ? { knownUpdatedAt: laterUpdatedAt(state.knownUpdatedAt, patch.updatedAt) } : {}),
+    });
+    appendHistorySnapshot(get, set);
+    if (!inSequence) void resyncAfterUnseenWrite(get, patch.projectId);
   },
 
   removeNode: (nodeId) => {
@@ -222,9 +420,64 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (get().loaded) {
       pushHistory(get, set);
-      debouncedSave(get());
+      debouncedSave(get(), set);
     }
   },
+
+  duplicateNode: (nodeId) => {
+    const source = get().nodes.find((n) => n.id === nodeId);
+    if (!source) return "";
+    const id = uuid();
+    const data = JSON.parse(JSON.stringify(source.data)) as NodeData;
+    delete data.isGenerating;
+    // "loading" only ever clears via the in-flight generation call that
+    // targeted the original node's id — a copy stuck at "loading" would spin
+    // forever with nothing left to update it.
+    if (data.genStatus === "loading") delete data.genStatus;
+    // The copy is the user's node, not the agent's: no interview bookkeeping
+    // (a stale save must never treat it as an agent node, place_node never links it).
+    const agentFields = data as Record<string, unknown>;
+    delete agentFields.placedByAgentAt;
+    delete agentFields.agentCreatedAt;
+    delete agentFields.agentLinks;
+    const copy: AppNode = {
+      id,
+      type: source.type,
+      position: { x: source.position.x + 40, y: source.position.y + 40 },
+      data,
+    };
+    set({ nodes: [...get().nodes, copy] });
+    if (get().loaded) {
+      pushHistory(get, set);
+      debouncedSave(get(), set);
+    }
+    return id;
+  },
+
+  // Selection is view state: no history entry, no save.
+  setAllSelected: (selected) => {
+    set({
+      nodes: get().nodes.map((n) => (Boolean(n.selected) === selected ? n : { ...n, selected })),
+      edges: selected ? get().edges : get().edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+    });
+  },
+
+  // Selects exactly the given node ids (e.g. the copies from a ⌘D) and
+  // deselects everything else, nodes and edges alike. View state: no
+  // history entry, no save.
+  selectOnly: (ids) => {
+    const idSet = new Set(ids);
+    set({
+      nodes: get().nodes.map((n) => {
+        const shouldSelect = idSet.has(n.id);
+        return Boolean(n.selected) === shouldSelect ? n : { ...n, selected: shouldSelect };
+      }),
+      edges: get().edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+    });
+  },
+
+  openNodePicker: (nodePicker) => set({ nodePicker }),
+  closeNodePicker: () => set({ nodePicker: null }),
 
   getConnectedInputs: (nodeId) => {
     const { nodes, edges } = get();
@@ -253,6 +506,26 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     };
   },
 
+  getVariantInputs: (nodeId, variant) => {
+    const { nodes, edges } = get();
+    return resolveVariantInputs(edges, nodes, nodeId, variant);
+  },
+
+  setGeneratorVariants: (nodeId, variants) => {
+    const kept = normalizeVariants(variants);
+    const { nodes, edges } = get();
+    const dropped = new Set(edgesToRemoveForVariants(edges, nodeId, kept));
+    const abTest: AbTest | undefined = kept.length >= 2 ? { variants: kept } : undefined;
+    set({
+      edges: edges.filter((edge) => !dropped.has(edge)),
+      nodes: nodes.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, abTest } } : node)),
+    });
+    if (get().loaded) {
+      pushHistory(get, set);
+      debouncedSave(get(), set);
+    }
+  },
+
   undo: () => {
     const { history, historyIndex } = get();
     if (historyIndex <= 0) return;
@@ -263,7 +536,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: JSON.parse(JSON.stringify(snapshot.edges)),
       historyIndex: newIndex,
     });
-    debouncedSave(get());
+    debouncedSave(get(), set);
   },
 
   redo: () => {
@@ -276,52 +549,70 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: JSON.parse(JSON.stringify(snapshot.edges)),
       historyIndex: newIndex,
     });
-    debouncedSave(get());
+    debouncedSave(get(), set);
   },
 
   canUndo: () => get().historyIndex > 0,
   canRedo: () => get().historyIndex < get().history.length - 1,
 
   loadProject: async (projectId = "default") => {
+    patchesDuringLoad = [];
+    loadingProjectId = projectId;
+    set({ loading: true });
     try {
       const res = await fetch(`/api/project?id=${projectId}`);
       if (!res.ok) {
         console.warn("Project load returned non-OK status, using fallback");
-        set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+        patchesDuringLoad = [];
+        set({ loaded: true, loading: false, currentProjectId: projectId, knownUpdatedAt: null, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
         return;
       }
       const data = await res.json();
-      const initialNodes = data.nodes || [];
-      // Lazy migration: legacy projects stored edges with targetHandle "image-in"
-      // before the generator handle was renamed to "ref-in". Rewrite on load so
-      // React Flow stops complaining and references actually attach visually.
-      const initialEdges = (data.edges || []).map((e: Edge) =>
-        e.targetHandle === "image-in" ? { ...e, targetHandle: "ref-in" } : e,
-      );
+      // Lazy migrations (legacy "image-in" handle, single-photo face nodes →
+      // reference images) — see migrateCanvas. When anything changed, the
+      // normal debounced autosave persists the converted canvas.
+      const migrated = migrateCanvas(data.nodes || [], data.edges || []);
       const initialSnapshot: Snapshot = {
-        nodes: JSON.parse(JSON.stringify(initialNodes)),
-        edges: JSON.parse(JSON.stringify(initialEdges)),
+        nodes: JSON.parse(JSON.stringify(migrated.nodes)),
+        edges: JSON.parse(JSON.stringify(migrated.edges)),
       };
+      const loadedUpdatedAt = typeof data.updatedAt === "string" ? data.updatedAt : null;
+      // Patches that arrived during the request and are newer than what it returned.
+      const replay = patchesDuringLoad.filter(
+        (patch) =>
+          patch.projectId === projectId && (loadedUpdatedAt === null || compareUpdatedAt(patch.updatedAt, loadedUpdatedAt) > 0),
+      );
+      patchesDuringLoad = [];
       set({
-        nodes: initialNodes,
-        edges: initialEdges,
+        nodes: migrated.nodes,
+        edges: migrated.edges,
         loaded: true,
+        loading: false,
         currentProjectId: projectId,
+        knownUpdatedAt: loadedUpdatedAt,
         history: [initialSnapshot],
         historyIndex: 0,
       });
+      for (const patch of replay) get().applyAgentPatch(patch);
+      if (migrated.changed) debouncedSave(get(), set);
     } catch (err) {
       console.error("Failed to load project:", err);
-      set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+      patchesDuringLoad = [];
+      set({ loaded: true, loading: false, currentProjectId: projectId, knownUpdatedAt: null, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
     }
   },
 
   saveProject: async (projectId?: string) => {
-    const { nodes, edges, saving, currentProjectId } = get();
+    // knownUpdatedAt is read with the nodes: the base of exactly this payload.
+    const { nodes, edges, saving, currentProjectId, knownUpdatedAt } = get();
     const pid = projectId || currentProjectId;
     if (saving) return;
 
     set({ saving: true });
+    let finishSave: () => void = () => {};
+    inFlightSave = new Promise<void>((resolve) => {
+      finishSave = resolve;
+    });
     try {
       // Strip large base64 data — generated images are saved on disk as files
       const cleanNodes = nodes.map((n) => {
@@ -347,15 +638,113 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         };
       });
 
-      await fetch("/api/project", {
+      const res = await fetch("/api/project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: pid, nodes: cleanNodes, edges }),
+        body: JSON.stringify({
+          projectId: pid,
+          nodes: cleanNodes,
+          edges,
+          ...(knownUpdatedAt !== null ? { baseUpdatedAt: knownUpdatedAt } : {}),
+        }),
+      });
+      // Record the updated_at the server assigned to this save, if it sent
+      // one back, so useCanvasSync's poll can recognize its own autosave
+      // landing and not mistake it for an external change. Keeps the last
+      // MAX_RECENT_SELF_SAVES rather than just the latest — see the
+      // recentOwnSaveUpdatedAts doc comment on CanvasState for why a single
+      // value isn't enough.
+      let updatedAt: string | undefined;
+      let reinjected: AppNode[] = [];
+      let reinjectedEdges: Edge[] = [];
+      let refreshed: AppNode[] = [];
+      let removed: string[] = [];
+      try {
+        const body = (await res.json()) as {
+          updatedAt?: string;
+          reinjected?: unknown;
+          reinjectedEdges?: unknown;
+          refreshed?: unknown;
+          removed?: unknown;
+        };
+        if (Array.isArray(body.removed)) removed = body.removed.filter((id): id is string => typeof id === "string");
+        updatedAt = typeof body.updatedAt === "string" ? body.updatedAt : undefined;
+        if (Array.isArray(body.reinjected)) reinjected = body.reinjected as AppNode[];
+        if (Array.isArray(body.reinjectedEdges)) reinjectedEdges = body.reinjectedEdges as Edge[];
+        if (Array.isArray(body.refreshed)) refreshed = body.refreshed as AppNode[];
+      } catch {
+        // Response wasn't JSON (e.g. a proxy error page) — keep the
+        // previously recorded self-save timestamps rather than fail the save.
+      }
+      // Note: dirty clears here once the fetch call has resolved at all —
+      // this does NOT check res.ok, so a server error (e.g. a 500) still
+      // clears dirty even though the edit never actually persisted. That's
+      // pre-existing behavior, unrelated to the undo/sync-poll fix this
+      // function is otherwise annotated for; left as-is here.
+      //
+      // What the server kept from the agent joins the local canvas without a
+      // history entry — unless another project was opened while the save ran:
+      // agent nodes this payload lacked (reinjected, with their edges when
+      // both ends are here) and the agent's newer data of payload nodes
+      // (refreshed; the local position is kept).
+      const beforeRemoval = get();
+      const sameProject = beforeRemoval.currentProjectId === pid;
+      // Agent nodes the server had removed (not written): drop them here too, with their edges.
+      const removedIds = new Set(sameProject ? removed : []);
+      const current =
+        removedIds.size > 0
+          ? {
+              ...beforeRemoval,
+              nodes: beforeRemoval.nodes.filter((node) => !removedIds.has(node.id)),
+              edges: beforeRemoval.edges.filter((edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target)),
+            }
+          : beforeRemoval;
+      const localIds = new Set(current.nodes.map((node) => node.id));
+      const addedNodes = sameProject ? reinjected.filter((node) => !localIds.has(node.id)) : [];
+      const refreshedById = new Map(sameProject ? refreshed.map((node) => [node.id, node]) : []);
+      const mergedNodes =
+        refreshedById.size > 0
+          ? current.nodes.map((node) => {
+              const newer = refreshedById.get(node.id);
+              return newer ? { ...node, data: newer.data } : node;
+            })
+          : current.nodes;
+      const finalIds = new Set([...localIds, ...addedNodes.map((node) => node.id)]);
+      const addedEdges = sameProject
+        ? newEdges(current.edges, reinjectedEdges).filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target))
+        : [];
+      set({
+        dirty: false,
+        ...(updatedAt
+          ? { recentOwnSaveUpdatedAts: [...current.recentOwnSaveUpdatedAts, updatedAt].slice(-MAX_RECENT_SELF_SAVES) }
+          : {}),
+        ...(updatedAt && sameProject ? { knownUpdatedAt: laterUpdatedAt(current.knownUpdatedAt, updatedAt) } : {}),
+        ...(addedNodes.length > 0 || refreshedById.size > 0 || removedIds.size > 0 ? { nodes: [...mergedNodes, ...addedNodes] } : {}),
+        ...(addedEdges.length > 0 || removedIds.size > 0 ? { edges: [...current.edges, ...addedEdges] } : {}),
       });
     } catch (err) {
       console.error("Failed to save project:", err);
     } finally {
       set({ saving: false });
+      inFlightSave = null;
+      finishSave();
+    }
+  },
+
+  flushPendingSave: async () => {
+    const hadScheduledSave = saveTimeout !== null;
+    get().cancelPendingSave();
+    // A save already running captured the nodes of its start; wait for it. It
+    // clears `dirty` when it lands even if an edit came in meanwhile, so an edit
+    // whose autosave was scheduled also counts as pending.
+    if (inFlightSave) await inFlightSave;
+    if (hadScheduledSave || get().dirty) await get().saveProject();
+  },
+
+  cancelPendingSave: () => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
     }
   },
 }));

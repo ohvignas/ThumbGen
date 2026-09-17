@@ -57,6 +57,42 @@ describe("resolveImageSource", () => {
   it("rejects an unsupported scheme", async () => {
     await expect(resolveImageSource("https://example.com/x.png")).rejects.toThrow();
   });
+
+  it("no longer resolves single face photos (stored:fr_)", async () => {
+    await expect(resolveImageSource("stored:fr_anything")).rejects.toThrow();
+  });
+
+  it("resolves a stored:persona_ source to its front-angle photo", async () => {
+    const personaId = uuid();
+    getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Test Persona");
+    getDb()
+      .prepare("INSERT INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(uuid(), personaId, "left", "image/png", 2, Buffer.from([7, 8]));
+    getDb()
+      .prepare("INSERT INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(uuid(), personaId, "front", "image/jpeg", 3, Buffer.from([9, 10, 11]));
+
+    const r = await resolveImageSource(`stored:persona_${personaId}`);
+    expect(r.mimeType).toBe("image/jpeg");
+    expect(r.bytes).toEqual(Buffer.from([9, 10, 11]));
+  });
+
+  it("falls back to any available angle when a persona has no front photo", async () => {
+    const personaId = uuid();
+    getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Profile Only");
+    getDb()
+      .prepare("INSERT INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(uuid(), personaId, "right", "image/png", 1, Buffer.from([1]));
+
+    const r = await resolveImageSource(`stored:persona_${personaId}`);
+    expect(r.mimeType).toBe("image/png");
+  });
+
+  it("rejects a persona with no photos", async () => {
+    const personaId = uuid();
+    getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Empty");
+    await expect(resolveImageSource(`stored:persona_${personaId}`)).rejects.toThrow();
+  });
 });
 
 describe("imageExists (cheap existence check, no bytes loaded)", () => {
@@ -79,6 +115,10 @@ describe("imageExists (cheap existence check, no bytes loaded)", () => {
   it("returns false for unsupported schemes", () => {
     expect(imageExists("https://example.com/x.png")).toBe(false);
     expect(imageExists("stored:zz_xxx")).toBe(false);
+  });
+
+  it("returns false for single face photos (stored:fr_)", () => {
+    expect(imageExists("stored:fr_anything")).toBe(false);
   });
 });
 

@@ -23,7 +23,7 @@ export default function CustomEdge({
   });
 
   const { setEdges } = useReactFlow();
-  const color = selected ? "var(--ember)" : "var(--accent)";
+  const color = selected ? "var(--ember)" : "var(--canvas-accent)";
 
   const handleDelete = () => {
     setEdges((edges) => edges.filter((e) => e.id !== id));

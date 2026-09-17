@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 
-const NODE_W = 320;
+export const NODE_W = 320;
 const NODE_H = 200;
 
 type MinNode = { id: string; type: string; position?: { x: number; y: number } };

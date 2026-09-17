@@ -1,6 +1,7 @@
 import { tool as aiTool, type Tool } from "ai";
 import { getTool, listTools } from "@/lib/agent/tools";
 import type { ToolContent, ToolResult } from "@/lib/agent/tools/types";
+import { appendResultId } from "@/lib/agent/finish-turn";
 // Side-effect-only import: populates the tool registry (src/lib/agent/tools/index.ts)
 // by loading every tool module, each of which calls registerTool() on load. Without
 // this, listTools()/getTool() below see an empty registry in the real app — the only
@@ -8,6 +9,30 @@ import type { ToolContent, ToolResult } from "@/lib/agent/tools/types";
 // importing "@/lib/agent/tools/all" itself, which masked the gap in production/dev (npm run
 // test was green while the real chat route had zero server-side tools available to the model).
 import "@/lib/agent/tools/all";
+
+/**
+ * What the MODEL sees back from a ThumbGen ToolResult. Registry failures
+ * ({ isError: true }) become an error-text output: a "content" output would
+ * drop isError once persisted, and the reopened chat would show the failed
+ * step as ✓ (and a failed visual as a result). Images become `file` parts
+ * whose `data` is the tagged FileData object (see toAiSdkTool below).
+ * Shared with per-request tools built outside the registry (place_node).
+ */
+export function toolResultToModelOutput(output: unknown) {
+  const result = output as ToolResult;
+  if (result.isError === true) {
+    const text = result.content.flatMap((c: ToolContent) => (c.type === "text" ? [c.text] : [])).join("\n");
+    return { type: "error-text" as const, value: text || "Erreur" };
+  }
+  return {
+    type: "content" as const,
+    value: result.content.map((c: ToolContent) =>
+      c.type === "text"
+        ? { type: "text" as const, text: c.text }
+        : { type: "file" as const, mediaType: c.mimeType, data: { type: "data" as const, data: c.data } },
+    ),
+  };
+}
 
 /**
  * Wraps one registered ThumbGen tool as an AI SDK tool() definition. Calls
@@ -22,9 +47,11 @@ function toAiSdkTool(name: string): Tool {
   return aiTool({
     description: def.description,
     inputSchema: def.inputSchema as any,
-    execute: async (input: unknown) => {
+    execute: async (input: unknown, { toolCallId }: { toolCallId: string }) => {
       const result: ToolResult = await def.handler(input);
-      return result as any;
+      // Visual tools end with "result_id: <toolCallId>" so the model can cite
+      // them in finish_turn.results — it never sees tool call ids otherwise.
+      return appendResultId(name, result, toolCallId) as any;
     },
     // Shapes what the MODEL sees back. The UI (Plan 2) reads the raw
     // execute() return value (our ToolResult) directly off the tool part's
@@ -49,17 +76,7 @@ function toAiSdkTool(name: string): Tool {
     // surfacing to the client as a generic SSE `{"type":"error"}` with no
     // indication this was the cause — see task-14-report.md's Bug 2
     // write-up for the full trace.
-    toModelOutput: ({ output }: any) => {
-      const result = output as ToolResult;
-      return {
-        type: "content" as const,
-        value: result.content.map((c: ToolContent) =>
-          c.type === "text"
-            ? { type: "text" as const, text: c.text }
-            : { type: "file" as const, mediaType: c.mimeType, data: { type: "data" as const, data: c.data } },
-        ),
-      } as any;
-    },
+    toModelOutput: ({ output }: { output: unknown }) => toolResultToModelOutput(output),
   }) as Tool;
 }
 

@@ -1,9 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import dynamic from "next/dynamic";
-
-const Canvas = dynamic(() => import("@/components/Canvas"), { ssr: false });
-
+// The gallery is the entry point: you pick (or create) a miniature before
+// landing in a canvas, instead of silently reopening whatever was last used.
 export default function Home() {
-  return <Canvas />;
+  redirect("/miniatures");
 }

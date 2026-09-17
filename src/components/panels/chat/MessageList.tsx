@@ -1,69 +1,84 @@
 "use client";
-import { MessageScrollerProvider, MessageScroller, MessageScrollerViewport, MessageScrollerContent, MessageScrollerItem, MessageScrollerButton } from "@/components/ui/message-scroller";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { Sparkles } from "lucide-react";
-import Message from "./Message";
-import type { ChatStatus, UIMessage } from "ai";
+import { ArrowDownIcon } from "lucide-react";
+import type { UIMessage } from "ai";
+import { MessageGroup } from "@/components/ui/message";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
+import AssistantTurn from "./AssistantTurn";
+import ChatEmptyState, { INTERVIEW_START_MESSAGE } from "./ChatEmptyState";
+import Message, { AssistantRow, type ChatTurnControls } from "./Message";
+import TurnProgress from "./TurnProgress";
+import { groupConsecutiveMessages, stoppedTurnPlacement, trailingAssistantRow } from "./chat-view-model";
+import { INTERRUPTED_TURN_ERROR, emptyAssistantTurn, isBusyStatus, liveTurnError } from "./turn-model";
 
-export default function MessageList({ messages, status }: { messages: UIMessage[]; status: ChatStatus }) {
-  if (messages.length === 0) {
-    return (
-      <Empty className="flex-1 border-none">
-        <EmptyHeader>
-          <EmptyMedia
-            variant="icon"
-            style={{
-              background: "var(--brand-tint)",
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              border: "1px solid var(--line)",
-            }}
-          >
-            <Sparkles size={18} style={{ color: "var(--brand)" }} strokeWidth={1.75} />
-          </EmptyMedia>
-          <EmptyTitle
-            className="italic"
-            style={{
-              color: "var(--text-secondary)",
-              fontFamily: "var(--font-display), 'Fraunces', serif",
-              fontSize: 28,
-              fontWeight: 400,
-              letterSpacing: "-0.015em",
-              lineHeight: 1.15,
-            }}
-          >
-            on commence <br />par quoi ?
-          </EmptyTitle>
-          <EmptyDescription
-            className="text-[11px] mt-1"
-            style={{
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-            }}
-          >
-            Texte · Image · Vocal
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
+/** Pixels of the previous turn kept visible above a newly anchored user message. */
+const PREVIOUS_ITEM_PEEK_PX = 48;
+
+export default function MessageList({ messages, controls }: { messages: UIMessage[]; controls: ChatTurnControls }) {
+  const stopped = stoppedTurnPlacement(messages, controls.stoppedLive, controls.liveTurnStart);
+  const trailing = trailingAssistantRow(messages, controls.status, stopped, controls.orphanUserTurn ?? false);
+
+  // Empty state only when nothing is going on: a first send that failed or is
+  // running before its message shows still gets its trailing row.
+  if (messages.length === 0 && !trailing) {
+    return <ChatEmptyState onStart={() => controls.onAskAgent(INTERVIEW_START_MESSAGE)} />;
   }
 
+  const groups = groupConsecutiveMessages(messages);
+  const lastMessage = messages.at(-1);
+  // « Tour interrompu » lands on the last message only when the stopped turn produced it.
+  const rowControls: ChatTurnControls = { ...controls, stoppedLive: stopped === "last-message" };
+
   return (
-    <MessageScrollerProvider>
-      <MessageScroller className="flex-1" style={{ borderTop: "1px solid var(--line-faint)" }}>
+    <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={PREVIOUS_ITEM_PEEK_PX}>
+      <MessageScroller className="flex-1 border-t border-border">
         <MessageScrollerViewport>
-          <MessageScrollerContent>
-            {messages.map((m, idx) => (
-              <MessageScrollerItem key={m.id} scrollAnchor={m.role === "user"}>
-                <Message message={m} isStreaming={status === "streaming" && idx === messages.length - 1} />
+          <MessageScrollerContent aria-busy={isBusyStatus(controls.status)} className="p-(--card-spacing)">
+            {groups.map((group) => (
+              <MessageScrollerItem key={group.key} messageId={group.key} scrollAnchor={group.role === "user"}>
+                <MessageGroup>
+                  {group.messages.map((message, index) => (
+                    <Message
+                      key={message.id}
+                      message={message}
+                      isLast={message === lastMessage}
+                      showAvatar={index === group.messages.length - 1}
+                      controls={rowControls}
+                    />
+                  ))}
+                </MessageGroup>
               </MessageScrollerItem>
             ))}
+            {trailing && (
+              <MessageScrollerItem key="trailing-assistant" messageId="trailing-assistant">
+                <AssistantRow showAvatar>
+                  {trailing === "progress" ? (
+                    <TurnProgress message={undefined} status={controls.status} startedAt={controls.turnStartedAt} steps={[]} />
+                  ) : (
+                    <AssistantTurn
+                      turn={emptyAssistantTurn()}
+                      error={trailing === "error" ? liveTurnError(controls.errorMessage) : INTERRUPTED_TURN_ERROR}
+                      showActions={false}
+                      // After an older turn's answer, the retry would replay that older message.
+                      onRetry={lastMessage?.role === "assistant" ? null : controls.onRetry}
+                      onAskAgent={controls.onAskAgent}
+                    />
+                  )}
+                </AssistantRow>
+              </MessageScrollerItem>
+            )}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton />
+        <MessageScrollerButton>
+          <ArrowDownIcon />
+          <span className="sr-only">Aller au dernier message</span>
+        </MessageScrollerButton>
       </MessageScroller>
     </MessageScrollerProvider>
   );
