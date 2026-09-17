@@ -116,15 +116,24 @@ export function runIndicatorState(snapshot: AgentRunsSnapshot, unseen: Attention
 
 /**
  * Conversation to open with a miniature: the one where a turn runs, else the
- * newest one where a turn just ended (seen or not: the open page marks it seen
- * at once), else the most recent conversation (the list is sorted that way).
+ * newest one whose ending is unseen (`unseen`: what was unseen when the page
+ * opened — the open page marks endings seen at once), else the most recent
+ * conversation (the list is sorted that way).
  */
-export function pickConversationId(conversations: { id: string }[], snapshot: AgentRunsSnapshot, projectId: string): string | null {
+export function pickConversationId(
+  conversations: { id: string }[],
+  snapshot: AgentRunsSnapshot,
+  unseen: AttentionEntry[],
+  projectId: string,
+): string | null {
   const ids = new Set(conversations.map((conversation) => conversation.id));
   const here = <T extends { projectId: string; conversationId: string }>(entry: T) => entry.projectId === projectId && ids.has(entry.conversationId);
   const running = snapshot.running.filter(here).sort((a, b) => b.startedAt - a.startedAt)[0];
   if (running) return running.conversationId;
-  const ended = snapshot.attention.filter(here).sort((a, b) => b.endedAt - a.endedAt)[0];
+  const unseenKeys = new Set(unseen.map((entry) => `${entry.conversationId}:${entry.endedAt}`));
+  const ended = snapshot.attention
+    .filter((entry) => here(entry) && unseenKeys.has(`${entry.conversationId}:${entry.endedAt}`))
+    .sort((a, b) => b.endedAt - a.endedAt)[0];
   if (ended) return ended.conversationId;
   return conversations[0]?.id ?? null;
 }

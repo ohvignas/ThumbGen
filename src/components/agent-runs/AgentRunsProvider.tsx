@@ -28,6 +28,12 @@ export type AgentRunsContextValue = {
   /** Fetches GET /api/agent/runs now; resolves to the latest snapshot (the previous one on failure). */
   refreshRuns: () => Promise<AgentRunsSnapshot>;
   markSeen: (conversationIds: string[]) => void;
+  /**
+   * The latest snapshot's endings that were unseen when the open miniature was
+   * opened — still unseen, or marked seen by this page since (it marks its own
+   * endings seen at once). Used to choose the conversation to open.
+   */
+  unseenOnArrival: () => AttentionEntry[];
 };
 
 export const AgentRunsContext = createContext<AgentRunsContextValue>({
@@ -35,6 +41,7 @@ export const AgentRunsContext = createContext<AgentRunsContextValue>({
   unseen: [],
   refreshRuns: async () => EMPTY_RUNS,
   markSeen: () => {},
+  unseenOnArrival: () => [],
 });
 
 export function useAgentRuns(): AgentRunsContextValue {
@@ -77,8 +84,12 @@ export function AgentRunsProvider({ children }: { children: ReactNode }) {
   // effects that depend on it) must never be recreated because a router object changed.
   const routerRef = useRef(router);
 
+  // Endings (conversationId → endedAt) this page marked seen because its miniature is open.
+  const seenOnArrivalRef = useRef(new Map<string, number>());
+
   useEffect(() => {
     openProjectIdRef.current = openProjectId;
+    seenOnArrivalRef.current = new Map();
   }, [openProjectId]);
 
   useEffect(() => {
@@ -115,7 +126,9 @@ export function AgentRunsProvider({ children }: { children: ReactNode }) {
     // Another tab may have seen or toasted some of them since: its entries are read back first.
     const open = openProjectIdRef.current;
     const current = mergeRunsMemory(memoryRef.current, readMemory());
-    const seen = markSeenEntries(current, unseenAttentions(next, current).filter((entry) => entry.projectId === open));
+    const arrivedUnseen = unseenAttentions(next, current).filter((entry) => entry.projectId === open);
+    for (const entry of arrivedUnseen) seenOnArrivalRef.current.set(entry.conversationId, entry.endedAt);
+    const seen = markSeenEntries(current, arrivedUnseen);
     const toFire = toastsToFire(next, seen, open);
     for (const entry of toFire) {
       toast({
@@ -162,10 +175,18 @@ export function AgentRunsProvider({ children }: { children: ReactNode }) {
     [commitMemory],
   );
 
+  const unseenOnArrival = useCallback((): AttentionEntry[] => {
+    const latest = snapshotRef.current;
+    const stillUnseen = unseenAttentions(latest, memoryRef.current);
+    return latest.attention.filter(
+      (entry) => stillUnseen.includes(entry) || seenOnArrivalRef.current.get(entry.conversationId) === entry.endedAt,
+    );
+  }, []);
+
   const unseen = useMemo(() => unseenAttentions(snapshot, memory), [snapshot, memory]);
   const value = useMemo<AgentRunsContextValue>(
-    () => ({ snapshot, unseen, refreshRuns, markSeen }),
-    [snapshot, unseen, refreshRuns, markSeen],
+    () => ({ snapshot, unseen, refreshRuns, markSeen, unseenOnArrival }),
+    [snapshot, unseen, refreshRuns, markSeen, unseenOnArrival],
   );
 
   return <AgentRunsContext.Provider value={value}>{children}</AgentRunsContext.Provider>;

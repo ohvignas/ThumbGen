@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act } from "react";
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { AgentRunsSnapshot } from "@/lib/agent/v2/run-types";
+import type { AgentRunsSnapshot, AttentionEntry } from "@/lib/agent/v2/run-types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,13 +25,17 @@ const SNAPSHOT: AgentRunsSnapshot = {
   attention: [{ conversationId: "c1", projectId: "p1", projectName: "Vidéo F1", kind: "finished", endedAt: 1000 }],
 };
 
-const probe: { refresh: null | (() => Promise<AgentRunsSnapshot>) } = { refresh: null };
+const probe: {
+  refresh: null | (() => Promise<AgentRunsSnapshot>);
+  unseenOnArrival: null | (() => AttentionEntry[]);
+} = { refresh: null, unseenOnArrival: null };
 
 function Probe() {
-  const { unseen, refreshRuns } = useAgentRuns();
+  const { unseen, refreshRuns, unseenOnArrival } = useAgentRuns();
   useEffect(() => {
     probe.refresh = refreshRuns;
-  }, [refreshRuns]);
+    probe.unseenOnArrival = unseenOnArrival;
+  }, [refreshRuns, unseenOnArrival]);
   return <span data-testid="unseen">{unseen.length}</span>;
 }
 
@@ -85,12 +89,25 @@ describe("AgentRunsProvider", () => {
     expect(toastMock).toHaveBeenCalledTimes(1);
   });
 
-  it("marks the open miniature's attentions seen, without a toast", async () => {
+  it("marks the open miniature's attentions seen, without a toast, but remembers they were unseen on arrival", async () => {
     pathname = "/m/p1";
     await mount();
     await vi.waitFor(() => expect(JSON.parse(localStorage.getItem(RUNS_MEMORY_KEY) ?? "{}").seen).toEqual({ c1: 1000 }));
     await vi.waitFor(() => expect(unseenCount()).toBe("0"));
     expect(toastMock).not.toHaveBeenCalled();
+    // useConversations picks among what was unseen when the page opened.
+    expect(probe.unseenOnArrival!().map((entry) => entry.conversationId)).toEqual(["c1"]);
+  });
+
+  it("does not report an attention already seen before arriving", async () => {
+    localStorage.setItem(RUNS_MEMORY_KEY, JSON.stringify({ seen: { c1: 1000 }, toasted: {} }));
+    pathname = "/m/p1";
+    await mount();
+    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+    await act(async () => {
+      await probe.refresh!();
+    });
+    expect(probe.unseenOnArrival!()).toEqual([]);
   });
 
   it("re-reads what another tab already toasted or saw before toasting, and keeps both tabs' entries", async () => {

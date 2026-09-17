@@ -87,7 +87,7 @@ describe("agent runs model", () => {
     expect(runIndicatorState(EMPTY_RUNS, [])).toBeNull();
   });
 
-  it("opens the running conversation first, then the newest attention, then the most recent", () => {
+  it("opens the running conversation first, then the newest UNSEEN attention, then the most recent", () => {
     const list = [{ id: "recent" }, { id: "busy" }, { id: "ended" }, { id: "older-ended" }];
     const s = snapshot({
       running: [
@@ -96,10 +96,15 @@ describe("agent runs model", () => {
       ],
       attention: [attention("older-ended", "p1", 3), attention("ended", "p1", 7)],
     });
-    expect(pickConversationId(list, s, "p1")).toBe("busy");
-    expect(pickConversationId(list, snapshot({ attention: s.attention }), "p1")).toBe("ended");
-    expect(pickConversationId(list, EMPTY_RUNS, "p1")).toBe("recent");
-    expect(pickConversationId([], s, "p1")).toBeNull();
+    expect(pickConversationId(list, s, s.attention, "p1")).toBe("busy");
+    const ended = snapshot({ attention: s.attention });
+    expect(pickConversationId(list, ended, s.attention, "p1")).toBe("ended");
+    // Only the older one is unseen: it wins over the seen newer one.
+    expect(pickConversationId(list, ended, [attention("older-ended", "p1", 3)], "p1")).toBe("older-ended");
+    // Seen attentions do not count: the most recent conversation.
+    expect(pickConversationId(list, ended, [], "p1")).toBe("recent");
+    expect(pickConversationId(list, EMPTY_RUNS, [], "p1")).toBe("recent");
+    expect(pickConversationId([], s, s.attention, "p1")).toBeNull();
   });
 
   it("merges two tabs' memories, keeping the latest endedAt per conversation", () => {

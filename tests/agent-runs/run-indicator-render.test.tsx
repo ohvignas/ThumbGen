@@ -9,6 +9,7 @@ const value = (partial: Partial<AgentRunsContextValue>): AgentRunsContextValue =
   unseen: [],
   refreshRuns: async () => EMPTY_RUNS,
   markSeen: () => {},
+  unseenOnArrival: () => [],
   ...partial,
 });
 

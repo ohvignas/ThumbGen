@@ -8,8 +8,8 @@ export type Conversation = { id: string; title: string; updated_at: string };
 
 /**
  * The project's conversations plus create/remove. When nothing is active it
- * selects, from a fresh runs snapshot, the conversation where the agent works
- * (or has just finished), else the most recent one. Refetches whenever the chat
+ * selects, from a fresh runs snapshot, the conversation where the agent works,
+ * else the one with an ending not seen before opening, else the most recent one. Refetches whenever the chat
  * store's list version is bumped (e.g. after a send, when an auto title lands).
  */
 export function useConversations(projectId: string) {
@@ -18,7 +18,7 @@ export function useConversations(projectId: string) {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActive = useChatStore((s) => s.setActive);
   const conversationListVersion = useChatStore((s) => s.conversationListVersion);
-  const { refreshRuns } = useAgentRuns();
+  const { refreshRuns, unseenOnArrival } = useAgentRuns();
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -28,14 +28,14 @@ export function useConversations(projectId: string) {
       setConversations(list);
       if (!useChatStore.getState().activeConversationId && list.length > 0) {
         const runs = await refreshRuns();
-        if (!useChatStore.getState().activeConversationId) setActive(pickConversationId(list, runs, projectId));
+        if (!useChatStore.getState().activeConversationId) setActive(pickConversationId(list, runs, unseenOnArrival(), projectId));
       }
     } catch {
       setConversations([]);
     } finally {
       setLoading(false);
     }
-  }, [projectId, setActive, refreshRuns]);
+  }, [projectId, setActive, refreshRuns, unseenOnArrival]);
 
   useEffect(() => {
     reload();
