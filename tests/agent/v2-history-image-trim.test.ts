@@ -26,6 +26,8 @@ vi.mock("ai", async (importOriginal) => {
 import { setSetting } from "@/lib/settings";
 import { rowsToUIMessages } from "@/components/panels/chat/history-to-ui-messages";
 import { HISTORY_IMAGE_PLACEHOLDER, trimToolResultImages } from "@/lib/agent/v2/history-images";
+// Imported up front: loading the route (and the tool registry) can take seconds on a busy machine.
+import { postV2 } from "@/lib/agent/v2/route-handler";
 
 const FILE = { type: "file", mediaType: "image/jpeg", data: { type: "data", data: "SU1BR0U=" } };
 
@@ -62,7 +64,6 @@ function streamResult() {
 }
 
 async function post(messages: unknown[]) {
-  const { postV2 } = await import("@/lib/agent/v2/route-handler");
   return postV2(
     new Request("http://localhost/api/agent/chat", {
       method: "POST",
