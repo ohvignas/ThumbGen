@@ -4,6 +4,7 @@ import { cn } from "cn";
 import ChannelSyncTrigger from "@/components/ChannelSyncTrigger";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/toast";
 import { getTypedSettings } from "@/lib/settings";
 import type { Theme } from "@/lib/settings-schema";
 import { THEME_SCRIPT, serverThemeClass, sidebarDefaultOpen } from "@/lib/theme";
@@ -62,6 +63,7 @@ export default async function RootLayout({
               icon rail (width matched to the old fixed rail). */}
           <SidebarProvider defaultOpen={sidebarOpen} style={{ "--sidebar-width-icon": "4rem" } as React.CSSProperties}>
             {children}
+            <Toaster />
           </SidebarProvider>
         </TooltipProvider>
       </body>
