@@ -13,6 +13,7 @@ vi.mock("@/lib/agent/conversation/store", () => ({
     return row;
   },
   listMessages: () => rows.map((row) => ({ ...row })),
+  getConversation: (id: string) => ({ id, project_id: "p1", title: "t", created_at: "", updated_at: "" }),
 }));
 vi.mock("@/lib/agent/v2/persist-turn", () => ({ persistAssistantTurn: vi.fn() }));
 vi.mock("@/lib/agent/conversation/auto-title", () => ({ generateAndPersistTitle: vi.fn(async () => {}) }));
@@ -28,6 +29,8 @@ import { rowsToUIMessages } from "@/components/panels/chat/history-to-ui-message
 import { HISTORY_IMAGE_PLACEHOLDER, trimToolResultImages } from "@/lib/agent/v2/history-images";
 // Imported up front: loading the route (and the tool registry) can take seconds on a busy machine.
 import { postV2 } from "@/lib/agent/v2/route-handler";
+import { resetRunRegistry } from "@/lib/agent/v2/run-registry";
+import { chatRequest, fakeStreamResult, waitForRunEnd } from "./helpers/chat-route";
 
 const FILE = { type: "file", mediaType: "image/jpeg", data: { type: "data", data: "SU1BR0U=" } };
 
@@ -56,20 +59,12 @@ const toolRow = (toolCallId: string, toolName: string, header: string, extraCall
   interrupted: 0,
 });
 
-function streamResult() {
-  return {
-    toUIMessageStreamResponse: () => new Response("ok", { headers: { "content-type": "text/event-stream" } }),
-    consumeStream: vi.fn(async () => {}),
-  };
-}
-
 async function post(messages: unknown[]) {
-  return postV2(
-    new Request("http://localhost/api/agent/chat", {
-      method: "POST",
-      body: JSON.stringify({ conversation_id: "c1", project_id: "p1", messages, canvas_snapshot: { nodes: [], edges: [] } }),
-    }) as never,
+  const res = await postV2(
+    chatRequest({ conversation_id: "c1", project_id: "p1", messages, canvas_snapshot: { nodes: [], edges: [] } }),
   );
+  await waitForRunEnd("c1");
+  return res;
 }
 
 type Msg = { role: string; content: Array<{ type: string; toolName?: string; output?: { value: Array<{ type: string; text?: string }> } }> };
@@ -103,9 +98,10 @@ describe("trimToolResultImages", () => {
 
 describe("postV2 — images of earlier turns are trimmed from the model input", () => {
   beforeEach(() => {
+    resetRunRegistry();
     rows = [];
     streamTextMock.mockReset();
-    streamTextMock.mockReturnValue(streamResult());
+    streamTextMock.mockImplementation(() => fakeStreamResult({ autoEnd: true }));
     setSetting("openrouterApiKey", "test-key");
   });
 

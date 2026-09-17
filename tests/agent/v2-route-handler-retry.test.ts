@@ -16,6 +16,7 @@ const appendMessageMock = vi.fn((input: Omit<Row, "id">) => {
 vi.mock("@/lib/agent/conversation/store", () => ({
   appendMessage: (input: Omit<Row, "id">) => appendMessageMock(input),
   listMessages: () => rows.map((row) => ({ ...row })),
+  getConversation: (id: string) => ({ id, project_id: "p1", title: "t", created_at: "", updated_at: "" }),
 }));
 
 vi.mock("@/lib/agent/v2/persist-turn", () => ({ persistAssistantTurn: vi.fn() }));
@@ -29,13 +30,8 @@ vi.mock("ai", async (importOriginal) => {
 
 import { setSetting } from "@/lib/settings";
 import { findRetriedUserRowIndex } from "@/lib/agent/v2/route-handler";
-
-function streamResult() {
-  return {
-    toUIMessageStreamResponse: () => new Response("ok", { headers: { "content-type": "text/event-stream" } }),
-    consumeStream: vi.fn(async () => {}),
-  };
-}
+import { resetRunRegistry } from "@/lib/agent/v2/run-registry";
+import { chatRequest, fakeStreamResult, waitForRunEnd } from "./helpers/chat-route";
 
 const userRow = (text: string, extra: unknown[] = []): Row => ({
   id: "",
@@ -55,17 +51,17 @@ const answer = (text: string) => [{ role: "assistant", content: [{ type: "text",
 
 async function send(text: string) {
   const { postV2 } = await import("@/lib/agent/v2/route-handler");
-  return postV2(
-    new Request("http://localhost/api/agent/chat", {
-      method: "POST",
-      body: JSON.stringify({
-        conversation_id: "c1",
-        project_id: "p1",
-        messages: [{ role: "user", parts: [{ type: "text", text }] }],
-        canvas_snapshot: { nodes: [], edges: [] },
-      }),
-    }) as never,
+  const res = await postV2(
+    chatRequest({
+      conversation_id: "c1",
+      project_id: "p1",
+      messages: [{ role: "user", parts: [{ type: "text", text }] }],
+      canvas_snapshot: { nodes: [], edges: [] },
+    }),
   );
+  // Each send's turn ends before the next one (one turn per conversation).
+  await waitForRunEnd("c1");
+  return res;
 }
 
 function modelMessages(): Array<{ role: string; content: Array<{ type: string; text?: string }> }> {
@@ -81,10 +77,11 @@ const storedUserRows = () => rows.filter((row) => row.role === "user");
 
 describe("postV2 — « Réessayer » never duplicates the user message (I2)", () => {
   beforeEach(() => {
+    resetRunRegistry();
     rows = [];
     appendMessageMock.mockClear();
     streamTextMock.mockReset();
-    streamTextMock.mockReturnValue(streamResult());
+    streamTextMock.mockImplementation(() => fakeStreamResult({ autoEnd: true }));
     setSetting("openrouterApiKey", "test-key");
   });
 
