@@ -42,7 +42,9 @@ export type TurnStep = ReasoningStep | TextStep | ToolStep;
 
 export type NextAction =
   | { kind: "ask_agent"; label: string; message: string }
-  | { kind: "focus_node"; label: string; nodeId: string };
+  | { kind: "focus_node"; label: string; nodeId: string }
+  /** « Générer » on a generator node: label and cost are computed by the app at render. */
+  | { kind: "generate"; nodeId: string };
 
 /** Stored on reopened assistant messages by history-to-ui-messages.ts. */
 export type TurnMetadata = { durationMs?: number; interrupted?: boolean };
@@ -168,6 +170,8 @@ function normalizeResultId(id: string): string {
 }
 
 function toNextAction(action: FinishTurnInput["next_actions"][number]): NextAction | null {
+  if (action.kind === "generate" && action.node_id) return { kind: "generate", nodeId: action.node_id };
+  if (!action.label) return null;
   if (action.kind === "ask_agent" && action.message) return { kind: "ask_agent", label: action.label, message: action.message };
   if (action.kind === "focus_node" && action.node_id) return { kind: "focus_node", label: action.label, nodeId: action.node_id };
   return null;

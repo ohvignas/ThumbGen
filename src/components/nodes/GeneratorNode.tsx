@@ -21,6 +21,7 @@ import { useCanvasStore, type AppNode } from "@/store/canvas-store";
 import NodeShell from "./NodeShell";
 import GeneratorInputRow from "./generator/GeneratorInputRow";
 import { useGeneratorRun } from "./generator/useGeneratorRun";
+import { subscribeNodeGeneration } from "@/lib/canvas/generate-node-event";
 import ConfirmDialog from "@/components/settings/ConfirmDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -114,6 +115,15 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
   const variantsKey = activeVariants(data.abTest).join("");
   const variants = useMemo(() => variantsKey.split("") as VariantId[], [variantsKey]);
   const abActive = variants.length > 1;
+
+  // « Générer » clicked in the chat (finish_turn generate action): same run and guards as the button below.
+  useEffect(
+    () =>
+      subscribeNodeGeneration(id, () => {
+        void run([]);
+      }),
+    [id, run],
+  );
 
   // Handles mount and unmount with the variants: React Flow must re-measure them.
   useEffect(() => {

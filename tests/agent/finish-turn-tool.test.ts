@@ -66,7 +66,14 @@ describe("finish_turn input", () => {
   it("needs a node_id for focus_node and rejects unknown kinds", () => {
     expect(accepts({ summary: "ok", next_actions: [{ label: "Voir", kind: "focus_node" }] })).toBe(false);
     expect(accepts({ summary: "ok", next_actions: [{ label: "Voir", kind: "focus_node", node_id: "gen-1" }] })).toBe(true);
-    expect(accepts({ summary: "ok", next_actions: [{ label: "Go", kind: "generate", node_id: "gen-1" }] })).toBe(false);
+    expect(accepts({ summary: "ok", next_actions: [{ label: "Go", kind: "launch", node_id: "gen-1" }] })).toBe(false);
+  });
+
+  it("accepts a generate action on a node, without a label (the app computes it)", () => {
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "generate", node_id: "iv-generator" }] })).toBe(true);
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "generate" }] })).toBe(false);
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "ask_agent", message: "Oui." }] })).toBe(false);
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "focus_node", node_id: "gen-1" }] })).toBe(false);
   });
 
   it("parses to null instead of throwing", () => {

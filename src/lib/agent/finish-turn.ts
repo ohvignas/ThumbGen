@@ -34,10 +34,13 @@ const nextActionSchema = z
       .trim()
       .min(1)
       .max(FINISH_TURN_LIMITS.label)
-      .describe("Button text, max 40 characters, in the reply language."),
+      .optional()
+      .describe("Button text, max 40 characters, in the reply language. Required for ask_agent and focus_node; leave it out for generate (the app writes it with the cost)."),
     kind: z
-      .enum(["ask_agent", "focus_node"])
-      .describe('"ask_agent" sends `message` to you as the user\'s reply; "focus_node" selects and centers `node_id` on the canvas.'),
+      .enum(["ask_agent", "focus_node", "generate"])
+      .describe(
+        '"ask_agent" sends `message` to you as the user\'s reply; "focus_node" selects and centers `node_id` on the canvas; "generate" shows the « Générer » button of generator `node_id` — the user clicks it to start the paid generation.',
+      ),
     message: z
       .string()
       .trim()
@@ -50,9 +53,15 @@ const nextActionSchema = z
       .trim()
       .min(1)
       .optional()
-      .describe("Required when kind is focus_node: the id of a node on the canvas."),
+      .describe("Required when kind is focus_node or generate: the id of a node on the canvas."),
   })
   .superRefine((action, ctx) => {
+    if (action.kind !== "generate" && !action.label) {
+      ctx.addIssue({ code: "custom", path: ["label"], message: `label is required when kind is ${action.kind}` });
+    }
+    if (action.kind === "generate" && !action.node_id) {
+      ctx.addIssue({ code: "custom", path: ["node_id"], message: "node_id is required when kind is generate" });
+    }
     if (action.kind === "ask_agent" && !action.message) {
       ctx.addIssue({ code: "custom", path: ["message"], message: "message is required when kind is ask_agent" });
     }
