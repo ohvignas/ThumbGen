@@ -176,10 +176,14 @@ export default function AskUserCard({
     );
   };
 
-  const submitOther = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const sendOther = () => {
     const text = other.trim();
     if (text) answer({ other: text });
+  };
+
+  const submitOther = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    sendOther();
   };
 
   return (
@@ -224,6 +228,12 @@ export default function AskUserCard({
         <Input
           value={other}
           onChange={(event) => setOther(event.target.value)}
+          // Explicit Enter (not only the form's implicit submission, which some key events skip).
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            sendOther();
+          }}
           maxLength={ASK_USER_LIMITS.other}
           placeholder="Autre…"
           aria-label="Autre réponse"

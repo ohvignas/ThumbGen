@@ -187,6 +187,16 @@ describe("AskUserCard — text options and footer", () => {
     expect(onAnswer).toHaveBeenCalledWith({ other: "Mon lien" });
   });
 
+  it("sends « Autre » with Enter", async () => {
+    const onAnswer = await render(angles);
+    const input = container.querySelector<HTMLInputElement>("input[placeholder='Autre…']")!;
+    await typeInto(input, "Tuto");
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+    expect(onAnswer).toHaveBeenCalledWith({ other: "Tuto" });
+  });
+
   it("offers « Passer » only when allowed", async () => {
     const onAnswer = await render(angles);
     await click(button("Passer"));
