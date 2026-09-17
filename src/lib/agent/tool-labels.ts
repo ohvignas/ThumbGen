@@ -19,6 +19,7 @@ export const TOOL_LABELS: Record<string, string> = {
   import_youtube_thumbnail: "Importe la miniature",
   request_user_image: "Demande une image",
   request_user_sketch: "Demande un croquis",
+  ask_user: "Te pose une question",
   finish_turn: "Rédige la réponse",
 };
 

@@ -1,5 +1,6 @@
 import { tool as aiTool } from "ai";
 import { requestUserImageInputSchema } from "@/lib/agent/browser-tools/request-user-image";
+import { askUserInputSchema } from "@/lib/agent/browser-tools/ask-user";
 
 /**
  * AI SDK "client tool": no `execute`, so streamText pauses the step and the
@@ -23,8 +24,19 @@ export const requestUserImageClientTool = aiTool({
   inputSchema: requestUserImageInputSchema,
 });
 
+/**
+ * Guided interview question (chantier F2): the chat shows a card with the
+ * options; the turn resumes only once the user clicks an answer.
+ */
+export const askUserClientTool = aiTool({
+  description:
+    "Asks the user ONE guided-interview question with 1 to 6 clickable options (thumbnails via `image` refs from the list tools: stored:persona_<id>, stored:sf_<id>, stored:lg_<id>, youtube:<videoId>). The chat always adds a free-text « Autre » field and, when allow_skip, « Passer ». The turn pauses until the user answers { selected: [option ids] }, { other: text } or { skipped: true }. Call it alone in its step (never with place_node or finish_turn).",
+  inputSchema: askUserInputSchema,
+});
+
 export const V2_CLIENT_TOOLS = {
   request_user_image: requestUserImageClientTool,
+  ask_user: askUserClientTool,
 };
 
 export const V2_CLIENT_TOOL_NAMES = new Set(Object.keys(V2_CLIENT_TOOLS));
