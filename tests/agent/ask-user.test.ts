@@ -29,11 +29,14 @@ describe("ask_user input schema", () => {
     expect(accepts({ ...base, question: "x".repeat(200) })).toBe(true);
     expect(accepts({ ...base, question: "x".repeat(201) })).toBe(false);
     expect(accepts({ ...base, step: 0 })).toBe(false);
-    expect(accepts({ ...base, step: 9 })).toBe(false);
+    expect(accepts({ ...base, step: 7 })).toBe(true);
+    expect(accepts({ ...base, step: 8 })).toBe(false);
     expect(accepts({ ...base, step: 1.5 })).toBe(false);
-    expect(accepts({ ...base, options: [] })).toBe(false);
-    expect(accepts({ ...base, options: ["1", "2", "3", "4", "5", "6"].map((id) => option(id)) })).toBe(true);
-    expect(accepts({ ...base, options: ["1", "2", "3", "4", "5", "6", "7"].map((id) => option(id)) })).toBe(false);
+    expect(accepts({ ...base, options: [] })).toBe(true);
+    expect(accepts({ ...base, multiple: true, options: [] })).toBe(false);
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => option(String(i + 1)));
+    expect(accepts({ ...base, options: ids(12) })).toBe(true);
+    expect(accepts({ ...base, options: ids(13) })).toBe(false);
     expect(accepts({ ...base, options: [{ id: "a", label: "x".repeat(60) }] })).toBe(true);
     expect(accepts({ ...base, options: [{ id: "a", label: "x".repeat(61) }] })).toBe(false);
     expect(accepts({ ...base, options: [option("a", { description: "x".repeat(140) })] })).toBe(true);
@@ -41,10 +44,10 @@ describe("ask_user input schema", () => {
     expect(accepts({ ...base, options: [option("a"), option("a")] })).toBe(false);
   });
 
-  it("only allows max_selected 1 to 3 on a multiple question", () => {
-    expect(accepts({ ...base, multiple: true, max_selected: 3 })).toBe(true);
+  it("only allows max_selected 1 to 5 on a multiple question", () => {
+    expect(accepts({ ...base, multiple: true, max_selected: 5 })).toBe(true);
     expect(accepts({ ...base, multiple: true, max_selected: 0 })).toBe(false);
-    expect(accepts({ ...base, multiple: true, max_selected: 4 })).toBe(false);
+    expect(accepts({ ...base, multiple: true, max_selected: 6 })).toBe(false);
     expect(accepts({ ...base, multiple: false, max_selected: 2 })).toBe(false);
     expect(accepts({ ...base, max_selected: 2 })).toBe(false);
   });
@@ -53,8 +56,8 @@ describe("ask_user input schema", () => {
     const single = parseAskUserInput(base) as AskUserInput;
     expect(askUserMaxSelected(single)).toBe(1);
     expect(askUserMaxSelected(parseAskUserInput({ ...base, multiple: true }) as AskUserInput)).toBe(2);
-    const many = { ...base, multiple: true, options: ["1", "2", "3", "4", "5"].map((id) => option(id)) };
-    expect(askUserMaxSelected(parseAskUserInput(many) as AskUserInput)).toBe(3);
+    const many = { ...base, multiple: true, options: ["1", "2", "3", "4", "5", "6", "7"].map((id) => option(id)) };
+    expect(askUserMaxSelected(parseAskUserInput(many) as AskUserInput)).toBe(5);
     expect(askUserMaxSelected(parseAskUserInput({ ...many, max_selected: 2 }) as AskUserInput)).toBe(2);
   });
 
@@ -85,6 +88,8 @@ describe("ask_user output", () => {
     expect(askUserAnswerText(input, { skipped: true })).toBe("Passé");
     expect(askUserAnswerText(input, { skipped: true, reason: "abandoned" })).toBe("sans réponse");
     expect(askUserAnswerText(input, null)).toBeNull();
+    const free = parseAskUserInput({ question: "De quoi parle la vidéo ?", step: 1, options: [] });
+    expect(askUserAnswerText(free, { other: "Les miniatures" })).toBe("Les miniatures");
   });
 
   it("builds the folded step line from a persisted answer", () => {
@@ -104,6 +109,7 @@ describe("ask_user option images", () => {
       src: "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
       shape: "wide",
     });
+    expect(askUserOptionImage("generated:sk_abc123")).toEqual({ src: "/api/generated-sketches/sk_abc123", shape: "wide" });
   });
 
   it("ignores anything else", () => {
@@ -112,6 +118,8 @@ describe("ask_user option images", () => {
     expect(askUserOptionImage("stored:gi_1")).toBeNull();
     expect(askUserOptionImage("youtube:bad id/..")).toBeNull();
     expect(askUserOptionImage("stored:persona_../x")).toBeNull();
+    expect(askUserOptionImage("generated:sk_../x")).toBeNull();
+    expect(askUserOptionImage("generated:gi_1")).toBeNull();
   });
 });
 
@@ -125,6 +133,10 @@ describe("ask_user rejection paths", () => {
     expect(issues({ ...base, options: [option("a"), option("b"), option("a")] })).toEqual([
       { path: "options.2.id", message: "Duplicate option id: a" },
     ]);
+  });
+
+  it("names a multiple question without options", () => {
+    expect(issues({ ...base, multiple: true, options: [] })).toEqual([{ path: "multiple", message: "multiple requires at least one option" }]);
   });
 
   it("names max_selected without multiple", () => {

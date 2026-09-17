@@ -53,7 +53,8 @@ async function playInterview(
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("fake agent — interview scenario", () => {
+// F2 interview (step 8) — replaced by the « journey » scenario in Task 11 of the F3a plan.
+describe.skip("fake agent — interview scenario", () => {
   it("is selected by THUMBGEN_FAKE_AGENT=interview only", () => {
     vi.stubEnv("THUMBGEN_FAKE_AGENT", "interview");
     expect(fakeAgentScenario()).toBe("interview");
