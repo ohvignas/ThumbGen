@@ -72,16 +72,17 @@ export function laterUpdatedAt(a: string | null, b: string | null): string | nul
 }
 
 /**
- * A patch is applied only to the open miniature once its canvas is loaded, and
+ * A patch is applied only to the open miniature once its canvas is loaded (or
+ * while it loads: the store replays it over the loaded canvas), and
  * only when it is newer than what the canvas already knows: a patch replayed
  * by a reconnection, or already contained in a reload from the database, is
  * ignored.
  */
 export function shouldApplyCanvasPatch(
   patch: CanvasPatch,
-  state: { openProjectId: string; loaded: boolean; knownUpdatedAt: string | null },
+  state: { openProjectId: string; loaded: boolean; loading?: boolean; knownUpdatedAt: string | null },
 ): boolean {
-  if (patch.projectId !== state.openProjectId || !state.loaded) return false;
+  if (patch.projectId !== state.openProjectId || !(state.loaded || state.loading)) return false;
   return state.knownUpdatedAt === null || compareUpdatedAt(patch.updatedAt, state.knownUpdatedAt) > 0;
 }
 
