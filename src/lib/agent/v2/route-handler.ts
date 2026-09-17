@@ -444,93 +444,103 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // output fires both the per-chunk onError and onEnd for the same turn).
   let turnPersisted = false;
 
-  if (agentModel.fake) console.warn(FAKE_AGENT_WARNING);
-  const result = streamText({
-    model: agentModel.model,
-    system: systemText,
-    messages: (isNewUserTurn && retriedUserRowIndex === -1
-      ? [...priorMessages, { role: "user", content: userParts }]
-      : [...priorMessages]) as ModelMessage[],
-    tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
-    // finish_turn closes the turn: stop right after its step instead of
-    // paying for one more model call that would only restate the answer.
-    stopWhen: [isStepCount(settings.agentMaxSteps), hasToolCall(FINISH_TURN_TOOL_NAME)],
-    // ONLY the run's own signal (« Arrêter » → POST …/stop). The request's
-    // signal is deliberately not passed: leaving the page must not stop the turn.
-    abortSignal: run.abort.signal,
-    providerOptions: {
-      openrouter: {
-        ...(modelInfo?.supportsThinking ? { reasoning: { effort: settings.agentReasoningEffort } } : {}),
-        ...webSearchProviderOptions(),
+  // Nothing between here and the pump may leave the conversation locked: a
+  // throw (tools, provider options, streamText, the UI stream) frees the run.
+  try {
+    if (agentModel.fake) console.warn(FAKE_AGENT_WARNING);
+    const result = streamText({
+      model: agentModel.model,
+      system: systemText,
+      messages: (isNewUserTurn && retriedUserRowIndex === -1
+        ? [...priorMessages, { role: "user", content: userParts }]
+        : [...priorMessages]) as ModelMessage[],
+      tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
+      // finish_turn closes the turn: stop right after its step instead of
+      // paying for one more model call that would only restate the answer.
+      stopWhen: [isStepCount(settings.agentMaxSteps), hasToolCall(FINISH_TURN_TOOL_NAME)],
+      // ONLY the run's own signal (« Arrêter » → POST …/stop). The request's
+      // signal is deliberately not passed: leaving the page must not stop the turn.
+      abortSignal: run.abort.signal,
+      providerOptions: {
+        openrouter: {
+          ...(modelInfo?.supportsThinking ? { reasoning: { effort: settings.agentReasoningEffort } } : {}),
+          ...webSearchProviderOptions(),
+        },
       },
-    },
-    // `responseMessages` is the aggregate across every step (not the deprecated
-    // `response.messages`, last step only); `usage` is the whole-turn total.
-    onEnd: async ({ responseMessages, usage, finishReason }) => {
-      turnPersisted = true;
-      persistAssistantTurn({
-        conversationId,
-        responseMessages,
-        totalUsage: usage,
-        finishReason,
-        modelInfo,
-      });
-    },
-    // Fires instead of onEnd on abort, before streamText emits its `abort`
-    // chunk: saves the partial turn as interrupted, rebuilt from the steps.
-    onAbort: ({ steps }) => {
-      turnPersisted = true;
-      const totalUsage = steps.reduce(
-        (acc, s) => ({
-          inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
-          outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
-        }),
-        { inputTokens: 0, outputTokens: 0 },
-      );
-      persistAssistantTurn({
-        conversationId,
-        responseMessages: steps.flatMap((s) => s.response.messages),
-        totalUsage,
-        finishReason: "aborted",
-        interrupted: true,
-        modelInfo,
-      });
-    },
-  });
-
-  let endStatus: EndedRunStatus = "done";
-  const uiStream = result.toUIMessageStream({
-    // Per-chunk and log-only: it also fires for a routine `tool-error` part the
-    // turn recovers from, so it must neither persist nor end the run.
-    onError: (error) => {
-      console.error("[agent v2] stream error:", error);
-      return "An error occurred.";
-    },
-    // Called once for the whole turn, before the stream closes (so before
-    // finishRun). A provider failure reaches neither streamText onEnd nor
-    // onAbort: without this marker the user's message would stay unanswered.
-    onEnd: ({ outcome }) => {
-      endStatus = runStatusForOutcome(outcome.status);
-      if (outcome.status !== "failed" || turnPersisted) return;
-      try {
+      // `responseMessages` is the aggregate across every step (not the deprecated
+      // `response.messages`, last step only); `usage` is the whole-turn total.
+      onEnd: async ({ responseMessages, usage, finishReason }) => {
+        turnPersisted = true;
         persistAssistantTurn({
           conversationId,
-          responseMessages: [],
-          totalUsage: { inputTokens: 0, outputTokens: 0 },
-          finishReason: "error",
+          responseMessages,
+          totalUsage: usage,
+          finishReason,
+          modelInfo,
+        });
+      },
+      // Fires instead of onEnd on abort, before streamText emits its `abort`
+      // chunk: saves the partial turn as interrupted, rebuilt from the steps.
+      onAbort: ({ steps }) => {
+        turnPersisted = true;
+        const totalUsage = steps.reduce(
+          (acc, s) => ({
+            inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
+            outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
+          }),
+          { inputTokens: 0, outputTokens: 0 },
+        );
+        persistAssistantTurn({
+          conversationId,
+          responseMessages: steps.flatMap((s) => s.response.messages),
+          totalUsage,
+          finishReason: "aborted",
           interrupted: true,
           modelInfo,
         });
-      } catch (e) {
-        // Never throw from here: `ai` would rethrow and cut the stream.
-        console.error("[agent v2] failed to persist error marker:", e);
-      }
-    },
-  });
+      },
+    });
 
-  // The server itself reads the turn to its end (not awaited by the response):
-  // the model keeps running whatever happens to this HTTP request.
-  void pumpRunStream(run, uiStream, () => endStatus);
+    let endStatus: EndedRunStatus = "done";
+    const uiStream = result.toUIMessageStream({
+      // Per-chunk and log-only: it also fires for a routine `tool-error` part the
+      // turn recovers from, so it must neither persist nor end the run.
+      onError: (error) => {
+        console.error("[agent v2] stream error:", error);
+        return "An error occurred.";
+      },
+      // Called once for the whole turn, before the stream closes (so before
+      // finishRun). A provider failure reaches neither streamText onEnd nor
+      // onAbort: without this marker the user's message would stay unanswered.
+      onEnd: ({ outcome }) => {
+        endStatus = runStatusForOutcome(outcome.status);
+        if (outcome.status !== "failed" || turnPersisted) return;
+        try {
+          persistAssistantTurn({
+            conversationId,
+            responseMessages: [],
+            totalUsage: { inputTokens: 0, outputTokens: 0 },
+            finishReason: "error",
+            interrupted: true,
+            modelInfo,
+          });
+        } catch (e) {
+          // Never throw from here: `ai` would rethrow and cut the stream.
+          console.error("[agent v2] failed to persist error marker:", e);
+        }
+      },
+    });
+
+    // The server itself reads the turn to its end (not awaited by the response):
+    // the model keeps running whatever happens to this HTTP request.
+    void pumpRunStream(run, uiStream, () => endStatus);
+  } catch (e) {
+    console.error("[agent v2] failed to start the turn:", e);
+    // Stops a model call streamText may already have started.
+    run.abort.abort();
+    discardRun(run);
+    return new Response(`Failed to start the agent turn: ${(e as Error).message}`, { status: 500 });
+  }
 
   // The sender is just the first subscriber, like any reconnection. If Next
   // cancels this response, only the subscription goes away.

@@ -208,6 +208,31 @@ describe("postV2 runs the turn in the background", () => {
     expect(statusAtSave).toEqual(["running", "running"]);
   });
 
+  it("frees the conversation and answers 500 when starting the stream throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    streamTextMock.mockImplementationOnce(() => {
+      throw new Error("provider setup failed");
+    });
+    const res = await post(userTurn("c-throw"));
+    expect(res.status).toBe(500);
+    expect(getRun("c-throw")).toBeNull();
+    expect(listRuns()).toEqual([]);
+
+    // toUIMessageStream throwing after streamText started: the model call is aborted too.
+    let startedSignal: AbortSignal | null = null;
+    streamTextMock.mockImplementationOnce((opts: unknown) => {
+      startedSignal = (opts as { abortSignal: AbortSignal }).abortSignal;
+      return { toUIMessageStream: () => { throw new Error("ui stream failed"); } };
+    });
+    expect((await post(userTurn("c-throw", "Encore"))).status).toBe(500);
+    expect(startedSignal!.aborted).toBe(true);
+    expect(getRun("c-throw")).toBeNull();
+
+    // The next send is accepted (no 409 left behind).
+    expect((await post(userTurn("c-throw", "Et maintenant"))).status).toBe(200);
+    errorSpy.mockRestore();
+  });
+
   it("with the dev fake model, warns once per accepted turn and never for a refused one", async () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("THUMBGEN_FAKE_AGENT", "1");
