@@ -11,7 +11,8 @@ import {
 import { imageExists, markAttached } from "@/lib/agent/tools/_helpers/image-source";
 import { NODE_W } from "@/lib/agent/tools/_helpers/auto-layout";
 import { createCanvasSnapshot, writeProjectCanvas } from "@/lib/canvas-snapshots";
-import { nextUpdatedAt, type CanvasPatch, type CanvasPatchEdge, type CanvasPatchNode } from "@/lib/canvas/canvas-patch";
+import { compareUpdatedAt, nextUpdatedAt, type CanvasPatchEdge } from "@/lib/canvas/canvas-patch";
+import type { CanvasPatch } from "@/lib/canvas/canvas-patch";
 
 /**
  * `place_node` (chantier F2): places or completes ONE guided-interview node
@@ -122,22 +123,78 @@ export function interviewPosition(id: string, canvasNodes: StoredNode[]): { x: n
 const edgeKey = (edge: { source: string; target: string; targetHandle?: string | null }) =>
   JSON.stringify([edge.source, edge.target, edge.targetHandle ?? ""]);
 
-/** Edges from every interview node present to iv-generator (when it is present), not already on the canvas. */
-function missingGeneratorEdges(nodes: StoredNode[], edges: StoredEdge[]): CanvasPatchEdge[] {
-  if (!nodes.some((node) => node.id === INTERVIEW_GENERATOR_ID)) return [];
+/**
+ * A generator link place_node made or found, recorded in the data of the node
+ * placed at that moment: `node` is the other end. A link is « known » when
+ * either end records it strictly after the other end was created (`agentCreatedAt`):
+ * a known link that is now missing was removed by the user and is never added
+ * again; a recreated node starts with no known link.
+ */
+export type AgentLink = { node: string; handle: string; at: string };
+
+function agentLinks(data: Record<string, unknown> | undefined): AgentLink[] {
+  const value = data?.agentLinks;
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (link): link is AgentLink =>
+      typeof link === "object" &&
+      link !== null &&
+      typeof (link as AgentLink).node === "string" &&
+      typeof (link as AgentLink).handle === "string" &&
+      typeof (link as AgentLink).at === "string",
+  );
+}
+
+function knownLink(source: StoredNode, generator: StoredNode, handle: string): boolean {
+  const recorded = (holder: StoredNode, other: StoredNode) => {
+    const createdAt = other.data?.agentCreatedAt;
+    return agentLinks(holder.data).some(
+      (link) =>
+        link.node === other.id &&
+        link.handle === handle &&
+        // A record made in the same instant as the other end's creation predates it (a recreation).
+        (typeof createdAt !== "string" || compareUpdatedAt(link.at, createdAt) > 0),
+    );
+  };
+  return recorded(source, generator) || recorded(generator, source);
+}
+
+/**
+ * Generator links for this placement: placing iv-generator links every
+ * interview node present, placing an input links that input. Links the user
+ * removed are left out. `records` go into the placed node's `agentLinks`.
+ */
+function generatorLinks(
+  nodes: StoredNode[],
+  edges: StoredEdge[],
+  placedId: string,
+  at: string,
+): { added: CanvasPatchEdge[]; records: AgentLink[] } {
+  const generator = nodes.find((node) => node.id === INTERVIEW_GENERATOR_ID);
+  if (!generator) return { added: [], records: [] };
+  const sources = nodes.filter((node) =>
+    placedId === INTERVIEW_GENERATOR_ID ? node.id !== INTERVIEW_GENERATOR_ID && INTERVIEW_NODE_ID.test(node.id) : node.id === placedId,
+  );
   const keys = new Set(edges.map(edgeKey));
   const added: CanvasPatchEdge[] = [];
-  for (const node of nodes) {
-    if (node.id === INTERVIEW_GENERATOR_ID || !INTERVIEW_NODE_ID.test(node.id)) continue;
-    const targetHandle = interviewHandle(node);
+  const records: AgentLink[] = [];
+  for (const source of sources) {
+    const targetHandle = interviewHandle(source);
     if (!targetHandle) continue;
-    const edge = { source: node.id, target: INTERVIEW_GENERATOR_ID, targetHandle };
-    if (keys.has(edgeKey(edge))) continue;
-    keys.add(edgeKey(edge));
-    // id + sourceHandle:null so React Flow renders them (same shape as apply_workflow)
-    added.push({ id: `e-${uuid().slice(0, 8)}`, source: edge.source, sourceHandle: null, target: edge.target, targetHandle });
+    const key = edgeKey({ source: source.id, target: INTERVIEW_GENERATOR_ID, targetHandle });
+    const exists = keys.has(key);
+    const known = knownLink(source, generator, targetHandle);
+    if (!exists && known) continue;
+    if (!exists) {
+      keys.add(key);
+      // id + sourceHandle:null so React Flow renders them (same shape as apply_workflow)
+      added.push({ id: `e-${uuid().slice(0, 8)}`, source: source.id, sourceHandle: null, target: INTERVIEW_GENERATOR_ID, targetHandle });
+    }
+    if (!known) {
+      records.push({ node: placedId === INTERVIEW_GENERATOR_ID ? source.id : INTERVIEW_GENERATOR_ID, handle: targetHandle, at });
+    }
   }
-  return added;
+  return { added, records };
 }
 
 function parseArray<T>(json: string): T[] {
@@ -205,53 +262,71 @@ export async function placeInterviewNode(projectId: string, input: PlaceNodeInpu
   }
 
   const db = getDb();
-  const written = db.transaction(() => {
+  const written = db.transaction((): PlaceNodeOutcome => {
     const fresh = readCanvas(projectId);
     if (!fresh) return fail(`Project not found: ${projectId}`);
     const updatedAt = nextUpdatedAt(fresh.updated_at);
     const nodes = parseArray<StoredNode>(fresh.nodes);
     const edges = parseArray<StoredEdge>(fresh.edges);
     const index = nodes.findIndex((node) => node.id === id);
+    if (existing && index < 0) {
+      return fail(
+        `nœud supprimé entre-temps: the user deleted ${id} while place_node was running, so nothing was written. Ask the user before placing it again.`,
+      );
+    }
     if (index >= 0 && nodes[index].type !== type) {
       return fail(`Node "${id}" already exists on the canvas as a ${nodes[index].type}; place_node cannot change it to a ${type}.`);
     }
 
-    let placed: CanvasPatchNode;
-    if (index >= 0) {
-      const current = nodes[index];
-      placed = {
-        id,
-        type,
-        position: current.position ?? { x: 0, y: 0 },
-        data: { ...mergeCanvasData(current.data ?? {}, mapped.data, mapped.replacesImage), placedByAgentAt: updatedAt },
-      };
-      nodes[index] = { ...current, position: placed.position, data: placed.data };
+    const created = index < 0;
+    const changes: Record<string, unknown> = { ...mapped.data };
+    let data: Record<string, unknown>;
+    let removedDataKeys: string[] = [];
+    if (created) {
+      data = { ...mapped.data, agentCreatedAt: updatedAt };
+      nodes.push({ id, type, position: interviewPosition(id, nodes), data });
     } else {
-      placed = { id, type, position: interviewPosition(id, nodes), data: { ...mapped.data, placedByAgentAt: updatedAt } };
-      nodes.push(placed);
+      const current = nodes[index].data ?? {};
+      data = mergeCanvasData(current, mapped.data, mapped.replacesImage);
+      removedDataKeys = Object.keys(current).filter((key) => !(key in data));
+      nodes[index] = { ...nodes[index], data };
     }
+    const placedIndex = created ? nodes.length - 1 : index;
 
-    const added = missingGeneratorEdges(nodes, edges);
+    const { added, records } = generatorLinks(nodes, edges, id, updatedAt);
+    if (records.length > 0) {
+      changes.agentLinks = [...agentLinks(nodes[placedIndex].data), ...records];
+      data = { ...data, agentLinks: changes.agentLinks };
+    }
+    data = { ...data, placedByAgentAt: updatedAt };
+    changes.placedByAgentAt = updatedAt;
+    nodes[placedIndex] = { ...nodes[placedIndex], data };
+    const placed = nodes[placedIndex];
+    const position = placed.position ?? { x: 0, y: 0 };
+
     const finalEdges = [...edges, ...added];
     createCanvasSnapshot(projectId, fresh.nodes, fresh.edges, "place_node", db);
     writeProjectCanvas(projectId, JSON.stringify(nodes), JSON.stringify(finalEdges), db, updatedAt);
 
+    const toGenerator = finalEdges.filter((edge) => edge.target === INTERVIEW_GENERATOR_ID);
     const linkedNodeIds =
-      id === INTERVIEW_GENERATOR_ID
-        ? finalEdges.filter((edge) => edge.target === INTERVIEW_GENERATOR_ID && INTERVIEW_NODE_ID.test(edge.source)).map((edge) => edge.source)
-        : [];
+      id === INTERVIEW_GENERATOR_ID ? [...new Set(toGenerator.filter((edge) => INTERVIEW_NODE_ID.test(edge.source)).map((edge) => edge.source))] : [];
     const linkedToGenerator =
-      id === INTERVIEW_GENERATOR_ID
-        ? linkedNodeIds.length > 0
-        : finalEdges.some((edge) => edge.source === id && edge.target === INTERVIEW_GENERATOR_ID);
-    const outcome: PlaceNodeOutcome = {
+      id === INTERVIEW_GENERATOR_ID ? linkedNodeIds.length > 0 : toGenerator.some((edge) => edge.source === id);
+    return {
       ok: true,
-      patch: { projectId, updatedAt, node: placed, edges: added },
-      created: index < 0,
+      patch: {
+        projectId,
+        updatedAt,
+        created,
+        node: { id, type, position, data: created ? data : changes },
+        removedDataKeys,
+        edges: added,
+      },
+      created,
       linkedToGenerator,
-      linkedNodeIds: [...new Set(linkedNodeIds)],
+      linkedNodeIds,
     };
-    return outcome;
   })();
 
   if (written.ok && imageSource) markAttached(imageSource);

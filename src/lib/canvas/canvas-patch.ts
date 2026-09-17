@@ -21,8 +21,23 @@ export type CanvasPatchEdge = {
   targetHandle: string;
 };
 
-/** `node`: the whole node as written; `edges`: only the edges this placement added. */
-export type CanvasPatch = { projectId: string; updatedAt: string; node: CanvasPatchNode; edges: CanvasPatchEdge[] };
+/**
+ * One placement:
+ * - `created`: true when the node is new — `node.data` is then its whole data;
+ *   false for an update — `node.data` holds only the fields this placement
+ *   changed (always `placedByAgentAt`), to merge over the local node;
+ * - `node.position`: the node's position in the database (kept locally on an update);
+ * - `removedDataKeys`: data fields the placement deleted (a replaced image's stale fields);
+ * - `edges`: only the edges this placement added.
+ */
+export type CanvasPatch = {
+  projectId: string;
+  updatedAt: string;
+  created: boolean;
+  node: CanvasPatchNode;
+  removedDataKeys: string[];
+  edges: CanvasPatchEdge[];
+};
 
 /** An ISO string or a legacy SQLite `datetime('now')` value (UTC, no zone), in ms; null when unparsable. */
 function parseTimestamp(value: string): number | null {
@@ -75,6 +90,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export function isCanvasPatch(value: unknown): value is CanvasPatch {
   if (!isRecord(value) || typeof value.projectId !== "string" || typeof value.updatedAt !== "string") return false;
+  if (typeof value.created !== "boolean") return false;
+  if (!Array.isArray(value.removedDataKeys) || !value.removedDataKeys.every((key) => typeof key === "string")) return false;
   const node = value.node;
   if (!isRecord(node) || typeof node.id !== "string" || typeof node.type !== "string" || !isRecord(node.data)) return false;
   if (!isRecord(node.position) || typeof node.position.x !== "number" || typeof node.position.y !== "number") return false;

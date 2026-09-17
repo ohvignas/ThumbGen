@@ -79,7 +79,8 @@ describe("place_node — merge into the project", () => {
     const meta = getDb().prepare("SELECT updated_at FROM projects_meta WHERE id = ?").get(projectId) as { updated_at: string };
     expect(meta.updated_at).toBe(saved.updatedAt);
     expect(outcome.created).toBe(true);
-    expect(outcome.patch).toEqual({ projectId, updatedAt: saved.updatedAt, node: prompt, edges: [] });
+    expect(outcome.patch).toEqual({ projectId, updatedAt: saved.updatedAt, created: true, node: prompt, removedDataKeys: [], edges: [] });
+    expect(prompt.data.agentCreatedAt).toBe(saved.updatedAt);
     expect(node("user-1")).toEqual({ id: "user-1", type: "prompt", position: { x: 100, y: 50 }, data: { prompt: "Mon idée" } });
     expect(listCanvasSnapshots(projectId).map((s) => s.reason)).toEqual(["place_node"]);
   });
@@ -98,6 +99,30 @@ describe("place_node — merge into the project", () => {
     expect(updated.position).toEqual({ x: 5, y: 6 });
     expect(updated.data).toMatchObject({ prompt: "Texte « ÇA CHANGE TOUT »", negativePrompt: "flou" });
     expect(updated.data.placedByAgentAt).toBe(canvas().updatedAt);
+    // The patch carries only what changed.
+    expect(outcome.patch).toMatchObject({ created: false, removedDataKeys: [] });
+    expect(outcome.patch.node.data).toEqual({ prompt: "Texte « ÇA CHANGE TOUT »", placedByAgentAt: canvas().updatedAt });
+    expect(outcome.patch.node.position).toEqual({ x: 5, y: 6 });
+  });
+
+  it("lists the data keys a replaced image removes", async () => {
+    await placed({ id: "iv-ref-1", type: "swipeFile", data: { kind: "reference", image_source: `stored:sf_${swipeId}` } });
+    const inline = `data:image/png;base64,${PNG.toString("base64")}`;
+    const outcome = await placed({ id: "iv-ref-1", type: "swipeFile", data: { image_source: inline } });
+    expect(outcome.patch.removedDataKeys).toEqual(["imageUrl"]);
+    expect(outcome.patch.node.data).toMatchObject({ imageBase64: inline, image_source: inline });
+    expect(node("iv-ref-1")!.data.imageUrl).toBeUndefined();
+  });
+
+  it("refuses to update a node deleted while the call was running", async () => {
+    await placed({ id: "iv-prompt", type: "prompt", data: { prompt: "x" } });
+    const pending = place({ id: "iv-prompt", type: "prompt", data: { prompt: "y" } });
+    const current = canvas();
+    setCanvas(current.nodes.filter((n) => n.id !== "iv-prompt"), current.edges);
+    const outcome = await pending;
+    expect(outcome.ok).toBe(false);
+    expect(!outcome.ok && outcome.error).toContain("nœud supprimé entre-temps");
+    expect(node("iv-prompt")).toBeUndefined();
   });
 
   it("stacks the inputs in the left column with library URLs and persona angles", async () => {
@@ -145,6 +170,38 @@ describe("place_node — merge into the project", () => {
     expect(links(ref2.patch.edges)).toEqual(["iv-ref-2>iv-generator:ref-in"]);
     expect(ref2.linkedToGenerator).toBe(true);
     expect(canvas().edges).toHaveLength(5);
+  });
+
+  it("never re-adds a link the user removed, but links recreated nodes", async () => {
+    await placed({ id: "iv-prompt", type: "prompt", data: { prompt: "x" } });
+    await placed({ id: "iv-persona", type: "faceReference", data: { image_source: `stored:persona_${personaId}` } });
+    await placed({ id: "iv-generator", type: "generator", data: { model: "nano-banana", aspectRatio: "16x9" } });
+    expect(canvas().edges).toHaveLength(2);
+
+    // Antoine disconnects the prompt; the agent keeps completing the interview.
+    let current = canvas();
+    setCanvas(current.nodes, current.edges.filter((e) => e.source !== "iv-prompt"));
+    const promptUpdate = await placed({ id: "iv-prompt", type: "prompt", data: { prompt: "y" } });
+    expect(promptUpdate.patch.edges).toEqual([]);
+    expect(promptUpdate.linkedToGenerator).toBe(false);
+    const generatorUpdate = await placed({ id: "iv-generator", type: "generator", data: { count: 2 } });
+    expect(generatorUpdate.patch.edges).toEqual([]);
+    expect(canvas().edges.map((e) => e.source)).toEqual(["iv-persona"]);
+
+    // A new input is linked once; a recreated input is linked again.
+    const ref = await placed({ id: "iv-ref-1", type: "swipeFile", data: { kind: "reference", image_source: `stored:sf_${swipeId}` } });
+    expect(ref.patch.edges.map((e) => e.targetHandle)).toEqual(["ref-in"]);
+    expect(ref.patch.node.data.agentLinks).toEqual([{ node: "iv-generator", handle: "ref-in", at: ref.patch.updatedAt }]);
+    current = canvas();
+    setCanvas(current.nodes.filter((n) => n.id !== "iv-prompt"), current.edges);
+    const recreated = await placed({ id: "iv-prompt", type: "prompt", data: { prompt: "z" } });
+    expect(recreated.patch.edges.map((e) => e.source)).toEqual(["iv-prompt"]);
+
+    // A recreated generator (second interview after « repartir de zéro ») links everything again.
+    current = canvas();
+    setCanvas(current.nodes.filter((n) => n.id !== "iv-generator"), []);
+    const generator = await placed({ id: "iv-generator", type: "generator", data: { model: "nano-banana", aspectRatio: "16x9" } });
+    expect(generator.patch.edges.map((e) => e.source).sort()).toEqual(["iv-persona", "iv-prompt", "iv-ref-1"]);
   });
 
   it("never duplicates an edge the user already drew", async () => {
