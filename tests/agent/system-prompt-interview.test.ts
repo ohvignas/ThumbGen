@@ -58,6 +58,21 @@ describe("system prompt — guided interview", () => {
     expect(text).toMatch(/never remove/i);
   });
 
+  it("asks to resume or restart when interview nodes are already on the canvas", () => {
+    const text = section();
+    const check = text.indexOf("iv-* nodes in <canvas_state>");
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(check).toBeLessThan(text.indexOf("1. Video"));
+    expect(text).toContain("Reprendre l'interview");
+    expect(text).toContain("Repartir de zéro");
+    expect(text).toMatch(/apply_workflow with an empty blueprint and remove_node_ids listing the existing iv-\* nodes/);
+    expect(text).toMatch(/only exception/);
+  });
+
+  it("tells the agent removed links stay removed", () => {
+    expect(section()).toMatch(/a link the user removed is never added back/);
+  });
+
   it("prices the model options from MODEL_COSTS", () => {
     expect(INTERVIEW_PRICE_TABLE).toContain(`nano-banana — Gemini 3.1 Flash — "Nano Banana · ~0,02 $ / image"`);
     expect(INTERVIEW_PRICE_TABLE).toContain(`openai — GPT Image 2.5 Sunburst (précis) — "GPT Image · ~0,05 $ / image"`);
