@@ -9,6 +9,21 @@
  */
 export const HISTORY_IMAGE_PLACEHOLDER = "[image retirée de l'historique — rappelle l'outil si besoin]";
 
+/** A sketch or a preview came from a paid (or budgeted) call: never an invitation to make it again. */
+export const HISTORY_SKETCH_PLACEHOLDER =
+  "[image retirée de l'historique — ne la régénère pas ; sa référence (ligne ci-dessus) reste valable ; view_canvas_images si elle est sur le canvas]";
+
+/** An imported thumbnail is already in the library: its stored reference is enough. */
+export const HISTORY_IMPORT_PLACEHOLDER =
+  "[image retirée — la miniature est déjà dans la bibliothèque (référence ci-dessus), ne la réimporte pas]";
+
+/** The text that replaces a trimmed image of `toolName`. */
+export function historyImagePlaceholder(toolName: string): string {
+  if (toolName === "generate_sketch" || toolName === "preview_thumbnail") return HISTORY_SKETCH_PLACEHOLDER;
+  if (toolName === "import_youtube_thumbnail") return HISTORY_IMPORT_PLACEHOLDER;
+  return HISTORY_IMAGE_PLACEHOLDER;
+}
+
 export const HISTORY_IMAGE_TRIMMED_TOOLS: readonly string[] = [
   "view_canvas_images",
   "search_youtube",
@@ -35,7 +50,7 @@ export function trimToolResultImages(messages: unknown[]): unknown[] {
       if (output.value.every((item) => isObject(item) && item.type === "text")) return part;
       changed = true;
       const value = output.value.map((item) =>
-        isObject(item) && item.type === "text" ? item : { type: "text", text: HISTORY_IMAGE_PLACEHOLDER },
+        isObject(item) && item.type === "text" ? item : { type: "text", text: historyImagePlaceholder(part.toolName as string) },
       );
       return { ...part, output: { ...output, value } };
     });

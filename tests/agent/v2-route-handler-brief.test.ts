@@ -48,7 +48,7 @@ vi.mock("ai", async (importOriginal) => {
 
 import { setSetting } from "@/lib/settings";
 import { emptyBrief } from "@/lib/brief/schema";
-import { HISTORY_IMAGE_PLACEHOLDER } from "@/lib/agent/v2/history-images";
+import { HISTORY_SKETCH_PLACEHOLDER } from "@/lib/agent/v2/history-images";
 import { postV2 } from "@/lib/agent/v2/route-handler";
 import { getRun, resetRunRegistry } from "@/lib/agent/v2/run-registry";
 import { chatRequest, fakeStreamResult, waitForRunEnd } from "./helpers/chat-route";
@@ -204,7 +204,7 @@ describe("chat route — thumbnail brief", () => {
     await postV2(chatRequest(continuation("c-trim-brief")));
     expect(sketchParts()).toEqual([
       { type: "text", text: "Sketch" },
-      { type: "text", text: HISTORY_IMAGE_PLACEHOLDER },
+      { type: "text", text: HISTORY_SKETCH_PLACEHOLDER },
     ]);
     await fake.end();
     await waitForRunEnd("c-trim-brief");

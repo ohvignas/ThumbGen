@@ -26,7 +26,14 @@ vi.mock("ai", async (importOriginal) => {
 
 import { setSetting } from "@/lib/settings";
 import { rowsToUIMessages } from "@/components/panels/chat/history-to-ui-messages";
-import { HISTORY_IMAGE_PLACEHOLDER, lastResolvedAskUserRowIndex, trimToolResultImages } from "@/lib/agent/v2/history-images";
+import {
+  HISTORY_IMAGE_PLACEHOLDER,
+  HISTORY_IMPORT_PLACEHOLDER,
+  HISTORY_SKETCH_PLACEHOLDER,
+  historyImagePlaceholder,
+  lastResolvedAskUserRowIndex,
+  trimToolResultImages,
+} from "@/lib/agent/v2/history-images";
 // Imported up front: loading the route (and the tool registry) can take seconds on a busy machine.
 import { postV2 } from "@/lib/agent/v2/route-handler";
 import { resetRunRegistry } from "@/lib/agent/v2/run-registry";
@@ -95,14 +102,24 @@ describe("trimToolResultImages", () => {
     expect(trimToolResultImages(messages)).toEqual(messages);
   });
 
-  it("also trims imported thumbnails, sketches and previews", () => {
+  it("also trims imported thumbnails, sketches and previews, each with its own placeholder", () => {
+    expect(historyImagePlaceholder("generate_sketch")).toBe(HISTORY_SKETCH_PLACEHOLDER);
+    expect(historyImagePlaceholder("preview_thumbnail")).toBe(HISTORY_SKETCH_PLACEHOLDER);
+    expect(historyImagePlaceholder("import_youtube_thumbnail")).toBe(HISTORY_IMPORT_PLACEHOLDER);
+    expect(historyImagePlaceholder("view_canvas_images")).toBe(HISTORY_IMAGE_PLACEHOLDER);
+    expect(historyImagePlaceholder("search_youtube")).toBe(HISTORY_IMAGE_PLACEHOLDER);
+    // A paid sketch must never be regenerated just because its image left the history.
+    expect(HISTORY_SKETCH_PLACEHOLDER).not.toContain("rappelle l'outil");
+    expect(HISTORY_SKETCH_PLACEHOLDER).toContain("ne la régénère pas");
+    expect(HISTORY_IMPORT_PLACEHOLDER).not.toContain("rappelle l'outil");
+    expect(HISTORY_IMPORT_PLACEHOLDER).toContain("ne la réimporte pas");
     for (const tool of ["import_youtube_thumbnail", "generate_sketch", "preview_thumbnail"]) {
       const trimmed = trimToolResultImages(JSON.parse(toolRow("c", tool, "header").content_json)) as Array<{
         content: Array<{ output: { value: unknown[] } }>;
       }>;
       expect(trimmed[1].content[0].output.value).toEqual([
         { type: "text", text: "header" },
-        { type: "text", text: HISTORY_IMAGE_PLACEHOLDER },
+        { type: "text", text: historyImagePlaceholder(tool) },
       ]);
     }
   });
