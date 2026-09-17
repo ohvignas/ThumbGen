@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "cn";
 import AgentAvatar from "./AgentAvatar";
 import UsageSummary from "./UsageSummary";
+import BriefButton from "@/components/brief/BriefButton";
 import { useConversations } from "./useConversations";
 
 const STATUS: Record<ChatStatus, { label: string; dot: string }> = {
@@ -66,6 +67,7 @@ export default function ChatHeader({
       </div>
 
       <div className="flex items-center gap-0.5">
+        <BriefButton conversationId={activeConversationId} />
         <HeaderButton label="Nouvelle conversation" onClick={create}>
           <Plus />
         </HeaderButton>
