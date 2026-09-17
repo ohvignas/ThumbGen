@@ -134,7 +134,7 @@ describe("apply_workflow", () => {
     expect(edges[0].targetHandle).toBe("prompt-in");
   });
 
-  it("computes a diff against existing canvas (deletes b, creates c)", async () => {
+  it("merges into the existing canvas (keeps b, creates c, deletes nothing)", async () => {
     // Seed existing
     getDb().prepare("UPDATE projects SET nodes = ?, edges = ? WHERE id = ?")
       .run(JSON.stringify([
@@ -153,7 +153,9 @@ describe("apply_workflow", () => {
     expect(r.isError).toBeFalsy();
     const text = (r.content[0] as { text: string }).text;
     expect(text).toMatch(/1 created/);
-    expect(text).toMatch(/1 deleted/);
+    expect(text).toMatch(/0 removed \(kept 1 untouched\)/);
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    expect((JSON.parse(row.nodes) as Array<{ id: string }>).map((n) => n.id)).toEqual(["a", "b", "c"]);
   });
 
   it("stores a Personnage faceReference as its angle photos", async () => {
