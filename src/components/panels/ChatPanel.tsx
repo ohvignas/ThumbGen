@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useReactFlow } from "@xyflow/react";
 import type { UIMessage } from "ai";
 import { lastAssistantMessageIsCompleteWithClientToolCalls } from "./chat/should-auto-continue";
 import { useChatStore, type ChatAttachment } from "@/store/chat-store";
@@ -35,6 +36,8 @@ import {
   type LiveTurnStart,
 } from "./chat/chat-view-model";
 import { isBusyStatus } from "./chat/turn-model";
+import { applyCanvasPatchPart } from "./chat/canvas-patch-part";
+import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
 const OPEN_STORAGE_KEY = "thumbgen.chat.open";
@@ -138,6 +141,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   });
 
+  const { fitView } = useReactFlow();
+
   const {
     messages: chatMessages,
     status,
@@ -157,6 +162,20 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // addToolOutput — see the function's doc comment. A reconnection never
     // produces a resolved client request, so it never triggers a send.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls,
+    // Guided interview: a node place_node wrote in the database, shown live and
+    // centered (transient part: never in the messages, never sent back).
+    onData: (dataPart) => {
+      applyCanvasPatchPart(dataPart, {
+        openProjectId: projectId,
+        reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+        // Next frame: React Flow measures the new node first.
+        fitNode: (nodeId, duration) => {
+          window.requestAnimationFrame(() => {
+            void fitView({ nodes: [{ id: nodeId }], padding: 0.4, maxZoom: 1, duration });
+          });
+        },
+      });
+    },
     onError: (turnError) => {
       turnFailedRef.current = true;
       if (isAgentBusyError(turnError)) busyConflictRef.current = true;
@@ -243,8 +262,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     return lastMessage?.role === "assistant"
       ? lastMessage.parts.find(
           (p): p is PendingToolPart =>
-            (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
-            p.state === "input-available",
+            clientToolNameOfPartType(p.type) !== null && "state" in p && p.state === "input-available",
         )
       : undefined;
   }, [chatMessages]);
@@ -255,15 +273,17 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     (toolCallId: string, result: unknown) => {
       // One answer per request: a double submit before the re-render would post the continuation twice.
       if (!pendingToolPart || answeredToolCallIdsRef.current.has(toolCallId)) return;
+      const toolName = clientToolNameOfPartType(pendingToolPart.type);
+      if (!toolName) return;
       answeredToolCallIdsRef.current.add(toolCallId);
-      const toolName = pendingToolPart.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
       setStoppedConversationId(null);
       setOrphanConversationId(null);
       setLiveTurn(liveTurnStart(chatMessages, chatMessages.at(-1)?.id ?? null));
       setTurnStartedAt(Date.now());
       turnFailedRef.current = false;
       resumedConversationIdRef.current = activeConversationId;
-      void addToolOutput({
+      // addToolOutput may answer void or a PromiseLike: always hand back a real Promise.
+      const sending = Promise.resolve(addToolOutput({
         tool: toolName,
         toolCallId,
         output: result,
@@ -274,7 +294,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
             canvas_snapshot: snapshotCanvas(nodes, edges),
           },
         },
-      });
+      }));
+      // Not sent: the request can be answered again (PendingUiAction unlocks its card on the same rejection).
+      sending.catch(() => answeredToolCallIdsRef.current.delete(toolCallId));
+      return sending;
     },
     [addToolOutput, pendingToolPart, chatMessages, activeConversationId, projectId, nodes, edges],
   );
