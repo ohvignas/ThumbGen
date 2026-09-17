@@ -106,6 +106,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const stopFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // « Arrêter » pressed before the server registered the turn: sent again at the first chunk.
   const pendingStopRef = useRef<string | null>(null);
+  // A send (composer or « Et maintenant ») is being started or is running: a second one is ignored.
+  const sendInFlightRef = useRef(false);
 
   // One transport for the panel's life. `reconnectStatus` holds the HTTP status of
   // the last reconnection (200 replays a run, 204 means none runs), written by the
@@ -390,21 +392,29 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   );
 
   const onSend = useCallback(async () => {
-    const conversationId = await ensureConversation();
-    if (!conversationId) return;
-    const text = draft;
-    const attachmentsToSend = attachments;
-    setDraft("");
-    clearAttachments();
-    await runTurn(
-      conversationId,
-      () => sendMessage({ text }, { body: requestBody(conversationId, attachmentsToSend) }),
-      () => {
-        const store = useChatStore.getState();
-        store.setDraft(text);
-        for (const attachment of attachmentsToSend) store.addAttachment(attachment);
-      },
-    );
+    // Two send events before React re-renders (a double click, Enter + click)
+    // would run two turns on one local chat: the second one is dropped here.
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    try {
+      const conversationId = await ensureConversation();
+      if (!conversationId) return;
+      const text = draft;
+      const attachmentsToSend = attachments;
+      setDraft("");
+      clearAttachments();
+      await runTurn(
+        conversationId,
+        () => sendMessage({ text }, { body: requestBody(conversationId, attachmentsToSend) }),
+        () => {
+          const store = useChatStore.getState();
+          store.setDraft(text);
+          for (const attachment of attachmentsToSend) store.addAttachment(attachment);
+        },
+      );
+    } finally {
+      sendInFlightRef.current = false;
+    }
   }, [ensureConversation, draft, attachments, setDraft, clearAttachments, runTurn, sendMessage, requestBody]);
 
   const busy = isBusyStatus(status);
@@ -412,11 +422,16 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   // « Et maintenant » → ask_agent: same path as the composer, without touching the draft.
   const onAskAgent = useCallback(
     (message: string) => {
-      if (busy) return;
+      if (busy || sendInFlightRef.current) return;
+      sendInFlightRef.current = true;
       void (async () => {
-        const conversationId = await ensureConversation();
-        if (!conversationId) return;
-        await runTurn(conversationId, () => sendMessage({ text: message }, { body: requestBody(conversationId) }));
+        try {
+          const conversationId = await ensureConversation();
+          if (!conversationId) return;
+          await runTurn(conversationId, () => sendMessage({ text: message }, { body: requestBody(conversationId) }));
+        } finally {
+          sendInFlightRef.current = false;
+        }
       })();
     },
     [busy, ensureConversation, runTurn, sendMessage, requestBody],

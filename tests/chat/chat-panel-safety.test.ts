@@ -20,4 +20,8 @@ describe("ChatPanel wiring", () => {
     expect(source).toContain("stopAgentRun(");
     expect(source).toContain("orphanUserTurn");
   });
+
+  it("drops a second send started before the first one is under way", () => {
+    expect(source.match(/if \((?:busy \|\| )?sendInFlightRef\.current\) return;/g)).toHaveLength(2);
+  });
 });
