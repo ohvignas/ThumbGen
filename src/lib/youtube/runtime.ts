@@ -25,10 +25,11 @@ export type ChannelRuntime = {
   classificationRequested: boolean;
   /** « Ma chaîne » setting value last resolved, and the channel it points to. */
   myChannel: { input: string; youtubeChannelId: string | null } | null;
+  /** « Ma chaîne » input not to resolve again before `until` (ms since epoch): not found, or YouTube failed. */
+  myChannelBackoff: { input: string; until: number; notFound: boolean } | null;
 };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __thumbgen_channel_runtime: ChannelRuntime | undefined;
 }
 
@@ -43,6 +44,7 @@ function createRuntime(): ChannelRuntime {
     classification: null,
     classificationRequested: false,
     myChannel: null,
+    myChannelBackoff: null,
   };
 }
 

@@ -1,5 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { getDb } from "@/lib/db";
+import { YOUTUBE_FETCH_TIMEOUT_MS, youtubeNetworkError } from "./api";
 
 /**
  * Downloads a video's published thumbnail and copies it into the library
@@ -15,11 +16,22 @@ const PLACEHOLDER_MAX_BYTES = 2000;
 
 export type DownloadedThumbnail = { bytes: Buffer; mime: string };
 
+const VIDEO_ID = /^[\w-]{11}$/;
+
+/** null when the id is malformed or no size exists; throws the « YouTube injoignable » error on network failure or timeout. */
 export async function fetchBestThumbnail(videoId: string): Promise<DownloadedThumbnail | null> {
+  if (!VIDEO_ID.test(videoId)) return null;
   for (const size of THUMB_SIZES) {
-    const res = await fetch(`https://i.ytimg.com/vi/${videoId}/${size}.jpg`);
-    if (!res.ok) continue;
-    const buffer = await res.arrayBuffer();
+    let buffer: ArrayBuffer;
+    try {
+      const res = await fetch(`https://i.ytimg.com/vi/${videoId}/${size}.jpg`, {
+        signal: AbortSignal.timeout(YOUTUBE_FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) continue;
+      buffer = await res.arrayBuffer();
+    } catch {
+      throw youtubeNetworkError();
+    }
     if (buffer.byteLength < PLACEHOLDER_MAX_BYTES) continue;
     return { bytes: Buffer.from(buffer), mime: "image/jpeg" };
   }

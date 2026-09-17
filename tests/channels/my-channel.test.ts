@@ -4,7 +4,7 @@ import { setSetting } from "@/lib/settings";
 import * as store from "@/lib/youtube/channel-store";
 import { waitForChannelJobs } from "@/lib/youtube/jobs";
 import { reconcileMyChannel } from "@/lib/youtube/my-channel";
-import { resetChannelRuntime } from "@/lib/youtube/runtime";
+import { markQuotaBlocked, resetChannelRuntime } from "@/lib/youtube/runtime";
 import { channelIdFor, createFakeYouTube, type FakeYouTube } from "./fake-youtube";
 
 const MINE = channelIdFor("m");
@@ -116,5 +116,44 @@ describe("reconcileMyChannel", () => {
 
     expect(await reconcileMyChannel()).toEqual({ changed: false, addedChannelId: null });
     expect(store.listChannelItems()).toEqual([]);
+  });
+
+  it("does not ask YouTube again for an hour about a channel id that does not exist", async () => {
+    const missing = channelIdFor("z");
+    setSetting("youtubePlaylistId", missing);
+    const t0 = new Date("2026-09-17T10:00:00.000Z");
+
+    expect(await reconcileMyChannel(t0)).toEqual({ changed: false, addedChannelId: null });
+    expect(await reconcileMyChannel(new Date(t0.getTime() + 3_000))).toEqual({ changed: false, addedChannelId: null });
+    expect(fake.count("channels")).toBe(1);
+
+    await reconcileMyChannel(new Date(t0.getTime() + 61 * 60_000));
+    expect(fake.count("channels")).toBe(2);
+  });
+
+  it("waits 10 minutes before retrying after an error", async () => {
+    setSetting("youtubePlaylistId", "@machaine");
+    fake.setNetworkDown(true);
+    const t0 = new Date("2026-09-17T10:00:00.000Z");
+
+    await reconcileMyChannel(t0);
+    await reconcileMyChannel(new Date(t0.getTime() + 3_000));
+    expect(fake.fetch).toHaveBeenCalledTimes(1);
+
+    fake.setNetworkDown(false);
+    await reconcileMyChannel(new Date(t0.getTime() + 11 * 60_000));
+    await waitForChannelJobs();
+    expect(store.listChannelItems()).toMatchObject([{ youtubeChannelId: MINE, isMine: true }]);
+  });
+
+  it("asks YouTube nothing while the quota is exhausted", async () => {
+    const now = new Date("2026-09-17T10:00:00.000Z");
+    markQuotaBlocked(now);
+    setSetting("youtubePlaylistId", "@machaine");
+
+    expect(await reconcileMyChannel(now)).toEqual({ changed: false, addedChannelId: null });
+    setSetting("youtubePlaylistId", MINE);
+    expect(await reconcileMyChannel(now)).toEqual({ changed: false, addedChannelId: null });
+    expect(fake.fetch).not.toHaveBeenCalled();
   });
 });

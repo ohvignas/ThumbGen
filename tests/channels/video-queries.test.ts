@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/lib/db";
 import * as store from "@/lib/youtube/channel-store";
 import type { ThumbType } from "@/lib/youtube/thumb-types";
-import { DEFAULT_VIDEO_QUERY, type VideoQuery } from "@/lib/youtube/types";
+import { DEFAULT_VIDEO_QUERY, VIDEO_MAX_LIMIT, VIDEO_PAGE_SIZE, type VideoQuery } from "@/lib/youtube/types";
 import { listVideos, typesSummary } from "@/lib/youtube/video-queries";
 
 const NOW = new Date("2026-09-16T12:00:00.000Z");
@@ -100,6 +100,18 @@ describe("listVideos", () => {
     const page = listVideos({ ...DEFAULT_VIDEO_QUERY, sort: "date", offset: 2, limit: 3 }, NOW);
     expect(page.items.map((item) => item.videoId)).toEqual(["o-hit", "m-old-hit", "o-mid"]);
     expect(page).toMatchObject({ total: 8, offset: 2, limit: 3 });
+  });
+
+  it("clamps limit and offset itself, whatever the caller passes", () => {
+    const run = (limit: number, offset: number) => {
+      const { items, limit: usedLimit, offset: usedOffset } = listVideos({ ...DEFAULT_VIDEO_QUERY, sort: "date", limit, offset }, NOW);
+      return { count: items.length, usedLimit, usedOffset };
+    };
+    expect(run(0, -5)).toEqual({ count: 1, usedLimit: 1, usedOffset: 0 });
+    expect(run(-3, 0)).toEqual({ count: 1, usedLimit: 1, usedOffset: 0 });
+    expect(run(50_000, 0)).toEqual({ count: 8, usedLimit: VIDEO_MAX_LIMIT, usedOffset: 0 });
+    expect(run(2.9, 6.7)).toEqual({ count: 2, usedLimit: 2, usedOffset: 6 });
+    expect(run(Number.NaN, Number.NaN)).toEqual({ count: 8, usedLimit: VIDEO_PAGE_SIZE, usedOffset: 0 });
   });
 });
 

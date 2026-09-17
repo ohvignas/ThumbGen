@@ -42,13 +42,21 @@ export class YouTubeApiError extends Error {
   }
 }
 
+/** A request that gets no answer within this delay is treated like a network failure. */
+export const YOUTUBE_FETCH_TIMEOUT_MS = 15_000;
+
+export function youtubeNetworkError(): YouTubeApiError {
+  return new YouTubeApiError(0, "network", "YouTube injoignable");
+}
+
 async function youtubeGet<T>(apiKey: string, resource: string, params: Record<string, string>): Promise<T> {
   const search = new URLSearchParams({ ...params, key: apiKey });
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/${resource}?${search.toString()}`);
+    res = await fetch(`${API_BASE}/${resource}?${search.toString()}`, { signal: AbortSignal.timeout(YOUTUBE_FETCH_TIMEOUT_MS) });
   } catch {
-    throw new YouTubeApiError(0, "network", "YouTube injoignable");
+    // Network failure, DNS, or the timeout (TimeoutError DOMException).
+    throw youtubeNetworkError();
   }
   if (!res.ok) {
     let reason: string | null = null;
@@ -61,7 +69,13 @@ async function youtubeGet<T>(apiKey: string, resource: string, params: Record<st
     }
     throw new YouTubeApiError(res.status, reason, `YouTube a refusé la requête (${res.status}${reason ? ` · ${reason}` : ""})`);
   }
-  return (await res.json()) as T;
+  try {
+    return (await res.json()) as T;
+  } catch (err) {
+    // The timeout also covers reading the body.
+    if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) throw youtubeNetworkError();
+    throw err;
+  }
 }
 
 /** ISO 8601 duration (PT15M33S, P1DT2H, P0D…) to seconds; 0 when unreadable. */

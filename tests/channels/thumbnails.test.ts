@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET as swipeImage } from "@/app/api/swipe-files/image/route";
+import { YouTubeApiError } from "@/lib/youtube/api";
 import { fetchBestThumbnail, getSwipeFileTitle, saveThumbnailToLibrary } from "@/lib/youtube/thumbnails";
 
 afterEach(() => {
@@ -33,6 +34,28 @@ describe("fetchBestThumbnail", () => {
   it("returns null when no size exists", async () => {
     stubThumbnails({});
     expect(await fetchBestThumbnail("abcdefghijk")).toBeNull();
+  });
+});
+
+describe("fetchBestThumbnail guards", () => {
+  it("refuses a malformed video id without any request", async () => {
+    const fetchMock = stubThumbnails({ maxresdefault: 40_000 });
+    for (const videoId of ["", "short", "abcdefghijkl", "../../x/abc", "abc def ghi", "abcdefghij/"]) {
+      expect(await fetchBestThumbnail(videoId)).toBeNull();
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("times out after 15 s and reports YouTube as unreachable", async () => {
+    const timedOut = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => {
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    });
+    vi.stubGlobal("fetch", timedOut);
+
+    const error = await fetchBestThumbnail("abcdefghijk").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(YouTubeApiError);
+    expect(error).toMatchObject({ status: 0, reason: "network", message: "YouTube injoignable" });
+    expect(timedOut.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
   });
 });
 

@@ -1,7 +1,14 @@
 import { getDb } from "@/lib/db";
 import { recentCutoffIso, videoPerformance } from "./performance";
 import { UNCLASSIFIED_FILTER, isThumbType, summarizeTypes, type TypeSummaryRow } from "./thumb-types";
-import type { VideoListItem, VideoListResponse, VideoPeriod, VideoQuery } from "./types";
+import {
+  VIDEO_MAX_LIMIT,
+  VIDEO_PAGE_SIZE,
+  type VideoListItem,
+  type VideoListResponse,
+  type VideoPeriod,
+  type VideoQuery,
+} from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PERIOD_DAYS: Record<Exclude<VideoPeriod, "all">, number> = { "30d": 30, "12m": 365 };
@@ -30,7 +37,19 @@ const ORDER_BY: Record<VideoQuery["sort"], string> = {
   date: "v.published_at DESC",
 };
 
-export function listVideos(query: VideoQuery, now: Date = new Date()): VideoListResponse {
+/** Integer in [min, max]; `fallback` when not a finite number. */
+function clampNumber(value: number, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+export function listVideos(rawQuery: VideoQuery, now: Date = new Date()): VideoListResponse {
+  // The route already parses these; clamping again keeps any other caller from sending LIMIT -1 (no limit).
+  const query: VideoQuery = {
+    ...rawQuery,
+    limit: clampNumber(rawQuery.limit, VIDEO_PAGE_SIZE, 1, VIDEO_MAX_LIMIT),
+    offset: clampNumber(rawQuery.offset, 0, 0, Number.MAX_SAFE_INTEGER),
+  };
   const where: string[] = [];
   const params: Record<string, string | number> = { recentCutoff: recentCutoffIso(now) };
 

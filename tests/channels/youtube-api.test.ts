@@ -139,6 +139,21 @@ describe("resolveChannelInput", () => {
     expect(error.message).toBe("YouTube injoignable");
   });
 
+  it("gives every request a 15 s timeout and turns a timeout into the network error", async () => {
+    const timedOut = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => {
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    });
+    vi.stubGlobal("fetch", timedOut);
+
+    const error = (await fetchChannelDetails(KEY, MINE).catch((err: unknown) => err)) as YouTubeApiError;
+    expect(timedOut).toHaveBeenCalledTimes(1);
+    expect(timedOut.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(error).toBeInstanceOf(YouTubeApiError);
+    expect(error.status).toBe(0);
+    expect(error.reason).toBe("network");
+    expect(error.message).toBe("YouTube injoignable");
+  });
+
   it("guards subscriberCount as a non-negative safe integer", async () => {
     installRaw({
       items: [
