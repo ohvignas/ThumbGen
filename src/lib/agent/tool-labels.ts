@@ -11,6 +11,7 @@ export const TOOL_LABELS: Record<string, string> = {
   get_canvas_state: "Lit le canvas",
   view_canvas_images: "Regarde les images du canvas",
   apply_workflow: "Construit le workflow",
+  place_node: "Pose un nœud sur le canvas",
   generate_sketch: "Dessine le croquis",
   extract_youtube_script: "Lit la transcription YouTube",
   search_youtube: "Cherche sur YouTube",

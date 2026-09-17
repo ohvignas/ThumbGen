@@ -11,6 +11,30 @@ import { appendResultId } from "@/lib/agent/finish-turn";
 import "@/lib/agent/tools/all";
 
 /**
+ * What the MODEL sees back from a ThumbGen ToolResult. Registry failures
+ * ({ isError: true }) become an error-text output: a "content" output would
+ * drop isError once persisted, and the reopened chat would show the failed
+ * step as ✓ (and a failed visual as a result). Images become `file` parts
+ * whose `data` is the tagged FileData object (see toAiSdkTool below).
+ * Shared with per-request tools built outside the registry (place_node).
+ */
+export function toolResultToModelOutput(output: unknown) {
+  const result = output as ToolResult;
+  if (result.isError === true) {
+    const text = result.content.flatMap((c: ToolContent) => (c.type === "text" ? [c.text] : [])).join("\n");
+    return { type: "error-text" as const, value: text || "Erreur" };
+  }
+  return {
+    type: "content" as const,
+    value: result.content.map((c: ToolContent) =>
+      c.type === "text"
+        ? { type: "text" as const, text: c.text }
+        : { type: "file" as const, mediaType: c.mimeType, data: { type: "data" as const, data: c.data } },
+    ),
+  };
+}
+
+/**
  * Wraps one registered ThumbGen tool as an AI SDK tool() definition. Calls
  * straight into the existing ToolDefinition.handler — no MCP round-trip.
  * The registry (src/lib/agent/tools/index.ts) is untouched; this only
@@ -52,24 +76,7 @@ function toAiSdkTool(name: string): Tool {
     // surfacing to the client as a generic SSE `{"type":"error"}` with no
     // indication this was the cause — see task-14-report.md's Bug 2
     // write-up for the full trace.
-    toModelOutput: ({ output }: any) => {
-      const result = output as ToolResult;
-      // Registry failures ({ isError: true }) become an error-text output: a
-      // "content" output would drop isError once persisted, and the reopened
-      // chat would show the failed step as ✓ (and a failed visual as a result).
-      if (result.isError === true) {
-        const text = result.content.flatMap((c: ToolContent) => (c.type === "text" ? [c.text] : [])).join("\n");
-        return { type: "error-text" as const, value: text || "Erreur" };
-      }
-      return {
-        type: "content" as const,
-        value: result.content.map((c: ToolContent) =>
-          c.type === "text"
-            ? { type: "text" as const, text: c.text }
-            : { type: "file" as const, mediaType: c.mimeType, data: { type: "data" as const, data: c.data } },
-        ),
-      } as any;
-    },
+    toModelOutput: ({ output }: { output: unknown }) => toolResultToModelOutput(output),
   }) as Tool;
 }
 
