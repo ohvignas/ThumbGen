@@ -7,6 +7,7 @@ import "./list-swipe-files";
 import "./list-projects";
 import "./list-past-generations";
 import "./get-canvas-state";
+import "./view-canvas-images";
 import "./apply-workflow";
 import "./generate-sketch";
 import "./extract-youtube-script";

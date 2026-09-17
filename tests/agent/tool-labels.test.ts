@@ -16,6 +16,7 @@ describe("tool labels", () => {
 
   it("say what the agent is doing", () => {
     expect(toolLabel("get_canvas_state")).toBe("Lit le canvas");
+    expect(toolLabel("view_canvas_images")).toBe("Regarde les images du canvas");
     expect(toolLabel("search_youtube")).toBe("Cherche sur YouTube");
     expect(toolLabel("generate_sketch")).toBe("Dessine le croquis");
     expect(toolLabel("apply_workflow")).toBe("Construit le workflow");
