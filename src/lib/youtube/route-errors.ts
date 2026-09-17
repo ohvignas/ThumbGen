@@ -1,0 +1,21 @@
+import { NextResponse } from "next/server";
+import { YouTubeApiError } from "./api";
+import { MISSING_YOUTUBE_KEY_ERROR } from "./types";
+
+export function missingYouTubeKeyResponse(): NextResponse {
+  return NextResponse.json({ error: MISSING_YOUTUBE_KEY_ERROR }, { status: 400 });
+}
+
+/** YouTube failures as short French messages; never includes the API key. */
+export function youtubeErrorResponse(err: unknown): NextResponse {
+  if (err instanceof YouTubeApiError) {
+    if (err.isQuota) return NextResponse.json({ error: "Quota YouTube atteint — réessaie demain" }, { status: 429 });
+    if (err.status === 0) return NextResponse.json({ error: "YouTube injoignable, réessaie" }, { status: 502 });
+    if (err.status === 400 || err.status === 403) {
+      return NextResponse.json({ error: "YouTube a refusé la clé — vérifie-la dans Réglages → Connexions" }, { status: 502 });
+    }
+    return NextResponse.json({ error: "YouTube ne répond pas correctement, réessaie" }, { status: 502 });
+  }
+  console.error("[channels] unexpected error", err);
+  return NextResponse.json({ error: "Erreur inattendue" }, { status: 500 });
+}
