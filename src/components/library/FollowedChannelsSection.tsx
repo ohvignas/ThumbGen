@@ -8,10 +8,12 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { VideoListItem } from "@/lib/youtube/types";
 import ChannelBar from "./followed-channels/ChannelBar";
 import ClassificationNotice from "./followed-channels/ClassificationNotice";
 import FollowChannelDialog from "./followed-channels/FollowChannelDialog";
 import TypesSummary from "./followed-channels/TypesSummary";
+import UseAsReferenceDialog from "./followed-channels/UseAsReferenceDialog";
 import { useFollowedChannels } from "./followed-channels/useFollowedChannels";
 import VideoGrid from "./followed-channels/VideoGrid";
 
@@ -21,6 +23,7 @@ const GOOGLE_KEY_HELP = "https://console.cloud.google.com/apis/credentials";
 export default function FollowedChannelsSection() {
   const { data, error, reload, version } = useFollowedChannels();
   const [followOpen, setFollowOpen] = useState(false);
+  const [referenceVideo, setReferenceVideo] = useState<VideoListItem | null>(null);
 
   return (
     <section aria-labelledby="followed-channels-title" className="grid gap-4">
@@ -63,13 +66,16 @@ export default function FollowedChannelsSection() {
           ) : (
             <>
               <TypesSummary channels={data.channels} version={version} />
-              <VideoGrid channels={data.channels} version={version} />
+              <VideoGrid channels={data.channels} version={version} onUse={setReferenceVideo} />
             </>
           )}
         </>
       )}
 
       <FollowChannelDialog open={followOpen} onOpenChange={setFollowOpen} onFollowed={() => void reload()} />
+      {referenceVideo && (
+        <UseAsReferenceDialog key={referenceVideo.videoId} video={referenceVideo} onClose={() => setReferenceVideo(null)} />
+      )}
     </section>
   );
 }

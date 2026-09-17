@@ -6,6 +6,7 @@ import {
   BackgroundVariant,
   Panel,
   useReactFlow,
+  useStoreApi,
   type NodeMouseHandler,
   type OnConnectEnd,
 } from "@xyflow/react";
@@ -35,6 +36,8 @@ import { useAutoLayout } from "@/hooks/useAutoLayout";
 import { useCanvasShortcuts } from "@/hooks/useCanvasShortcuts";
 import { nodeMenuItems, paneMenuItems } from "@/lib/canvas/context-menus";
 import { isEditableTarget } from "@/lib/canvas/shortcuts";
+import { readPendingReference, referenceNodeData } from "@/lib/canvas/pending-reference";
+import { viewportCenterPosition } from "@/lib/canvas/placement";
 
 const nodeTypes = {
   faceReference: FaceReferenceNode,
@@ -66,20 +69,46 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     onNodesChange,
     onEdgesChange,
     onConnect,
+    addNode,
     removeNode,
     duplicateNode,
     setAllSelected,
     openNodePicker,
     loadProject,
+    selectOnly,
     saving,
     currentProjectId,
   } = useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
+  const flowStore = useStoreApi();
   const router = useRouter();
   const generatorDefaults = useGeneratorDefaults();
   const autoLayout = useAutoLayout();
   useCanvasShortcuts({ onAutoLayout: autoLayout });
   const [menu, setMenu] = useState<CanvasMenu | null>(null);
+
+  // « Ouvrir dans une miniature… » from the library: /m/<id>?reference=<swipeFileId>.
+  // Runs once the project is loaded, so the node goes through addNode (one undo
+  // step, normal autosave that the sync poll recognises as our own save).
+  const addPendingReference = useCallback(
+    async (id: string) => {
+      const swipeFileId = readPendingReference(window.location.search);
+      if (!swipeFileId) return;
+      window.history.replaceState(null, "", `/m/${encodeURIComponent(id)}`);
+      try {
+        const res = await fetch("/api/swipe-files", { cache: "no-store" });
+        const files = (res.ok ? await res.json() : []) as Array<{ filename: string; title: string }>;
+        const file = files.find((entry) => entry.filename === swipeFileId);
+        if (!file) return;
+        const { width, height, transform } = flowStore.getState();
+        const nodeId = addNode("swipeFile", viewportCenterPosition({ width, height }, transform), referenceNodeData(file.filename, file.title));
+        selectOnly([nodeId]);
+      } catch {
+        // The library image could not be looked up: open the miniature unchanged.
+      }
+    },
+    [addNode, flowStore, selectOnly],
+  );
 
   // A projectId from the route wins: /m/<id> is a direct link to one
   // miniature, so it also becomes the "current" project everything else
@@ -100,7 +129,9 @@ function CanvasInner({ projectId }: { projectId?: string }) {
             router.replace("/miniatures");
             return;
           }
-          loadProject(projectId);
+          loadProject(projectId).then(() => {
+            if (!cancelled) void addPendingReference(projectId);
+          });
           fetch("/api/settings", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -116,7 +147,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
       .then((r) => r.json())
       .then((s) => loadProject(s.currentProjectId || "default"))
       .catch(() => loadProject());
-  }, [loadProject, projectId, router]);
+  }, [loadProject, projectId, router, addPendingReference]);
 
   // Poll for external mutations (agent / MCP client) and refresh the canvas
   useCanvasSync(currentProjectId);

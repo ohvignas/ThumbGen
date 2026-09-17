@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ExternalLink, MoreHorizontal } from "lucide-react";
+import { ExternalLink, ImagePlus, MoreHorizontal } from "lucide-react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,9 +22,10 @@ import { PERFORMANCE_BADGE_CLASSES, formatPublishedDate, formatViews, performanc
 type Props = {
   video: VideoListItem;
   onTypeChanged: (videoId: string, thumbType: ThumbType) => void;
+  onUse: (video: VideoListItem) => void;
 };
 
-export default function VideoCard({ video, onTypeChanged }: Props) {
+export default function VideoCard({ video, onTypeChanged, onUse }: Props) {
   const badge = performanceBadge(video.performance);
   const watchUrl = youtubeWatchUrl(video.videoId);
 
@@ -66,6 +67,10 @@ export default function VideoCard({ video, onTypeChanged }: Props) {
                 <DropdownMenuItem onClick={() => window.open(watchUrl, "_blank", "noopener,noreferrer")}>
                   <ExternalLink />
                   Voir sur YouTube
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onUse(video)}>
+                  <ImagePlus />
+                  Utiliser comme référence
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             </DropdownMenuContent>

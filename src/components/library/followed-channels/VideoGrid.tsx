@@ -29,6 +29,7 @@ import {
   VIDEO_PERIODS,
   VIDEO_SORTS,
   type ChannelListItem,
+  type VideoListItem,
   type VideoListResponse,
   type VideoPeriod,
   type VideoSort,
@@ -48,9 +49,9 @@ const TYPE_OPTIONS: Array<{ id: ThumbTypeFilter; label: string }> = [
 ];
 const GRID = "grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4";
 
-type Props = { channels: ChannelListItem[]; version: string };
+type Props = { channels: ChannelListItem[]; version: string; onUse: (video: VideoListItem) => void };
 
-export default function VideoGrid({ channels, version }: Props) {
+export default function VideoGrid({ channels, version, onUse }: Props) {
   const [filters, setFilters] = useState<Filters>({ sort: "score", types: [], channelId: null, period: "all" });
   const [pages, setPages] = useState(1);
   const [result, setResult] = useState<VideoListResponse | null>(null);
@@ -202,7 +203,7 @@ export default function VideoGrid({ channels, version }: Props) {
       ) : (
         <div className={GRID}>
           {result.items.map((video) => (
-            <VideoCard key={video.videoId} video={video} onTypeChanged={onTypeChanged} />
+            <VideoCard key={video.videoId} video={video} onTypeChanged={onTypeChanged} onUse={onUse} />
           ))}
         </div>
       )}
