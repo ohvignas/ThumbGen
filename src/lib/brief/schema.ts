@@ -208,28 +208,33 @@ export const commonSchema = z.object({
   model: z.enum(BRIEF_MODELS).optional(),
 });
 
-export const usageSchema = z.object({ research: count, competitorSearches: count, analyses: count, sketches: count });
+// Every counter, collection and object of the brief has a default: a brief stored
+// before a field existed still validates (no migration).
+const counter = count.default(0);
+export const usageSchema = z.object({ research: counter, competitorSearches: counter, analyses: counter, sketches: counter });
 
 export const thumbnailBriefSchema = z
   .object({
-    step: z.number().int().min(1).max(BRIEF_TOTAL_STEPS),
-    video: z.object({
-      subject: max(300).optional(),
-      workingTitle: max(120).optional(),
-      script: max(8000).optional(),
-      promise: max(90).optional(),
-      audience: max(120).optional(),
-    }),
+    step: z.number().int().min(1).max(BRIEF_TOTAL_STEPS).default(1),
+    video: z
+      .object({
+        subject: max(300).optional(),
+        workingTitle: max(120).optional(),
+        script: max(8000).optional(),
+        promise: max(90).optional(),
+        audience: max(120).optional(),
+      })
+      .default(() => ({})),
     research: researchSchema.optional(),
-    logoCandidates: z.array(logoCandidateSchema).max(36),
-    logos: z.array(logoSchema).max(3, "3 logos maximum"),
+    logoCandidates: z.array(logoCandidateSchema).max(36).default(() => []),
+    logos: z.array(logoSchema).max(3, "3 logos maximum").default(() => []),
     competition: competitionSchema.optional(),
-    references: z.array(referenceSchema).max(3, "3 références maximum"),
+    references: z.array(referenceSchema).max(3, "3 références maximum").default(() => []),
     abStrategy: z.enum(AB_STRATEGIES).optional(),
     abVariable: z.enum(AB_VARIABLES).optional(),
-    common: commonSchema,
-    variants: z.array(variantSchema).max(3, "3 variantes maximum"),
-    usage: usageSchema,
+    common: commonSchema.default(() => ({ textMode: "rendered" as const })),
+    variants: z.array(variantSchema).max(3, "3 variantes maximum").default(() => []),
+    usage: usageSchema.default(() => ({ research: 0, competitorSearches: 0, analyses: 0, sketches: 0 })),
   })
   .superRefine((brief, ctx) => {
     const seen = new Set<string>();
@@ -265,4 +270,47 @@ export type BriefIssue = { path: string; message: string };
 
 export function briefIssues(error: z.ZodError): BriefIssue[] {
   return error.issues.map((issue) => ({ path: issue.path.map(String).join("."), message: issue.message }));
+}
+
+type Path = ReadonlyArray<PropertyKey>;
+
+/** Removes the value at `path` (object key or array element); false when there is nothing there. */
+function dropAt(root: unknown, path: Path): boolean {
+  let parent: unknown = root;
+  for (const segment of path.slice(0, -1)) {
+    if (!parent || typeof parent !== "object") return false;
+    parent = (parent as Record<PropertyKey, unknown>)[segment];
+  }
+  const last = path[path.length - 1];
+  if (Array.isArray(parent) && typeof last === "number" && last < parent.length) {
+    parent.splice(last, 1);
+    return true;
+  }
+  if (parent && typeof parent === "object" && !Array.isArray(parent) && Object.hasOwn(parent, last)) {
+    delete (parent as Record<PropertyKey, unknown>)[last];
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A stored brief that no longer validates (older rules, a manual edit) is
+ * repaired instead of blocking every update: each rule it breaks drops the
+ * field concerned, or its container when that field is required. Returns the
+ * valid brief and what was dropped. Pure.
+ */
+export function repairBrief(raw: unknown): { brief: ThumbnailBrief; dropped: string[] } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { brief: emptyBrief(), dropped: ["(fiche illisible)"] };
+  const candidate: unknown = structuredClone(raw);
+  const dropped: string[] = [];
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const parsed = thumbnailBriefSchema.safeParse(candidate);
+    if (parsed.success) return { brief: parsed.data, dropped };
+    const issue = parsed.error.issues[0];
+    const path = [...issue.path];
+    while (path.length > 0 && !dropAt(candidate, path)) path.pop();
+    if (path.length === 0) break;
+    dropped.push(`${path.map(String).join(".")} (${issue.message})`);
+  }
+  return { brief: emptyBrief(), dropped: [...dropped, "(fiche réinitialisée)"] };
 }

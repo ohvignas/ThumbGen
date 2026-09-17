@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
 import { markAttached, markDetached } from "@/lib/agent/tools/_helpers/image-source";
 import { applyBriefUpdate, type BriefUpdateInput } from "./merge";
-import { emptyBrief, thumbnailBriefSchema, type BriefIssue, type BriefUsage, type ThumbnailBrief } from "./schema";
+import { emptyBrief, repairBrief, thumbnailBriefSchema, type BriefIssue, type BriefUsage, type ThumbnailBrief } from "./schema";
 
 /**
  * Thumbnail briefs in the database (chantier F3): one row per conversation.
@@ -23,9 +23,11 @@ function readData(json: string): ThumbnailBrief {
   }
   const parsed = thumbnailBriefSchema.safeParse(raw);
   if (parsed.success) return parsed.data;
-  // Never lose a brief over a schema change: keep what can be read.
-  console.error("[brief] a stored brief does not match the schema:", parsed.error.issues.slice(0, 3));
-  return { ...emptyBrief(), ...(raw && typeof raw === "object" ? (raw as Partial<ThumbnailBrief>) : {}) };
+  // Never block a conversation over a stored brief that breaks today's rules:
+  // drop what breaks them (the next write stores the repaired brief).
+  const { brief, dropped } = repairBrief(raw);
+  console.warn("[brief] a stored brief did not validate, dropped:", dropped);
+  return brief;
 }
 
 export function getBrief(conversationId: string): StoredBrief | null {

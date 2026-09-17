@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { v4 as uuid } from "uuid";
 import { getDb } from "@/lib/db";
 import { AGENT_TABLES_DDL } from "@/lib/agent/migrations";
@@ -112,5 +112,21 @@ describe("brief store", () => {
     releaseBriefUsage(conversationId, "sketches");
     releaseBriefUsage(conversationId, "sketches");
     expect(getBrief(conversationId)!.brief.usage.sketches).toBe(0);
+  });
+
+  it("reads and updates an older or broken stored brief instead of blocking every update", () => {
+    const conversationId = uuid();
+    const broken = { step: 5, usage: { sketches: 2 }, variants: [{ key: "A", ...pkg({ thumbnailText: "a b c d e f" }) }] };
+    getDb()
+      .prepare("INSERT INTO thumbnail_briefs (conversation_id, project_id, data, updated_at) VALUES (?, 'proj-repair', ?, ?)")
+      .run(conversationId, JSON.stringify(broken), new Date().toISOString());
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stored = getBrief(conversationId)!;
+    expect(stored.brief.usage).toEqual({ research: 0, competitorSearches: 0, analyses: 0, sketches: 2 });
+    expect(stored.brief.step).toBe(5);
+    const updated = updateBrief(conversationId, "proj-repair", input({ step: 6 }));
+    warn.mockRestore();
+    expect(updated.ok).toBe(true);
+    expect(getBrief(conversationId)!.brief.step).toBe(6);
   });
 });

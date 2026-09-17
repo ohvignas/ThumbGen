@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compositionSchema, emptyBrief, thumbnailBriefSchema, thumbnailTextIssue, variantSchema } from "@/lib/brief/schema";
+import { compositionSchema, emptyBrief, repairBrief, thumbnailBriefSchema, thumbnailTextIssue, variantSchema } from "@/lib/brief/schema";
 import { card, pkg } from "./fixtures";
 
 const messages = (result: { success: boolean; error?: { issues: Array<{ message: string }> } }) =>
@@ -88,5 +88,47 @@ describe("thumbnail brief schema", () => {
     expect(thumbnailBriefSchema.safeParse({ ...emptyBrief(), logos: [{ name: "X", source: "https://x" }] }).success).toBe(false);
     const variants = ["A", "B", "C", "A"].map((key) => ({ key, ...pkg() }));
     expect(thumbnailBriefSchema.safeParse({ ...emptyBrief(), variants }).success).toBe(false);
+  });
+
+  it("defaults the counters and the collections, so an older stored brief still validates", () => {
+    const parsed = thumbnailBriefSchema.parse({ step: 3, usage: { research: 1 } });
+    expect(parsed).toMatchObject({
+      step: 3,
+      video: {},
+      logoCandidates: [],
+      logos: [],
+      references: [],
+      common: { textMode: "rendered" },
+      variants: [],
+      usage: { research: 1, competitorSearches: 0, analyses: 0, sketches: 0 },
+    });
+    expect(thumbnailBriefSchema.parse({})).toEqual(emptyBrief());
+  });
+
+  it("repairs a stored brief by dropping only what breaks the rules", () => {
+    const stored = {
+      step: 6,
+      video: { promise: "Savoir cliquer" },
+      logos: [{ name: "Claude", source: "https://evil.example/logo.svg" }],
+      common: { textMode: "rendered", persona: "none" },
+      variants: [
+        { key: "A", ...pkg(), composition: card() },
+        { key: "B", ...pkg({ thumbnailText: "a b c d e f" }) },
+        { key: "A", ...pkg({ direction: "Doublon" }) },
+      ],
+    };
+    const { brief, dropped } = repairBrief(stored);
+    expect(thumbnailBriefSchema.safeParse(brief).success).toBe(true);
+    expect(brief.step).toBe(6);
+    expect(brief.video.promise).toBe("Savoir cliquer");
+    expect(brief.logos).toEqual([]);
+    // The emotion without a character goes, the card stays; a variant missing a required field goes whole; the duplicate goes.
+    expect(brief.variants.map((variant) => variant.key)).toEqual(["A"]);
+    expect(brief.variants[0].direction).toBe("Promesse chiffrée");
+    expect(brief.variants[0].composition?.focal).toBe("Visage surpris");
+    expect(brief.variants[0].composition?.emotion).toBeUndefined();
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(repairBrief("not an object")).toEqual({ brief: emptyBrief(), dropped: ["(fiche illisible)"] });
+    expect(repairBrief(emptyBrief()).dropped).toEqual([]);
   });
 });
