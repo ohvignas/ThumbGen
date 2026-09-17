@@ -59,6 +59,11 @@ describe("get_canvas_state — richer summaries", () => {
     expect(await byId("sk-agent")).toMatchObject({ source: "library:generated:sk_1", hasImage: true, label: "Sketch IA" });
   });
 
+  it("omits source when the node has no image", () => {
+    expect(summarizeNode("swipeFile", { label: "Vide", kind: "reference" })).toEqual({ label: "Vide", kind: "reference", hasImage: false });
+    expect(summarizeNode("sketch", {})).not.toHaveProperty("source");
+  });
+
   it("reports a generator's generated images and its selected one", async () => {
     expect(await byId("gen")).toEqual({
       model: "gemini-3.1-flash-image",

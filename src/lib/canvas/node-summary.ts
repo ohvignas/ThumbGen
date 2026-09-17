@@ -30,11 +30,12 @@ export function summarizeNode(type: string, data: Record<string, unknown>): Reco
     case "swipeFile":
     case "sketch": {
       const ref = toImageSourceRef(data.image_source) ?? toImageSourceRef(data.imageUrl);
+      const hasImage = Boolean(data.imageBase64 || data.imageUrl || data.image_source);
       return {
         label: data.label,
         kind: data.kind, // swipeFile only; undefined elsewhere is dropped
-        source: ref ? `library:${ref}` : "canvas-upload",
-        hasImage: Boolean(data.imageBase64 || data.imageUrl || data.image_source),
+        ...(hasImage ? { source: ref ? `library:${ref}` : "canvas-upload" } : {}),
+        hasImage,
       };
     }
     case "preview": {

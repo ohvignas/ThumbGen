@@ -12,6 +12,10 @@ export const MAX_IMAGES_PER_GENERATOR = 2;
 /** Longest side of every image sent to the model. */
 export const MAX_IMAGE_SIDE = 768;
 const JPEG_QUALITY = 80;
+/** Refuse to decode images larger than this (width × height), whatever their file size. */
+export const MAX_INPUT_PIXELS = 40_000_000;
+const NOT_SAVED_HINT =
+  "Le canvas n'est peut-être pas encore enregistré (sauvegarde ~2 s après une modification) — réessaie dans un instant.";
 
 const InputSchema = z.object({
   project_id: z.string(),
@@ -90,7 +94,7 @@ async function downscale(bytes: Buffer): Promise<string | null> {
   try {
     // Loaded on first use: the native module stays out of every tool-registry import.
     const { default: sharp } = await import("sharp");
-    const out = await sharp(bytes)
+    const out = await sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS })
       .rotate()
       .resize({ width: MAX_IMAGE_SIDE, height: MAX_IMAGE_SIDE, fit: "inside", withoutEnlargement: true })
       .flatten({ background: "#ffffff" })
@@ -118,38 +122,63 @@ export const viewCanvasImagesTool: ToolDefinition<z.infer<typeof InputSchema>> =
       | { nodes: string }
       | undefined;
     if (!row) {
-      return { isError: true, content: [{ type: "text", text: `Projet introuvable : ${project_id}` }] };
+      return { isError: true, content: [{ type: "text", text: `Projet introuvable : ${project_id}. ${NOT_SAVED_HINT}` }] };
     }
 
-    const canvasNodes = JSON.parse(row.nodes) as CanvasNode[];
+    let canvasNodes: CanvasNode[];
+    try {
+      const parsed: unknown = JSON.parse(row.nodes);
+      if (!Array.isArray(parsed)) throw new Error("nodes is not an array");
+      canvasNodes = parsed.filter(
+        (n): n is CanvasNode => typeof n === "object" && n !== null && typeof (n as CanvasNode).id === "string",
+      );
+    } catch {
+      return { isError: true, content: [{ type: "text", text: `Canvas illisible (données corrompues) pour le projet ${project_id}.` }] };
+    }
     const requested = node_ids ? new Set(node_ids) : null;
     const content: ToolContent[] = [];
 
     if (requested) {
       const known = new Set(canvasNodes.map((n) => n.id));
       const missing = [...requested].filter((id) => !known.has(id));
-      if (missing.length > 0) content.push({ type: "text", text: `Nœuds introuvables sur le canvas : ${missing.join(", ")}` });
+      if (missing.length > 0) content.push({ type: "text", text: `Nœuds introuvables sur le canvas : ${missing.join(", ")}. ${NOT_SAVED_HINT}` });
     }
 
     const targets = canvasNodes
       .filter((node) => (requested ? requested.has(node.id) : true))
-      .map((node) => ({ node, values: nodeImageValues(node) }))
-      .filter(({ values }) => requested !== null || values.length > 0);
+      .map((node) => {
+        try {
+          return { node, values: nodeImageValues(node) };
+        } catch {
+          return { node, values: [] as string[], broken: true };
+        }
+      })
+      .filter((target) => requested !== null || target.values.length > 0 || "broken" in target);
 
     let shown = 0;
     const skipped: string[] = [];
     for (const { node, values } of targets) {
       const remaining = MAX_IMAGES_PER_CALL - shown;
       if (remaining <= 0) {
-        if (values.length > 0) skipped.push(node.id);
+        skipped.push(node.id);
         continue;
       }
       const ready: Array<{ data: string; ref: string | null }> = [];
+      let tried = 0;
       for (const value of values) {
         if (ready.length >= remaining) break;
-        const image = await readImage(value);
-        const data = image ? await downscale(image.bytes) : null;
-        if (data) ready.push({ data, ref: toImageSourceRef(value) });
+        tried++;
+        try {
+          const image = await readImage(value);
+          const data = image ? await downscale(image.bytes) : null;
+          if (data) ready.push({ data, ref: toImageSourceRef(value) });
+        } catch {
+          // One unreadable image never fails the whole call.
+        }
+      }
+      if (tried < values.length && ready.length > 0) {
+        const left = values.length - ready.length;
+        skipped.push(`${node.id} (${left} image${left > 1 ? "s" : ""} sur ${values.length})`);
       }
       if (ready.length === 0) {
         content.push({ type: "text", text: `${nodeTitle(node)} — pas d'image lisible` });
@@ -166,7 +195,7 @@ export const viewCanvasImagesTool: ToolDefinition<z.infer<typeof InputSchema>> =
     if (skipped.length > 0) {
       content.push({
         type: "text",
-        text: `Limite de ${MAX_IMAGES_PER_CALL} images atteinte — nœuds non montrés : ${skipped.join(", ")}. Rappelle view_canvas_images avec node_ids pour les voir.`,
+        text: `Limite de ${MAX_IMAGES_PER_CALL} images atteinte — non affichés : ${skipped.join(", ")}. Rappelle view_canvas_images avec node_ids pour les voir.`,
       });
     }
     if (content.length === 0) content.push({ type: "text", text: "Aucune image sur le canvas." });

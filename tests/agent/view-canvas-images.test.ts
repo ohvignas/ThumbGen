@@ -137,7 +137,11 @@ describe("view_canvas_images", () => {
     const r = await viewCanvasImagesTool.handler({ project_id: projectId, node_ids: ["prompt", "nope"] });
     expect(images(r)).toHaveLength(0);
     expect(texts(r)).toContain("node prompt (prompt) — pas d'image lisible");
-    expect(texts(r).join("\n")).toContain("nope");
+    const missing = texts(r).find((t) => t.includes("nope"))!;
+    expect(missing).toMatch(/introuvable/);
+    // The canvas autosaves ~2s after a change: suggest trying again.
+    expect(missing).toMatch(/pas encore enregistré/);
+    expect(missing).toMatch(/réessaie/);
   });
 
   it("returns at most 8 images per call and names the nodes left out", async () => {
@@ -154,6 +158,34 @@ describe("view_canvas_images", () => {
     expect(last).toContain("s8");
     expect(last).toContain("s10");
     expect(last).toContain("node_ids");
+    expect(last).toContain("non affichés");
+  });
+
+  it("lists a generator cut by the cap and a requested node left out", async () => {
+    const tiny = (await png(20, 20, [0, 0, 255])).toString("base64");
+    const sketches = Array.from({ length: 7 }, (_, i) => ({
+      id: `t${i}`,
+      type: "sketch",
+      data: { imageBase64: `data:image/png;base64,${tiny}` },
+    }));
+    insertProject("test-view-canvas-images-cap", [
+      ...sketches,
+      {
+        id: "gen2",
+        type: "generator",
+        data: { generatedImages: ["/api/generated-images/image?id=vci-g1", "/api/generated-images/image?id=vci-g2"] },
+      },
+      { id: "p9", type: "prompt", data: { prompt: "x" } },
+    ]);
+    const r = await viewCanvasImagesTool.handler({
+      project_id: "test-view-canvas-images-cap",
+      node_ids: [...sketches.map((s) => s.id), "gen2", "p9"],
+    });
+    expect(images(r)).toHaveLength(8);
+    const last = texts(r).at(-1)!;
+    expect(last).toContain("non affichés");
+    expect(last).toContain("gen2 (1 image sur 2)");
+    expect(last).toContain("p9");
   });
 
   it("errors on an unknown project", async () => {
