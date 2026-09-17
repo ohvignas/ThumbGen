@@ -36,4 +36,10 @@ describe("ChatPanel wiring", () => {
     expect(source).toContain('if (status !== "error" || !busyConflictRef.current || sendInFlightRef.current) return;');
     expect(source.match(/recoverFromBusyConflict\(conversationId\)/g)).toHaveLength(2);
   });
+
+  it("leaves the unmount abort to useChat and skips the runs refresh of the first render", () => {
+    // useChat already stops its chat on unmount (local stream only).
+    expect(source).not.toMatch(/return \(\) => \{\s*void stop\(\);\s*\};/);
+    expect(source).toContain("if (refreshedStatusRef.current === status) return;");
+  });
 });

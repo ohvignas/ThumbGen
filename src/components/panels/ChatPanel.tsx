@@ -236,13 +236,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   }, [activeConversationId, setMessages, clearError, stop, resumeConversation]);
 
-  // Leaving the page only drops the local stream; the server keeps running the turn.
-  useEffect(() => {
-    return () => {
-      void stop();
-    };
-  }, [stop]);
-
   // The last message's pending client-tool part, only in state "input-available"
   // (offering a resolution in any other state is unsafe — see chantier E).
   const pendingToolPart = useMemo<PendingToolPart | undefined>(() => {
@@ -312,7 +305,12 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   }, [status, setMessages]);
 
   // Indicators elsewhere follow this page's turns without waiting for the next poll.
+  // Not on the first render: the provider and useConversations already fetch then.
+  // (Leaving the page: useChat itself aborts the local stream on unmount; the server turn goes on.)
+  const refreshedStatusRef = useRef(status);
   useEffect(() => {
+    if (refreshedStatusRef.current === status) return;
+    refreshedStatusRef.current = status;
     if (status === "streaming" || status === "ready" || status === "error") void refreshRuns();
   }, [status, refreshRuns]);
 
