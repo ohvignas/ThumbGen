@@ -31,7 +31,7 @@ import {
   HISTORY_IMPORT_PLACEHOLDER,
   HISTORY_SKETCH_PLACEHOLDER,
   historyImagePlaceholder,
-  lastResolvedAskUserRowIndex,
+  holdsResolvedAskUser,
   trimToolResultImages,
 } from "@/lib/agent/v2/history-images";
 // Imported up front: loading the route (and the tool registry) can take seconds on a busy machine.
@@ -124,7 +124,7 @@ describe("trimToolResultImages", () => {
     }
   });
 
-  it("finds the last row holding an answered ask_user", () => {
+  it("recognizes a parsed row holding an answered ask_user", () => {
     const answer = (id: string) => ({
       id: "",
       conversation_id: "c1",
@@ -134,9 +134,12 @@ describe("trimToolResultImages", () => {
       ]),
       interrupted: 0,
     });
-    expect(lastResolvedAskUserRowIndex([userRow("x"), toolRow("v", "view_canvas_images", "h")])).toBe(-1);
-    expect(lastResolvedAskUserRowIndex([userRow("x"), answer("q1"), toolRow("v", "view_canvas_images", "h"), answer("q2"), userRow("y")])).toBe(3);
-    expect(lastResolvedAskUserRowIndex([{ content_json: "not json" }])).toBe(-1);
+    const holds = (row: { content_json: string }) => holdsResolvedAskUser(JSON.parse(row.content_json));
+    expect(holds(userRow("x"))).toBe(false);
+    expect(holds(toolRow("v", "view_canvas_images", "h"))).toBe(false);
+    expect(holds(answer("q1"))).toBe(true);
+    expect(holdsResolvedAskUser("not an array")).toBe(false);
+    expect(holdsResolvedAskUser(null)).toBe(false);
   });
 });
 

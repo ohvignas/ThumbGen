@@ -59,27 +59,19 @@ export function trimToolResultImages(messages: unknown[]): unknown[] {
 }
 
 /**
- * Index of the last stored row holding an ask_user tool-result — an answered
- * question of the thumbnail journey — or -1. During a journey every answer is
+ * Whether one stored row (already parsed) holds an ask_user tool-result — an
+ * answered question of the thumbnail journey. During a journey every answer is
  * a continuation of the same turn: images before it are no longer re-sent.
  */
-export function lastResolvedAskUserRowIndex(rows: ReadonlyArray<{ content_json: string }>): number {
-  for (let index = rows.length - 1; index >= 0; index--) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rows[index].content_json);
-    } catch {
-      continue;
-    }
-    if (!Array.isArray(parsed)) continue;
-    const answered = parsed.some(
+export function holdsResolvedAskUser(messages: unknown): boolean {
+  return (
+    Array.isArray(messages) &&
+    messages.some(
       (message) =>
         isObject(message) &&
         message.role === "tool" &&
         Array.isArray(message.content) &&
         message.content.some((part) => isObject(part) && part.type === "tool-result" && part.toolName === "ask_user"),
-    );
-    if (answered) return index;
-  }
-  return -1;
+    )
+  );
 }

@@ -11,7 +11,7 @@ import {
 import { FAKE_AGENT_WARNING, resolveAgentLanguageModel } from "./agent-model";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
-import { lastResolvedAskUserRowIndex, trimToolResultImages } from "./history-images";
+import { holdsResolvedAskUser, trimToolResultImages } from "./history-images";
 import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
 import { PLACE_NODE_TOOL_NAME, buildPlaceNodeTool } from "./place-node-tool";
@@ -448,12 +448,19 @@ export async function postV2(req: NextRequest): Promise<Response> {
       isNewUserTurn && retriedUserRowIndex === -1
         ? priorRows.length
         : Math.max(0, priorRows.map((row) => row.role).lastIndexOf("user"));
+    // Each row is parsed once: the checks, the journey's trim start and the model input share it.
+    const parsedRows: unknown[] = priorRows.map((row) => JSON.parse(row.content_json));
     // During a thumbnail journey every answer is a continuation: images older
     // than the last answered question are not re-sent either.
-    const currentTurnStart = brief ? Math.max(turnStart, lastResolvedAskUserRowIndex(priorRows)) : turnStart;
+    let lastAnsweredRow = -1;
+    if (brief) {
+      for (let index = parsedRows.length - 1; index >= 0 && lastAnsweredRow === -1; index--) {
+        if (holdsResolvedAskUser(parsedRows[index])) lastAnsweredRow = index;
+      }
+    }
+    const currentTurnStart = Math.max(turnStart, lastAnsweredRow);
     priorMessages = [];
-    for (const [rowIndex, row] of priorRows.entries()) {
-      const parsed: unknown = JSON.parse(row.content_json);
+    for (const [rowIndex, parsed] of parsedRows.entries()) {
       const looksMigrated =
         Array.isArray(parsed) &&
         parsed.every((m) => typeof m === "object" && m !== null && "role" in (m as Record<string, unknown>));
