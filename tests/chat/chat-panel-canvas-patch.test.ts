@@ -95,7 +95,8 @@ describe("ChatPanel — interview wiring", () => {
 
   it("detects and answers every client tool, ask_user included, once", () => {
     expect(source).not.toContain('"tool-request_user_image" || p.type === "tool-request_user_sketch"');
-    expect(source.match(/clientToolNameOfPartType\(/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(source).toContain("pendingClientToolPart(chatMessages, { stoppedLive })");
+    expect(source).toContain("clientToolNameOfPartType(pendingToolPart.type)");
     expect(source).toContain("answeredToolCallIdsRef.current.has(toolCallId)) return;");
     expect(source).toContain("return sending;");
   });

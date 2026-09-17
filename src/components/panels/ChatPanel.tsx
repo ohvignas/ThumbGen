@@ -31,6 +31,8 @@ import {
 import {
   conversationChangeEffects,
   liveTurnStart,
+  pendingClientToolPart,
+  shouldReloadAfterFailedAnswer,
   retryableUserText,
   shouldRefetchAfterResume,
   type LiveTurnStart,
@@ -119,6 +121,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const sendInFlightRef = useRef(false);
   // Client requests (request_user_image / request_user_sketch) already answered from this panel.
   const answeredToolCallIdsRef = useRef(new Set<string>());
+  // The client request whose answer is being sent (its continuation may still fail).
+  const answeringRef = useRef<{ conversationId: string | null; toolCallId: string } | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
 
   // One transport for the panel's life. `reconnectStatus` holds the HTTP status of
   // the last reconnection (200 replays a run, 204 means none runs), written by the
@@ -255,17 +260,14 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   }, [activeConversationId, setMessages, clearError, stop, resumeConversation]);
 
-  // The last message's pending client-tool part, only in state "input-available"
-  // (offering a resolution in any other state is unsafe — see chantier E).
-  const pendingToolPart = useMemo<PendingToolPart | undefined>(() => {
-    const lastMessage = chatMessages.at(-1);
-    return lastMessage?.role === "assistant"
-      ? lastMessage.parts.find(
-          (p): p is PendingToolPart =>
-            clientToolNameOfPartType(p.type) !== null && "state" in p && p.state === "input-available",
-        )
-      : undefined;
-  }, [chatMessages]);
+  // The last message's pending client request, only in state "input-available"
+  // (offering a resolution in any other state is unsafe — see chantier E), and
+  // never for a stopped or interrupted turn.
+  const stoppedLive = stoppedConversationId !== null && stoppedConversationId === activeConversationId;
+  const pendingToolPart = useMemo<PendingToolPart | undefined>(
+    () => pendingClientToolPart(chatMessages, { stoppedLive }),
+    [chatMessages, stoppedLive],
+  );
 
   // Resolves PendingUiAction's pending part via useChat's addToolOutput. `options.body`
   // is required: the auto-continuation goes through the same transport as a send.
@@ -276,6 +278,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       const toolName = clientToolNameOfPartType(pendingToolPart.type);
       if (!toolName) return;
       answeredToolCallIdsRef.current.add(toolCallId);
+      answeringRef.current = { conversationId: activeConversationId, toolCallId };
       setStoppedConversationId(null);
       setOrphanConversationId(null);
       setLiveTurn(liveTurnStart(chatMessages, chatMessages.at(-1)?.id ?? null));
@@ -297,10 +300,40 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       }));
       // Not sent: the request can be answered again (PendingUiAction unlocks its card on the same rejection).
       sending.catch(() => answeredToolCallIdsRef.current.delete(toolCallId));
+      // The card is gone: typing goes back to the composer.
+      composerInputRef.current?.focus();
       return sending;
     },
     [addToolOutput, pendingToolPart, chatMessages, activeConversationId, projectId, nodes, edges],
   );
+
+  // The continuation of an answer failed (not a 409: see recoverFromBusyConflict).
+  // Reloading the stored history offers the request again if the server never
+  // recorded the answer; otherwise it shows the stored turn. Declared before the
+  // 409 effect, which resets busyConflictRef.
+  const answerStatusRef = useRef(status);
+  useEffect(() => {
+    const previousStatus = answerStatusRef.current;
+    answerStatusRef.current = status;
+    const answering = answeringRef.current;
+    if (answering && isBusyStatus(previousStatus) && !isBusyStatus(status)) answeringRef.current = null;
+    if (
+      !answering ||
+      answering.conversationId === null ||
+      !shouldReloadAfterFailedAnswer({ previousStatus, status, answering: true, busyConflict: busyConflictRef.current })
+    ) {
+      return;
+    }
+    const conversationId = answering.conversationId;
+    answeredToolCallIdsRef.current.delete(answering.toolCallId);
+    void (async () => {
+      const messages = await loadHistoryMessages(conversationId);
+      if (!isActiveConversation(conversationId)) return;
+      clearError();
+      setMessages(messages);
+      toast({ title: "La réponse n'a pas pu être envoyée" });
+    })();
+  }, [status, clearError, setMessages]);
 
   // Canonical refetch for a resumed turn (client-request answer or reconnection),
   // once its status goes from busy back to ready (runTurn does it for the others).
@@ -584,7 +617,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
           </CardContent>
 
           <CardFooter className="p-0">
-            <Composer onSend={onSend} status={status} onStop={onStop} />
+            <Composer onSend={onSend} status={status} onStop={onStop} inputRef={composerInputRef} />
           </CardFooter>
         </Card>
       </aside>
