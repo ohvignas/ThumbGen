@@ -81,19 +81,59 @@ describe("BriefPanel — editing", () => {
     expect(container.textContent).toContain("Nombre entier attendu");
   });
 
-  it("saves on Enter even while the field is composing (macOS inline predictions)", async () => {
+  it("saves on Enter while composing, after the composition commits (macOS inline predictions)", async () => {
     const onPatch = vi.fn(async () => ({ ok: true as const, warnings: [] }));
     await act(async () => root.render(<BriefPanel brief={brief()} onPatch={onPatch} />));
     const input = container.querySelector<HTMLInputElement>("#brief-video-audience")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    await act(async () => {
-      setter.call(input, "Débutants");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    const type = async (value: string) =>
+      act(async () => {
+        setter.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    await type("Débutant");
     await act(async () => {
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true }));
     });
+    await type("Débutants");
+    // An immediate send would have used the uncommitted text.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onPatch).toHaveBeenCalledTimes(1);
     expect(onPatch).toHaveBeenCalledWith({ video: { audience: "Débutants" } });
+  });
+
+  it("saves right away on Enter when nothing is composing", async () => {
+    const onPatch = vi.fn(async () => ({ ok: true as const, warnings: [] }));
+    await act(async () => root.render(<BriefPanel brief={brief()} onPatch={onPatch} />));
+    const requestSubmit = vi.spyOn(HTMLFormElement.prototype, "requestSubmit");
+    await typeAndEnter("brief-video-audience", "Débutants");
+    expect(onPatch).toHaveBeenCalledWith({ video: { audience: "Débutants" } });
+    expect(requestSubmit).not.toHaveBeenCalled();
+    requestSubmit.mockRestore();
+  });
+
+  it("does not re-send a refused draft on blur, and announces the refusal", async () => {
+    const onPatch = vi.fn(async () => ({
+      ok: false as const,
+      error: "Fiche invalide",
+      issues: [{ path: "variants.A.thumbnailText", message: "Texte de miniature : 4 mots maximum" }],
+    }));
+    await act(async () => root.render(<BriefPanel brief={brief()} onPatch={onPatch} />));
+    await typeAndEnter("brief-A-thumbnailText", "a b c d e");
+    const input = container.querySelector<HTMLInputElement>("#brief-A-thumbnailText")!;
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    expect(onPatch).toHaveBeenCalledTimes(1);
+    const alert = container.querySelector("#brief-A-thumbnailText-error")!;
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toBe("Texte de miniature : 4 mots maximum");
+    expect(input.getAttribute("aria-describedby")).toBe("brief-A-thumbnailText-error");
+    // A new draft is sent again.
+    await typeAndEnter("brief-A-thumbnailText", "a b c d");
+    expect(onPatch).toHaveBeenCalledTimes(2);
   });
 
   it("does not save an unchanged field", async () => {

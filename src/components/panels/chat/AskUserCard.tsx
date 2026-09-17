@@ -245,13 +245,18 @@ export default function AskUserCard({
         <Input
           value={other}
           onChange={(event) => setOther(event.target.value)}
-          // Explicit Enter, like the composer: the form's implicit submission is skipped while the field
-          // is composing, and macOS inline predictive text keeps it composing (Enter arrived with
-          // isComposing: true and did nothing, while « Envoyer » worked).
+          // Explicit Enter: the form's implicit submission is skipped while the field is composing, and
+          // macOS inline predictive text keeps it composing (Enter did nothing while « Envoyer » worked).
+          // While composing, submit on the next tick so the committed text lands first.
           onKeyDown={(event) => {
             if (event.key !== "Enter") return;
             event.preventDefault();
-            sendOther();
+            if (!event.nativeEvent.isComposing) {
+              sendOther();
+              return;
+            }
+            const form = event.currentTarget.form;
+            setTimeout(() => form?.requestSubmit(), 0);
           }}
           maxLength={ASK_USER_LIMITS.other}
           placeholder={freeQuestion ? "Ta réponse…" : "Autre…"}

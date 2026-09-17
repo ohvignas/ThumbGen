@@ -1,19 +1,24 @@
 "use client";
-import { useState, type KeyboardEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { SaveField } from "./brief-view";
 
-function FieldError({ message }: { message: string | null }) {
+function FieldError({ id, message }: { id: string; message: string | null }) {
   if (!message) return null;
-  return <p className="text-xs text-destructive">{message}</p>;
+  return (
+    <p id={id} role="alert" className="text-xs text-destructive">
+      {message}
+    </p>
+  );
 }
 
 /**
  * A text field of the « Fiche »: saved on Enter or blur when it changed; the
- * refusal shows under it. The caller keys it by its value, so a new brief
+ * refusal shows under it (announced, and linked to the field). A refused draft
+ * is not sent again on blur. The caller keys it by its value, so a new brief
  * resets the draft.
  */
 export function BriefTextField({
@@ -33,7 +38,9 @@ export function BriefTextField({
 }) {
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState<string | null>(null);
+  const [refusedDraft, setRefusedDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const errorId = `${id}-error`;
 
   const save = async () => {
     if (saving || draft.trim() === value.trim()) return;
@@ -41,14 +48,33 @@ export function BriefTextField({
     const message = await onSave(draft);
     setSaving(false);
     setError(message);
+    setRefusedDraft(message ? draft : null);
   };
 
-  // Any Enter saves, like the chat composer: macOS inline predictive text keeps fields composing.
+  const onBlur = () => {
+    if (draft === refusedDraft) return;
+    void save();
+  };
+
+  // Enter saves. While composing (macOS inline predictive text), submit on the
+  // next tick so the committed text lands in the draft first.
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
+    if (!event.nativeEvent.isComposing) {
+      void save();
+      return;
+    }
+    const form = event.currentTarget.form;
+    setTimeout(() => form?.requestSubmit(), 0);
+  };
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     void save();
   };
+
+  const described = error ? errorId : undefined;
 
   return (
     <div className="grid gap-1">
@@ -62,23 +88,27 @@ export function BriefTextField({
           maxLength={maxLength}
           rows={2}
           aria-invalid={error ? true : undefined}
+          aria-describedby={described}
           onChange={(event) => setDraft(event.target.value)}
-          onBlur={() => void save()}
+          onBlur={onBlur}
           className="min-h-0 text-sm"
         />
       ) : (
-        <Input
-          id={id}
-          value={draft}
-          maxLength={maxLength}
-          aria-invalid={error ? true : undefined}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={onKeyDown}
-          onBlur={() => void save()}
-          className="h-8 text-sm"
-        />
+        <form onSubmit={onSubmit} className="contents">
+          <Input
+            id={id}
+            value={draft}
+            maxLength={maxLength}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={described}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={onKeyDown}
+            onBlur={onBlur}
+            className="h-8 text-sm"
+          />
+        </form>
       )}
-      <FieldError message={error} />
+      <FieldError id={errorId} message={error} />
     </div>
   );
 }
@@ -98,6 +128,7 @@ export function BriefSelectField({
   onSave: SaveField;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const errorId = `${id}-error`;
   return (
     <div className="grid gap-1">
       <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
@@ -110,7 +141,7 @@ export function BriefSelectField({
           if (typeof next === "string" && next !== value) void onSave(next).then(setError);
         }}
       >
-        <SelectTrigger id={id} size="sm" className="w-full" aria-invalid={error ? true : undefined}>
+        <SelectTrigger id={id} size="sm" className="w-full" aria-invalid={error ? true : undefined} aria-describedby={error ? errorId : undefined}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -121,7 +152,7 @@ export function BriefSelectField({
           ))}
         </SelectContent>
       </Select>
-      <FieldError message={error} />
+      <FieldError id={errorId} message={error} />
     </div>
   );
 }

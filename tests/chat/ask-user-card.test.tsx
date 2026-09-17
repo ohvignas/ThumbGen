@@ -217,27 +217,37 @@ describe("AskUserCard — text options and footer", () => {
     expect(onAnswer).toHaveBeenCalledWith({ other: "Mon lien" });
   });
 
-  it("sends « Autre » with Enter", async () => {
+  it("sends « Autre » with Enter, right away when nothing is composing", async () => {
     const onAnswer = await render(angles);
     const input = container.querySelector<HTMLInputElement>("input[placeholder='Autre…']")!;
     await typeInto(input, "Tuto");
+    const requestSubmit = vi.spyOn(HTMLFormElement.prototype, "requestSubmit");
     await act(async () => {
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     });
     expect(onAnswer).toHaveBeenCalledWith({ other: "Tuto" });
+    expect(requestSubmit).not.toHaveBeenCalled();
+    requestSubmit.mockRestore();
   });
 
   // Live report: Enter did nothing in the « Autre » field while « Envoyer » worked. macOS inline predictive
   // text (Chrome/Safari) keeps the field in an IME composition, so the Enter keydown arrives with
-  // isComposing: true — the card ignored it and the browser skipped the form submission. The composer
-  // sends on any Enter; the card now does the same.
-  it("sends « Autre » with Enter even while the field is composing (macOS inline predictions)", async () => {
+  // isComposing: true — the card ignored it and the browser skipped the form submission. Now that Enter
+  // submits the form on the next tick, once the composition has committed its text.
+  it("sends « Autre » with Enter while composing, after the composition commits", async () => {
     const onAnswer = await render(angles);
     const input = container.querySelector<HTMLInputElement>("input[placeholder='Autre…']")!;
-    await typeInto(input, "Tuto");
+    await typeInto(input, "Tut");
     await act(async () => {
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true }));
     });
+    // The Enter that ends the composition lands its text before the deferred submit runs.
+    await typeInto(input, "Tuto");
+    // An immediate send would have used the uncommitted text.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onAnswer).toHaveBeenCalledTimes(1);
     expect(onAnswer).toHaveBeenCalledWith({ other: "Tuto" });
   });
 
