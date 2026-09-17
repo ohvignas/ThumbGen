@@ -25,6 +25,29 @@ const COPY: Record<LibraryPickerKind, { title: string; description: string }> = 
   all: { title: "Choisir dans la bibliothèque", description: "Un personnage, un logo ou une image de ta bibliothèque." },
 };
 
+export const PICK_REFUSED_ERROR = "Cette image ne peut pas être utilisée ici.";
+
+/**
+ * Runs a caller's onPick: null when accepted (the dialog closes), else the error
+ * to show in the dialog (onPick returned false or threw).
+ */
+export function runLibraryPick(onPick: (item: LibraryPick) => boolean | void, item: LibraryPick): string | null {
+  try {
+    return onPick(item) === false ? PICK_REFUSED_ERROR : null;
+  } catch (error) {
+    return error instanceof Error && error.message ? error.message : PICK_REFUSED_ERROR;
+  }
+}
+
+export function PickErrorLine({ error }: { error: string | null }) {
+  if (!error) return null;
+  return (
+    <p role="alert" className="text-sm text-destructive">
+      {error}
+    </p>
+  );
+}
+
 function KindTabs({
   tabs,
   query,
@@ -53,7 +76,7 @@ function KindTabs({
       }}
       className="min-h-0 flex-1"
     >
-      <TabsList variant={nested ? "line" : "default"}>
+      <TabsList variant={nested ? "line" : "default"} aria-label="Source">
         {tabs.map((tab) => (
           <TabsTrigger key={tab.id} value={tab.id}>
             {tab.label}
@@ -108,7 +131,7 @@ export function LibraryPickerTabs({
       }}
       className="min-h-0 flex-1"
     >
-      <TabsList className="w-full">
+      <TabsList className="w-full" aria-label="Type d'élément">
         {KINDS.map((entry) => (
           <TabsTrigger key={entry.kind} value={entry.kind}>
             {entry.label}
@@ -143,24 +166,28 @@ export default function LibraryPickerDialog({
   kind: LibraryPickerKind;
   /** « all » only: the kind shown first (e.g. the agent asked for a logo). */
   initialKind?: LibraryKind;
-  onPick: (item: LibraryPick) => void;
+  /** Return false (or throw an Error with a message) to refuse the pick: the dialog stays open and shows why. */
+  onPick: (item: LibraryPick) => boolean | void;
 }) {
   const [query, setQuery] = useState("");
   const [tabByKind, setTabByKind] = useState<Partial<Record<LibraryKind, string>>>({});
   const [activeKind, setActiveKind] = useState<LibraryKind | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
 
   const changeOpen = (next: boolean) => {
     if (!next) {
       setQuery("");
       setTabByKind({});
       setActiveKind(null);
+      setPickError(null);
     }
     onOpenChange(next);
   };
 
   const pick = (item: LibraryPick) => {
-    onPick(item);
-    changeOpen(false);
+    const error = runLibraryPick(onPick, item);
+    setPickError(error);
+    if (error === null) changeOpen(false);
   };
 
   return (
@@ -186,6 +213,7 @@ export default function LibraryPickerDialog({
             <DialogDescription>{COPY[kind].description}</DialogDescription>
           </DialogHeader>
           <LibrarySearchInput value={query} onChange={setQuery} placeholder="Rechercher" label="Rechercher dans la bibliothèque" />
+          <PickErrorLine error={pickError} />
           <LibraryPickerTabs
             kind={kind}
             query={query}

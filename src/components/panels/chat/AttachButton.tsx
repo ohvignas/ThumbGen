@@ -91,8 +91,8 @@ export default function AttachButton() {
         onChange={(e) => onFiles(e.target.files)}
       />
       {error && (
-        <span className="text-[10px] self-center text-destructive" title={error}>
-          ⚠
+        <span role="alert" className="line-clamp-2 min-w-0 max-w-[16rem] self-center text-xs text-destructive">
+          {error}
         </span>
       )}
       <LibraryPickerDialog
@@ -101,10 +101,8 @@ export default function AttachButton() {
         kind="all"
         onPick={(pick) => {
           const attachment = libraryPickToAttachment(pick);
-          if (!attachment) {
-            setError(UNKNOWN_LIBRARY_IMAGE_ERROR);
-            return;
-          }
+          // Refused: the dialog stays open and shows the error itself.
+          if (!attachment) throw new Error(UNKNOWN_LIBRARY_IMAGE_ERROR);
           setError(null);
           addAttachment(attachment);
         }}
