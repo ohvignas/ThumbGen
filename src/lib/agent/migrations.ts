@@ -59,4 +59,15 @@ export const AGENT_TABLES_DDL = `
     reason      TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_canvas_snapshots_project ON canvas_snapshots(project_id, created_at);
+
+  -- Thumbnail brief (« fiche », chantier F3): one per conversation, the
+  -- decisions of the thumbnail journey as JSON (src/lib/brief/schema.ts).
+  -- updated_at is ISO. Deleted with its conversation or its project.
+  CREATE TABLE IF NOT EXISTS thumbnail_briefs (
+    conversation_id TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL,
+    data            TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_thumbnail_briefs_project ON thumbnail_briefs(project_id);
 `;

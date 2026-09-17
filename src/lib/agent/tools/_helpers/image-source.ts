@@ -120,3 +120,12 @@ export function markAttached(source: string): void {
   }
   // stored:* and data: don't need attaching (permanent / inline)
 }
+
+/**
+ * The opposite of markAttached, for a generated sketch nothing uses any more
+ * (e.g. replaced in a thumbnail brief): the GC may delete it after its TTL.
+ */
+export function markDetached(source: string): void {
+  if (!source.startsWith("generated:")) return;
+  getDb().prepare("UPDATE generated_sketches SET attached = 0 WHERE id = ?").run(source.slice("generated:".length));
+}
