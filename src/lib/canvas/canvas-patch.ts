@@ -41,7 +41,9 @@ export type CanvasPatch = {
 
 /** An ISO string or a legacy SQLite `datetime('now')` value (UTC, no zone), in ms; null when unparsable. */
 function parseTimestamp(value: string): number | null {
+  // Strict formats only: Date.parse is lenient with arbitrary strings ("SELF-SAVE-1" parses in V8).
   const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? `${value.replace(" ", "T")}Z` : value;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.test(iso)) return null;
   const ms = Date.parse(iso);
   return Number.isNaN(ms) ? null : ms;
 }
@@ -62,6 +64,19 @@ export function compareUpdatedAt(a: string, b: string): number {
 export function nextUpdatedAt(previous: string | null | undefined, nowMs: number = Date.now()): string {
   const previousMs = previous ? parseTimestamp(previous) : null;
   return new Date(previousMs !== null && previousMs >= nowMs ? previousMs + 1 : nowMs).toISOString();
+}
+
+/**
+ * True when `value` is the same state as `known` or an older one: both parse
+ * as instants and `value` is not after `known`, or they are equal strings.
+ * Unparsable values never count as older.
+ */
+export function isKnownUpdatedAt(value: string, known: string | null): boolean {
+  if (known === null) return false;
+  if (value === known) return true;
+  const tv = parseTimestamp(value);
+  const tk = parseTimestamp(known);
+  return tv !== null && tk !== null && tv <= tk;
 }
 
 /** The later of two `updated_at` values (either may be null). */

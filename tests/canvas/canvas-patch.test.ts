@@ -69,3 +69,23 @@ describe("nextUpdatedAt", () => {
     expect(nextUpdatedAt("2026-09-17T10:00:05.000Z", now)).toBe("2026-09-17T10:00:05.001Z");
   });
 });
+
+describe("isKnownUpdatedAt", () => {
+  it("knows equal and older instants, never unparsable older-looking strings", async () => {
+    const { isKnownUpdatedAt } = await import("@/lib/canvas/canvas-patch");
+    expect(isKnownUpdatedAt("2026-09-17T10:00:01.000Z", "2026-09-17T10:00:02.000Z")).toBe(true);
+    expect(isKnownUpdatedAt("2026-09-17T10:00:02.000Z", "2026-09-17T10:00:02.000Z")).toBe(true);
+    expect(isKnownUpdatedAt("2026-09-17T10:00:03.000Z", "2026-09-17T10:00:02.000Z")).toBe(false);
+    expect(isKnownUpdatedAt("EXTERNAL", "SELF-SAVE-1")).toBe(false);
+    expect(isKnownUpdatedAt("S1", "S1")).toBe(true);
+    expect(isKnownUpdatedAt("2026-09-17T10:00:00.000Z", null)).toBe(false);
+  });
+});
+
+describe("timestamp parsing is strict", () => {
+  it("never reads a free-form string as a date", async () => {
+    const { isKnownUpdatedAt, compareUpdatedAt } = await import("@/lib/canvas/canvas-patch");
+    expect(isKnownUpdatedAt("EXTERNAL-1", "SELF-SAVE-1")).toBe(false);
+    expect(compareUpdatedAt("SELF-SAVE-2", "SELF-SAVE-1")).toBe(1);
+  });
+});

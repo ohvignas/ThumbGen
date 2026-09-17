@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
-import { compareUpdatedAt } from "@/lib/canvas/canvas-patch";
+import { isKnownUpdatedAt } from "@/lib/canvas/canvas-patch";
 
 const POLL_MS = 2000;
 
@@ -73,8 +73,7 @@ export function createProjectSyncPoller(
           // until the debounced save lands and dirty clears, then reload.
           return;
         }
-        const alreadyKnown = state.knownUpdatedAt !== null && compareUpdatedAt(data.updated_at, state.knownUpdatedAt) <= 0;
-        if (alreadyKnown || state.recentOwnSaveUpdatedAts.includes(data.updated_at)) {
+        if (isKnownUpdatedAt(data.updated_at, state.knownUpdatedAt) || state.recentOwnSaveUpdatedAts.includes(data.updated_at)) {
           // This tick is observing one of the app's own recent autosaves
           // landing (see the doc comment above) — not an external mutation.
           // Re-baseline so it isn't re-detected, but don't reload.
