@@ -83,7 +83,23 @@ describe("generate_sketch", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/images");
     const callBody = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(callBody.aspect_ratio).toBe("16:9");
-    expect(callBody.model).toBe("google/gemini-2.5-flash-image");
+    expect(callBody.model).toBe("google/gemini-3.1-flash-image");
+  });
+
+  it("draws with Gemini 3.1 Flash Image at the same cost", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ b64_json: onePxPng, media_type: "image/png" }] }),
+    });
+    const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
+    const r = await generateSketchTool.handler({ prompt: "model check" });
+    expect(r.isError).toBeFalsy();
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body.model).toBe("google/gemini-3.1-flash-image");
+    const id = (r.content[0] as { text: string }).text.match(/generated:(sk_\w+)/)![1];
+    const row = getDb().prepare("SELECT cost_estimate FROM generated_sketches WHERE id = ?").get(id) as { cost_estimate: number };
+    expect(row.cost_estimate).toBe(0.02);
   });
 
   it("wraps a face/reference image as a tagged input_references object, not a bare string", async () => {

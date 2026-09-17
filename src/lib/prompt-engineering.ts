@@ -31,9 +31,9 @@ A great thumbnail tells a STORY in one frame, with depth — the eye should trav
 
   SUBJECT      — Who, in the FOREGROUND. Specific pose physically realistic. Facial expression decomposed (e.g. "mouth wide open, eyes round, eyebrows raised" not "shocked"). Outfit/context if it matters. The subject is what the viewer sees first.
   SCENE        — What is HAPPENING around the subject. Describe the MIDGROUND (secondary action / context elements 2-4 meters behind the subject — a screen lighting up, a product mid-fall, a comparison element, a reaction to something) AND the BACKGROUND (the location / atmosphere — studio with neon signs, messy desk with monitors, dark void with particle haze, cinematic cityscape blur). Skipping this line gives a flat portrait; including it gives a story.
-  COMPOSITION  — Pick ONE valid framing: extreme close-up | close-up | medium close-up | medium shot | medium full shot | full shot | wide shot. Then position of the subject in the frame (left third / centered / right third) using the rule of thirds. State explicitly that the midground is "behind subject, slightly out of focus" and background is "deep, blurred to bokeh" if you want depth-of-field separation between the 3 planes.
-  OBJECTS      — Each object with relative size as a % of frame + exact position + which plane (foreground / midground / background). Ex: "Claude logo (orange 8-pointed star, 14% frame) center-left, foreground, glowing with soft halo. Shattered Figma logo, 8% frame, midground floor, partially blurred."
-  TEXT         — 2-3 words MAX in the requested language, ALL CAPS, bold sans-serif, color + position + "thick black outline" + size as % frame height. Omit ENTIRELY if no text overlay.
+  COMPOSITION  — Pick ONE valid framing: extreme close-up | close-up | medium close-up | medium shot | medium full shot | full shot | wide shot. Optionally a medium shot with action (the subject doing something with the hero object). Then position of the subject in the frame (left third / centered / right third) using the rule of thirds. State explicitly that the midground is "behind subject, slightly out of focus" and background is "deep, blurred to bokeh" if you want depth-of-field separation between the 3 planes.
+  OBJECTS      — At most 3 elements in total, the hero included. Each object with relative size as a % of frame + exact position + which plane (foreground / midground / background). Ex: "Claude logo (orange 8-pointed star, 14% frame) center-left, foreground, glowing with soft halo."
+  TEXT         — 0 to 4 words (max 20 characters) in the requested language, ALL CAPS, bold sans-serif, color + position + "thick black outline" + size as % frame height. Omit ENTIRELY if no text overlay. When the text is added afterwards (overlay mode), write instead: "leave the <zone> area (<n>% of height) completely empty".
   LIGHTING     — Layered, with explicit direction PER PLANE if depth matters: "warm orange key light on subject from left, cool blue rim light from behind, midground lit by ambient screen glow, background deep navy with single backlight". Pick ONE coherent lighting story; never list 3 random lighting words.
   STYLE        — 2 descriptors MAX. Ex: "photorealistic, cinematic" / "Pixar 3D render" / "fashion magazine cover" / "anime key visual". MORE descriptors = noise.`;
 
@@ -62,28 +62,29 @@ INVALID FRAMING TERMS (the model will pick one randomly):
 // 3. YOUTUBE-SPECIFIC PATTERNS — what makes a thumbnail clickable
 // ─────────────────────────────────────────────────────────────────────────
 
-export const YOUTUBE_THUMBNAIL_PATTERNS = `YOUTUBE-THUMBNAIL-SPECIFIC PATTERNS (proven by 2026 research on Ideogram / Flux / Midjourney for YT):
+export const YOUTUBE_THUMBNAIL_PATTERNS = `YOUTUBE-THUMBNAIL-SPECIFIC PATTERNS:
 
 COLOR PALETTE
-- High saturation + high contrast. Mobile preview is 200×112 px — subtle gradients vanish.
+- High saturation + high contrast. Mobile preview is 168×94 px — subtle gradients vanish.
 - Background should differ STRONGLY from white (YouTube's default UI). Dark backgrounds (deep navy #0F172A, charcoal #1A1A1A, deep purple #2E1065) make warm subjects pop.
 - 1 dominant color (60% of frame) + 1 accent (30%) + 1 highlight (10%). Don't list 5 colors — pick a hierarchy.
 - Branded thumbnails: anchor on the brand's signature color (Claude orange ~#D97706, Figma's purple ~#7C3AED, etc.).
 
 COMPOSITION
+- One focal subject, identifiable in under a second at 168×94 px, and at most 3 elements, the hero included.
 - Subject occupies 50-70% of frame for face-forward thumbnails — leave room for context but the face must dominate.
 - Rule of thirds: subject on left third or right third with text/objects on the opposite third creates tension. Centered subject = static, less click.
 - Empty/blurred space behind the subject so text is legible without competing with the background.
 
 TEXT
-- Legible at 200×112 px. That means 2-3 BIG words, never a sentence.
+- 0 to 4 words (max 20 characters), legible at 168×94 px. It complements the video title — never repeats it — and never promises what the video doesn't deliver.
 - Bold sans-serif (Anton, Bebas Neue, Inter Black, Bangers feel). Italic / thin / serif = unreadable small.
 - Thick black outline (3-5% of text height). Yellow/white/red are the highest-contrast colors against dark backgrounds.
 - Position: top-left or bottom-right (avoid YouTube's UI overlays in bottom-right).
 
 FACE PRESENCE
-- A clear emotion-bearing face on a thumbnail historically lifts CTR ~30%. Use it unless the YouTube patterns you observed for THIS specific topic are dominantly faceless.
-- Match the face emotion to the angle: shock for "this changes everything", concentration for "I tested it", mystery for "the hidden feature".`;
+- Use a face when the competing thumbnails of this topic show faces working; go faceless when they are dominantly faceless.
+- Match the emotion to the promise: surprise for "this changes everything", concentration for "I tested it", curiosity for "the hidden feature". Keep it moderate by default (mouth closed); an open-mouth shock only when the angle really calls for it.`;
 
 // ─────────────────────────────────────────────────────────────────────────
 // 4. MODEL SELECTION — pick deliberately based on what dominates
@@ -91,29 +92,27 @@ FACE PRESENCE
 
 export const MODEL_SELECTION_GUIDE = `MODEL SELECTION — pick deliberately based on the dominant element of your design:
 
-  nano-banana (Gemini 3.1 Flash Image)  — DEFAULT. Best face fidelity, fast, cheap (~$0.02/image), excellent at natural composition. Use unless another model fits better.
-  ideogram (Ideogram v3)                  — Champion at TEXT rendering (90-95% accuracy on text overlays). Use when readable banners, slogans, brand wordmarks are the focal point.
-  openai (GPT Image 2)                    — Clean tech / product compositions, sharp UI mockups, software screenshots integrated naturally with subjects.
-  grok (Grok Imagine)                     — Rare. Use only for raw stylized art / weird-vibe content where realism isn't the goal.
+  nano-banana (Gemini 3.1 Flash Image) — DEFAULT. Fast, cheap (~$0.02/image), natural composition, good with faces. Use unless another model fits better.
+  openai (GPT Image)                    — Most reliable TEXT rendering (accents, more than 2 words) and clean tech / product / UI compositions.
+  seedream (Seedream 4.5)               — Best identity consistency when a Personnage is connected and the thumbnail has no text.
 
-If your TEXT line is doing heavy lifting (banner takes 20%+ of frame, several words must be readable) → ideogram.
-Otherwise → nano-banana. Don't agonize.`;
+Thumbnail text with accents or more than 2 words → openai. A Personnage and no text → seedream. Otherwise → nano-banana. Don't agonize.`;
 
 // ─────────────────────────────────────────────────────────────────────────
 // 5. WORKED EXAMPLE — show the format in action
 // ─────────────────────────────────────────────────────────────────────────
 
-export const WORKED_EXAMPLE = `WORKED EXAMPLE — angle "CHOC" for a "Claude Design vs Figma" video, with the user's face reference connected:
+export const WORKED_EXAMPLE = `WORKED EXAMPLE — package "Claude remplace Figma ?" (title "J'ai remplacé Figma par Claude pendant 7 jours", thumbnail text "FIGMA ?"), with the user's Personnage connected. 3 elements: the man (hero), the Claude logo, the cracked Figma logo.
 
-Young man in foreground, mouth wide open in extreme shock, eyes round, eyebrows fully raised, both hands halfway up beside head, head slightly tilted right.
-Behind him in the midground, a giant Figma logo is shattering into glowing orange shards mid-air; further back, a moody design studio with neon-purple wall accents fades into bokeh.
-Medium close-up, subject occupies right 55% of frame; midground 2 meters behind subject, slightly out of focus; background deeply blurred to soft bokeh for depth separation.
-Claude logo (orange 8-pointed star, 14% frame) center-left foreground, glowing with soft halo. Shattered Figma logo (16% frame total spread) midground behind subject's right shoulder, motion-blurred shards trailing right. Tablet screen on midground desk lower-left (8% frame) showing a glowing Claude UI.
-"FIGMA EST MORT ?" in white bold sans-serif, top-left corner, thick black outline, 6% frame height.
-Warm orange key light on subject from the left, cool blue rim light from behind, midground lit by ambient orange glow from the shards, background deep navy with a single magenta backlight.
+Young man in the right third of the foreground, eyebrows raised and eyes slightly narrowed in skeptical surprise, mouth closed, head tilted slightly left, holding a tablet toward the camera.
+Behind him in the midground, a large Figma logo cracks into a few glowing orange shards; further back, a dark design studio with purple wall accents fades into bokeh.
+Medium shot with action, subject occupies the right 45% of the frame; midground slightly out of focus; background blurred to soft bokeh.
+Claude logo (orange 8-pointed star, 14% frame) glowing on the tablet screen, foreground. Cracked Figma logo (18% frame) midground left, behind the subject's shoulder.
+"FIGMA ?" in white bold sans-serif, top-left corner, thick black outline, 18% frame height.
+Warm orange key light on the subject from the left, cool blue rim light from behind, background deep navy.
 photorealistic, cinematic.
 
-Notice: 7 sentences, no labels, every section one tight sentence, three distinct depth planes (foreground subject + midground action + background atmosphere), every object tagged with plane + size + position, lighting layered per plane, style is 2 words. THIS is the bar.`;
+Notice: 7 sentences, no labels, exactly 3 elements (hero included), a moderate emotion with the mouth closed, a 2-word text that complements the title instead of repeating it, lighting layered per plane, style is 2 words. THIS is the bar.`;
 
 // ─────────────────────────────────────────────────────────────────────────
 // 6. NEGATIVE PROMPT SUGGESTIONS — what to ban globally
@@ -155,7 +154,7 @@ ${WORKED_EXAMPLE}
  */
 export function buildEnhanceRubric(language: string): string {
   const lang = langName(language);
-  return `Tu es un ingénieur prompt spécialisé en génération d'images IA pour les miniatures YouTube. Tu corriges et structures les prompts pour qu'ils soient précis, sans contradiction, et optimaux pour les modèles de diffusion (Gemini, Ideogram, GPT Image, Midjourney).
+  return `Tu es un ingénieur prompt spécialisé en génération d'images IA pour les miniatures YouTube. Tu corriges et structures les prompts pour qu'ils soient précis, sans contradiction, et optimaux pour les modèles de diffusion (Gemini, GPT Image, Seedream).
 
 ## TON TRAVAIL
 L'utilisateur te donne une description brute. Tu la transformes en prompt structuré, COHÉRENT et SANS AMBIGUÏTÉ.
@@ -167,7 +166,7 @@ ${ANTI_CONTRADICTION_RULES}
 ${YOUTUBE_THUMBNAIL_PATTERNS}
 
 ## TEXTE OVERLAY
-- Si demandé : 2-3 mots en ${lang}, MAJUSCULES, couleur + position + "thick black outline" + taille en % de l'image.
+- Si demandé : 0 à 4 mots (20 caractères au plus) en ${lang}, MAJUSCULES, complémentaires du titre de la vidéo, couleur + position + "thick black outline" + taille en % de l'image.
 - Si pas demandé : OMETS la ligne TEXT entièrement.
 
 ## FORMAT DE SORTIE
