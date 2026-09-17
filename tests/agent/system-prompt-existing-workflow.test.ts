@@ -9,10 +9,13 @@ function section(): string {
 }
 
 describe("system prompt — existing workflow", () => {
-  it("has an EXISTING WORKFLOW section that takes priority over the brainstorming flow", () => {
+  it("has an EXISTING WORKFLOW section that takes priority only for requests about the existing workflow", () => {
     const text = section();
     expect(text).toMatch(/<canvas_state>/);
     expect(text).toMatch(/priority/i);
+    expect(text).toMatch(/look at, analyse, complete, improve or modify/);
+    expect(text).toMatch(/An angle pick, or any other precise request/);
+    expect(text).not.toMatch(/picking an angle\)/);
     expect(AGENT_SYSTEM_PROMPT.indexOf("EXISTING WORKFLOW")).toBeLessThan(AGENT_SYSTEM_PROMPT.indexOf("Mental checklist"));
   });
 
@@ -51,9 +54,18 @@ describe("system prompt — existing workflow", () => {
     expect(section()).toMatch(/restored/);
   });
 
-  it("no longer pushes to rebuild the whole workflow on a non-empty canvas", () => {
+  it("builds right away on an angle pick, sending only new or changed nodes on a non-empty canvas", () => {
+    const line = AGENT_SYSTEM_PROMPT.split("\n").find((l) => l.includes("IMMEDIATELY call apply_workflow"));
+    expect(line).toBeDefined();
+    expect(line).toContain("precise request");
+    expect(line).toContain("COMPLETE blueprint");
+    expect(line).toMatch(/only the new or changed nodes/);
+    expect(line).toMatch(/remove nothing unless the user explicitly asked/);
+    expect(line).not.toMatch(/follow EXISTING WORKFLOW instead/);
+  });
+
+  it("no longer asks to rebuild the whole workflow when iterating", () => {
     expect(AGENT_SYSTEM_PROMPT).not.toContain("- IMMEDIATELY call apply_workflow with the COMPLETE blueprint (don't ask first):");
-    expect(AGENT_SYSTEM_PROMPT).toMatch(/canvas is empty[^\n]*IMMEDIATELY call apply_workflow with the COMPLETE blueprint/);
     expect(AGENT_SYSTEM_PROMPT).not.toContain("call apply_workflow with a new blueprint that retains existing node IDs you want to keep");
     expect(AGENT_SYSTEM_PROMPT).toMatch(/other nodes are kept automatically/);
   });
