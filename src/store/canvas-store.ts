@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import { v4 as uuid } from "uuid";
 import { migrateCanvas } from "@/lib/canvas/migrate-canvas";
+import { compareUpdatedAt, laterUpdatedAt, type CanvasPatch } from "@/lib/canvas/canvas-patch";
 import {
   edgesToRemoveForVariants,
   normalizeVariants,
@@ -89,6 +90,9 @@ interface CanvasState {
   nodes: AppNode[];
   edges: Edge[];
   loaded: boolean;
+  // True while loadProject's request runs: agent patches applied meanwhile are
+  // replayed over the loaded canvas when newer than it (chantier F2).
+  loading: boolean;
   saving: boolean;
   // True from the moment a local edit happens until it's been persisted —
   // useCanvasSync's poll checks this before reloading from the server, so an
@@ -106,6 +110,11 @@ interface CanvasState {
   // already landed and overwritten a single-value baseline, with the
   // *earlier* save's timestamp — which is still legitimately our own.
   recentOwnSaveUpdatedAts: string[];
+  // The `updated_at` of the server canvas this store's state is based on
+  // (chantier F2): set on load, on a successful save and when an agent patch
+  // is applied. Sent as `baseUpdatedAt` with every save so the server keeps
+  // agent nodes placed after it; a patch not newer than it is ignored.
+  knownUpdatedAt: string | null;
   currentProjectId: string;
   history: Snapshot[];
   historyIndex: number;
@@ -123,6 +132,11 @@ interface CanvasState {
     newNodeIsTarget?: boolean,
   ) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
+  // A node the agent placed on the server (`data-canvas-patch`): created, or
+  // its changed data fields merged, with its new edges, as one history entry.
+  // The database already has it, so this neither marks the canvas dirty nor
+  // saves. Accept patches with shouldApplyCanvasPatch first.
+  applyAgentPatch: (patch: CanvasPatch) => void;
   removeNode: (nodeId: string) => void;
   duplicateNode: (nodeId: string) => string;
   setAllSelected: (selected: boolean) => void;
@@ -180,19 +194,92 @@ const MAX_RECENT_SELF_SAVES = 5;
 
 let historyTimeout: ReturnType<typeof setTimeout> | null = null;
 
+const edgeKey = (edge: { source: string; target: string; targetHandle?: string | null }) =>
+  JSON.stringify([edge.source, edge.target, edge.targetHandle ?? ""]);
+
+/** Patches applied while loadProject runs, replayed over the loaded canvas when newer than it. */
+let patchesDuringLoad: CanvasPatch[] = [];
+/** The project loadProject is loading: only its patches are kept for the replay. */
+let loadingProjectId: string | null = null;
+/** A reload triggered by a patch that followed an unseen server write is running. */
+let resyncing = false;
+const MAX_PATCHES_DURING_LOAD = 30;
+
+/** The canvas with one agent patch applied (nodes and edges). */
+function withAgentPatch(state: Pick<CanvasState, "nodes" | "edges">, patch: CanvasPatch): { nodes: AppNode[]; edges: Edge[] } {
+  const { node } = patch;
+  const local = state.nodes.find((n) => n.id === node.id);
+  let nodes = state.nodes;
+  if (local) {
+    const data: Record<string, unknown> = { ...local.data, ...node.data };
+    for (const key of patch.removedDataKeys) if (!(key in node.data)) delete data[key];
+    nodes = state.nodes.map((n) => (n.id === node.id ? { ...n, data: data as NodeData } : n));
+  } else if (patch.created) {
+    nodes = [...state.nodes, { id: node.id, type: node.type, position: node.position, data: node.data as NodeData }];
+  }
+  // An update of a node deleted here carries only its changed fields: nothing to rebuild it from
+  // (the save that deleted it respects the deletion, or reinjects the whole node).
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges = [
+    ...state.edges,
+    ...newEdges(state.edges, patch.edges).filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
+  ];
+  return { nodes, edges };
+}
+
+/** `added` minus the edges already in `current` (same source, target and targetHandle), deduplicated. */
+function newEdges(current: Edge[], added: Edge[]): Edge[] {
+  const keys = new Set(current.map(edgeKey));
+  return added.filter((edge) => {
+    const key = edgeKey(edge);
+    if (keys.has(key)) return false;
+    keys.add(key);
+    return true;
+  });
+}
+
+function appendHistorySnapshot(get: () => CanvasState, set: (s: Partial<CanvasState>) => void) {
+  const { nodes, edges, history, historyIndex } = get();
+  const newSnapshot: Snapshot = {
+    nodes: JSON.parse(JSON.stringify(nodes)),
+    edges: JSON.parse(JSON.stringify(edges)),
+  };
+  // Discard any forward history after current index
+  const newHistory = [...history.slice(0, historyIndex + 1), newSnapshot].slice(-MAX_HISTORY);
+  set({ history: newHistory, historyIndex: newHistory.length - 1 });
+}
+
 function pushHistory(get: () => CanvasState, set: (s: Partial<CanvasState>) => void) {
   // Debounce history snapshots so rapid changes (e.g. dragging) collapse into one
   if (historyTimeout) clearTimeout(historyTimeout);
   historyTimeout = setTimeout(() => {
-    const { nodes, edges, history, historyIndex } = get();
-    const newSnapshot: Snapshot = {
-      nodes: JSON.parse(JSON.stringify(nodes)),
-      edges: JSON.parse(JSON.stringify(edges)),
-    };
-    // Discard any forward history after current index
-    const newHistory = [...history.slice(0, historyIndex + 1), newSnapshot].slice(-MAX_HISTORY);
-    set({ history: newHistory, historyIndex: newHistory.length - 1 });
+    historyTimeout = null;
+    appendHistorySnapshot(get, set);
   }, 300);
+}
+
+/** Records a pending debounced edit now, so the next change gets an undo step of its own. */
+function flushPendingHistory(get: () => CanvasState, set: (s: Partial<CanvasState>) => void) {
+  if (!historyTimeout) return;
+  clearTimeout(historyTimeout);
+  historyTimeout = null;
+  appendHistorySnapshot(get, set);
+}
+
+/**
+ * A patch followed a server write this canvas never saw (its previousUpdatedAt
+ * is unknown here): save any local edit, then reload the canvas from the
+ * database. One at a time.
+ */
+async function resyncAfterUnseenWrite(get: () => CanvasState, projectId: string) {
+  if (resyncing) return;
+  resyncing = true;
+  try {
+    await get().flushPendingSave();
+    if (get().currentProjectId === projectId) await get().loadProject(projectId);
+  } finally {
+    resyncing = false;
+  }
 }
 
 /**
@@ -209,9 +296,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   nodes: [],
   edges: [],
   loaded: false,
+  loading: false,
   saving: false,
   dirty: false,
   recentOwnSaveUpdatedAts: [],
+  knownUpdatedAt: null,
   currentProjectId: "default",
   history: [],
   historyIndex: -1,
@@ -297,6 +386,33 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }
   },
 
+  applyAgentPatch: (patch) => {
+    const state = get();
+    // While a load runs, the canvas is about to be replaced: keep the patch for
+    // the replay, only when it belongs to the project being loaded.
+    if (state.loading) {
+      if (patch.projectId === loadingProjectId) {
+        patchesDuringLoad = [...patchesDuringLoad, patch].slice(-MAX_PATCHES_DURING_LOAD);
+      }
+      return;
+    }
+    if (!state.loaded || patch.projectId !== state.currentProjectId) return;
+    // In sequence: this canvas knows the state the agent wrote over. Otherwise
+    // another write happened in between (e.g. « Repartir de zéro »): show the
+    // node, keep the older base (saves stay safe) and reload.
+    const inSequence =
+      state.knownUpdatedAt !== null && compareUpdatedAt(state.knownUpdatedAt, patch.previousUpdatedAt) >= 0;
+    // One undo step of its own: a pending user edit is recorded first.
+    flushPendingHistory(get, set);
+    // The poller recognizes this state through knownUpdatedAt (not the own-save list).
+    set({
+      ...withAgentPatch(get(), patch),
+      ...(inSequence ? { knownUpdatedAt: laterUpdatedAt(state.knownUpdatedAt, patch.updatedAt) } : {}),
+    });
+    appendHistorySnapshot(get, set);
+    if (!inSequence) void resyncAfterUnseenWrite(get, patch.projectId);
+  },
+
   removeNode: (nodeId) => {
     set({
       nodes: get().nodes.filter((n) => n.id !== nodeId),
@@ -318,6 +434,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // targeted the original node's id — a copy stuck at "loading" would spin
     // forever with nothing left to update it.
     if (data.genStatus === "loading") delete data.genStatus;
+    // The copy is the user's node, not the agent's: no interview bookkeeping
+    // (a stale save must never treat it as an agent node, place_node never links it).
+    const agentFields = data as Record<string, unknown>;
+    delete agentFields.placedByAgentAt;
+    delete agentFields.agentCreatedAt;
+    delete agentFields.agentLinks;
     const copy: AppNode = {
       id,
       type: source.type,
@@ -434,11 +556,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   canRedo: () => get().historyIndex < get().history.length - 1,
 
   loadProject: async (projectId = "default") => {
+    patchesDuringLoad = [];
+    loadingProjectId = projectId;
+    set({ loading: true });
     try {
       const res = await fetch(`/api/project?id=${projectId}`);
       if (!res.ok) {
         console.warn("Project load returned non-OK status, using fallback");
-        set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+        patchesDuringLoad = [];
+        set({ loaded: true, loading: false, currentProjectId: projectId, knownUpdatedAt: null, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
         return;
       }
       const data = await res.json();
@@ -450,23 +576,35 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         nodes: JSON.parse(JSON.stringify(migrated.nodes)),
         edges: JSON.parse(JSON.stringify(migrated.edges)),
       };
+      const loadedUpdatedAt = typeof data.updatedAt === "string" ? data.updatedAt : null;
+      // Patches that arrived during the request and are newer than what it returned.
+      const replay = patchesDuringLoad.filter(
+        (patch) =>
+          patch.projectId === projectId && (loadedUpdatedAt === null || compareUpdatedAt(patch.updatedAt, loadedUpdatedAt) > 0),
+      );
+      patchesDuringLoad = [];
       set({
         nodes: migrated.nodes,
         edges: migrated.edges,
         loaded: true,
+        loading: false,
         currentProjectId: projectId,
+        knownUpdatedAt: loadedUpdatedAt,
         history: [initialSnapshot],
         historyIndex: 0,
       });
+      for (const patch of replay) get().applyAgentPatch(patch);
       if (migrated.changed) debouncedSave(get(), set);
     } catch (err) {
       console.error("Failed to load project:", err);
-      set({ loaded: true, currentProjectId: projectId, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
+      patchesDuringLoad = [];
+      set({ loaded: true, loading: false, currentProjectId: projectId, knownUpdatedAt: null, history: [{ nodes: [], edges: [] }], historyIndex: 0 });
     }
   },
 
   saveProject: async (projectId?: string) => {
-    const { nodes, edges, saving, currentProjectId } = get();
+    // knownUpdatedAt is read with the nodes: the base of exactly this payload.
+    const { nodes, edges, saving, currentProjectId, knownUpdatedAt } = get();
     const pid = projectId || currentProjectId;
     if (saving) return;
 
@@ -503,7 +641,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const res = await fetch("/api/project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: pid, nodes: cleanNodes, edges }),
+        body: JSON.stringify({
+          projectId: pid,
+          nodes: cleanNodes,
+          edges,
+          ...(knownUpdatedAt !== null ? { baseUpdatedAt: knownUpdatedAt } : {}),
+        }),
       });
       // Record the updated_at the server assigned to this save, if it sent
       // one back, so useCanvasSync's poll can recognize its own autosave
@@ -512,9 +655,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       // recentOwnSaveUpdatedAts doc comment on CanvasState for why a single
       // value isn't enough.
       let updatedAt: string | undefined;
+      let reinjected: AppNode[] = [];
+      let reinjectedEdges: Edge[] = [];
+      let refreshed: AppNode[] = [];
+      let removed: string[] = [];
       try {
-        const body = (await res.json()) as { updatedAt?: string };
-        updatedAt = body.updatedAt;
+        const body = (await res.json()) as {
+          updatedAt?: string;
+          reinjected?: unknown;
+          reinjectedEdges?: unknown;
+          refreshed?: unknown;
+          removed?: unknown;
+        };
+        if (Array.isArray(body.removed)) removed = body.removed.filter((id): id is string => typeof id === "string");
+        updatedAt = typeof body.updatedAt === "string" ? body.updatedAt : undefined;
+        if (Array.isArray(body.reinjected)) reinjected = body.reinjected as AppNode[];
+        if (Array.isArray(body.reinjectedEdges)) reinjectedEdges = body.reinjectedEdges as Edge[];
+        if (Array.isArray(body.refreshed)) refreshed = body.refreshed as AppNode[];
       } catch {
         // Response wasn't JSON (e.g. a proxy error page) — keep the
         // previously recorded self-save timestamps rather than fail the save.
@@ -524,11 +681,46 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       // clears dirty even though the edit never actually persisted. That's
       // pre-existing behavior, unrelated to the undo/sync-poll fix this
       // function is otherwise annotated for; left as-is here.
+      //
+      // What the server kept from the agent joins the local canvas without a
+      // history entry — unless another project was opened while the save ran:
+      // agent nodes this payload lacked (reinjected, with their edges when
+      // both ends are here) and the agent's newer data of payload nodes
+      // (refreshed; the local position is kept).
+      const beforeRemoval = get();
+      const sameProject = beforeRemoval.currentProjectId === pid;
+      // Agent nodes the server had removed (not written): drop them here too, with their edges.
+      const removedIds = new Set(sameProject ? removed : []);
+      const current =
+        removedIds.size > 0
+          ? {
+              ...beforeRemoval,
+              nodes: beforeRemoval.nodes.filter((node) => !removedIds.has(node.id)),
+              edges: beforeRemoval.edges.filter((edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target)),
+            }
+          : beforeRemoval;
+      const localIds = new Set(current.nodes.map((node) => node.id));
+      const addedNodes = sameProject ? reinjected.filter((node) => !localIds.has(node.id)) : [];
+      const refreshedById = new Map(sameProject ? refreshed.map((node) => [node.id, node]) : []);
+      const mergedNodes =
+        refreshedById.size > 0
+          ? current.nodes.map((node) => {
+              const newer = refreshedById.get(node.id);
+              return newer ? { ...node, data: newer.data } : node;
+            })
+          : current.nodes;
+      const finalIds = new Set([...localIds, ...addedNodes.map((node) => node.id)]);
+      const addedEdges = sameProject
+        ? newEdges(current.edges, reinjectedEdges).filter((edge) => finalIds.has(edge.source) && finalIds.has(edge.target))
+        : [];
       set({
         dirty: false,
         ...(updatedAt
-          ? { recentOwnSaveUpdatedAts: [...get().recentOwnSaveUpdatedAts, updatedAt].slice(-MAX_RECENT_SELF_SAVES) }
+          ? { recentOwnSaveUpdatedAts: [...current.recentOwnSaveUpdatedAts, updatedAt].slice(-MAX_RECENT_SELF_SAVES) }
           : {}),
+        ...(updatedAt && sameProject ? { knownUpdatedAt: laterUpdatedAt(current.knownUpdatedAt, updatedAt) } : {}),
+        ...(addedNodes.length > 0 || refreshedById.size > 0 || removedIds.size > 0 ? { nodes: [...mergedNodes, ...addedNodes] } : {}),
+        ...(addedEdges.length > 0 || removedIds.size > 0 ? { edges: [...current.edges, ...addedEdges] } : {}),
       });
     } catch (err) {
       console.error("Failed to save project:", err);

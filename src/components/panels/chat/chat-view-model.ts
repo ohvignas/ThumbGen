@@ -1,5 +1,5 @@
 import type { ChatStatus, UIMessage } from "ai";
-import { CLIENT_TOOL_NAMES, isBusyStatus, isToolPart, toolNameOf } from "./turn-model";
+import { CLIENT_TOOL_NAMES, isBusyStatus, isToolPart, readTurnMetadata, toolNameOf } from "./turn-model";
 
 export type MessageGroupModel = { key: string; role: UIMessage["role"]; messages: UIMessage[] };
 
@@ -134,4 +134,38 @@ export function shouldRefetchAfterResume(input: {
     input.status === "ready" &&
     !input.turnFailed
   );
+}
+
+/**
+ * The client request (request_user_image, ask_user…) the chat offers to
+ * answer: an `input-available` client tool part of the last assistant
+ * message — never one of a turn that was stopped or interrupted, which the
+ * server will not resume (a new message abandons it instead).
+ */
+export function pendingClientToolPart(messages: UIMessage[], { stoppedLive }: { stoppedLive: boolean }) {
+  const lastMessage = messages.at(-1);
+  if (lastMessage?.role !== "assistant" || stoppedLive || readTurnMetadata(lastMessage).interrupted) return undefined;
+  return lastMessage.parts.find(
+    (part): part is Extract<UIMessage["parts"][number], { type: `tool-${string}` }> =>
+      isToolPart(part) && CLIENT_TOOL_NAMES.has(toolNameOf(part)) && part.state === "input-available",
+  );
+}
+
+/**
+ * The automatic continuation of an answered client request failed (not a 409,
+ * which has its own recovery): reload the stored history, so a request the
+ * server never recorded as answered is offered again.
+ */
+/** The answer being sent, once the sending of `toolCallId` rejected (the chat may never go busy). */
+export function answeringAfterFailedSend<T extends { toolCallId: string }>(current: T | null, toolCallId: string): T | null {
+  return current?.toolCallId === toolCallId ? null : current;
+}
+
+export function shouldReloadAfterFailedAnswer(input: {
+  previousStatus: ChatStatus;
+  status: ChatStatus;
+  answering: boolean;
+  busyConflict: boolean;
+}): boolean {
+  return input.answering && !input.busyConflict && isBusyStatus(input.previousStatus) && input.status === "error";
 }

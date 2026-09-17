@@ -1,4 +1,5 @@
 "use client";
+import type { Ref } from "react";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useChatStore } from "@/store/chat-store";
@@ -10,10 +11,13 @@ export default function Composer({
   onSend,
   status,
   onStop,
+  inputRef,
 }: {
   onSend: () => void;
   status: ChatStatus;
   onStop: () => void;
+  /** The message field, so the panel can give it focus back (e.g. after answering a question). */
+  inputRef?: Ref<HTMLTextAreaElement>;
 }) {
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
@@ -39,6 +43,7 @@ export default function Composer({
 
       <InputGroup className="rounded-xl bg-muted border-border">
         <InputGroupTextarea
+          ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Décris ta miniature, ou enregistre un vocal…"

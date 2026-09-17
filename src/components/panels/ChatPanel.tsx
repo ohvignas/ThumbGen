@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useReactFlow } from "@xyflow/react";
 import type { UIMessage } from "ai";
 import { lastAssistantMessageIsCompleteWithClientToolCalls } from "./chat/should-auto-continue";
 import { useChatStore, type ChatAttachment } from "@/store/chat-store";
@@ -30,11 +31,16 @@ import {
 import {
   conversationChangeEffects,
   liveTurnStart,
+  answeringAfterFailedSend,
+  pendingClientToolPart,
+  shouldReloadAfterFailedAnswer,
   retryableUserText,
   shouldRefetchAfterResume,
   type LiveTurnStart,
 } from "./chat/chat-view-model";
 import { isBusyStatus } from "./chat/turn-model";
+import { applyCanvasPatchPart } from "./chat/canvas-patch-part";
+import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
 const OPEN_STORAGE_KEY = "thumbgen.chat.open";
@@ -116,6 +122,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const sendInFlightRef = useRef(false);
   // Client requests (request_user_image / request_user_sketch) already answered from this panel.
   const answeredToolCallIdsRef = useRef(new Set<string>());
+  // The client request whose answer is being sent (its continuation may still fail).
+  const answeringRef = useRef<{ conversationId: string | null; toolCallId: string } | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
 
   // One transport for the panel's life. `reconnectStatus` holds the HTTP status of
   // the last reconnection (200 replays a run, 204 means none runs), written by the
@@ -138,6 +147,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   });
 
+  const { fitView } = useReactFlow();
+
   const {
     messages: chatMessages,
     status,
@@ -157,6 +168,20 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // addToolOutput — see the function's doc comment. A reconnection never
     // produces a resolved client request, so it never triggers a send.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithClientToolCalls,
+    // Guided interview: a node place_node wrote in the database, shown live and
+    // centered (transient part: never in the messages, never sent back).
+    onData: (dataPart) => {
+      applyCanvasPatchPart(dataPart, {
+        openProjectId: projectId,
+        reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+        // Next frame: React Flow measures the new node first.
+        fitNode: (nodeId, duration) => {
+          window.requestAnimationFrame(() => {
+            void fitView({ nodes: [{ id: nodeId }], padding: 0.4, maxZoom: 1, duration });
+          });
+        },
+      });
+    },
     onError: (turnError) => {
       turnFailedRef.current = true;
       if (isAgentBusyError(turnError)) busyConflictRef.current = true;
@@ -236,18 +261,14 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   }, [activeConversationId, setMessages, clearError, stop, resumeConversation]);
 
-  // The last message's pending client-tool part, only in state "input-available"
-  // (offering a resolution in any other state is unsafe — see chantier E).
-  const pendingToolPart = useMemo<PendingToolPart | undefined>(() => {
-    const lastMessage = chatMessages.at(-1);
-    return lastMessage?.role === "assistant"
-      ? lastMessage.parts.find(
-          (p): p is PendingToolPart =>
-            (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
-            p.state === "input-available",
-        )
-      : undefined;
-  }, [chatMessages]);
+  // The last message's pending client request, only in state "input-available"
+  // (offering a resolution in any other state is unsafe — see chantier E), and
+  // never for a stopped or interrupted turn.
+  const stoppedLive = stoppedConversationId !== null && stoppedConversationId === activeConversationId;
+  const pendingToolPart = useMemo<PendingToolPart | undefined>(
+    () => pendingClientToolPart(chatMessages, { stoppedLive }),
+    [chatMessages, stoppedLive],
+  );
 
   // Resolves PendingUiAction's pending part via useChat's addToolOutput. `options.body`
   // is required: the auto-continuation goes through the same transport as a send.
@@ -255,15 +276,18 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     (toolCallId: string, result: unknown) => {
       // One answer per request: a double submit before the re-render would post the continuation twice.
       if (!pendingToolPart || answeredToolCallIdsRef.current.has(toolCallId)) return;
+      const toolName = clientToolNameOfPartType(pendingToolPart.type);
+      if (!toolName) return;
       answeredToolCallIdsRef.current.add(toolCallId);
-      const toolName = pendingToolPart.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
+      answeringRef.current = { conversationId: activeConversationId, toolCallId };
       setStoppedConversationId(null);
       setOrphanConversationId(null);
       setLiveTurn(liveTurnStart(chatMessages, chatMessages.at(-1)?.id ?? null));
       setTurnStartedAt(Date.now());
       turnFailedRef.current = false;
       resumedConversationIdRef.current = activeConversationId;
-      void addToolOutput({
+      // addToolOutput may answer void or a PromiseLike: always hand back a real Promise.
+      const sending = Promise.resolve(addToolOutput({
         tool: toolName,
         toolCallId,
         output: result,
@@ -274,10 +298,46 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
             canvas_snapshot: snapshotCanvas(nodes, edges),
           },
         },
+      }));
+      // Not sent: the request can be answered again (PendingUiAction unlocks its card on the same rejection).
+      sending.catch(() => {
+        answeredToolCallIdsRef.current.delete(toolCallId);
+        answeringRef.current = answeringAfterFailedSend(answeringRef.current, toolCallId);
       });
+      // The card is gone: typing goes back to the composer.
+      composerInputRef.current?.focus();
+      return sending;
     },
     [addToolOutput, pendingToolPart, chatMessages, activeConversationId, projectId, nodes, edges],
   );
+
+  // The continuation of an answer failed (not a 409: see recoverFromBusyConflict).
+  // Reloading the stored history offers the request again if the server never
+  // recorded the answer; otherwise it shows the stored turn. Declared before the
+  // 409 effect, which resets busyConflictRef.
+  const answerStatusRef = useRef(status);
+  useEffect(() => {
+    const previousStatus = answerStatusRef.current;
+    answerStatusRef.current = status;
+    const answering = answeringRef.current;
+    if (answering && isBusyStatus(previousStatus) && !isBusyStatus(status)) answeringRef.current = null;
+    if (
+      !answering ||
+      answering.conversationId === null ||
+      !shouldReloadAfterFailedAnswer({ previousStatus, status, answering: true, busyConflict: busyConflictRef.current })
+    ) {
+      return;
+    }
+    const conversationId = answering.conversationId;
+    answeredToolCallIdsRef.current.delete(answering.toolCallId);
+    void (async () => {
+      const messages = await loadHistoryMessages(conversationId);
+      if (!isActiveConversation(conversationId)) return;
+      clearError();
+      setMessages(messages);
+      toast({ title: "La réponse n'a pas pu être envoyée" });
+    })();
+  }, [status, clearError, setMessages]);
 
   // Canonical refetch for a resumed turn (client-request answer or reconnection),
   // once its status goes from busy back to ready (runTurn does it for the others).
@@ -561,7 +621,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
           </CardContent>
 
           <CardFooter className="p-0">
-            <Composer onSend={onSend} status={status} onStop={onStop} />
+            <Composer onSend={onSend} status={status} onStop={onStop} inputRef={composerInputRef} />
           </CardFooter>
         </Card>
       </aside>

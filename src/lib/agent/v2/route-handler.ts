@@ -1,11 +1,22 @@
 import { NextRequest } from "next/server";
-import { streamText, isStepCount, hasToolCall, createUIMessageStreamResponse, type ModelMessage } from "ai";
+import {
+  streamText,
+  isStepCount,
+  hasToolCall,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  type ModelMessage,
+  type UIMessageStreamWriter,
+} from "ai";
 import { FAKE_AGENT_WARNING, resolveAgentLanguageModel } from "./agent-model";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
 import { trimToolResultImages } from "./history-images";
 import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
+import { PLACE_NODE_TOOL_NAME, buildPlaceNodeTool } from "./place-node-tool";
+import { CLIENT_TOOL_NAME_SET, clientToolNameOfPartType } from "@/lib/agent/client-tools";
+import { CANVAS_PATCH_PART } from "@/lib/canvas/canvas-patch";
 import { discardRun, pumpRunStream, runStatusForOutcome, startRun, subscribe } from "./run-registry";
 import { AGENT_BUSY_MESSAGE, type EndedRunStatus } from "./run-types";
 import { FINISH_TURN_TOOL_NAME } from "@/lib/agent/finish-turn";
@@ -71,7 +82,7 @@ function normalizeStaleToolResultFileData(messages: unknown[]): unknown[] {
   });
 }
 
-const CLIENT_TOOL_NAMES = new Set(["request_user_image", "request_user_sketch"]);
+const CLIENT_TOOL_NAMES = CLIENT_TOOL_NAME_SET;
 
 /** Every `toolCallId` that already has a persisted `role:"tool"` result somewhere
  * in this conversation's rows — shared by the abandoned-request scan below and
@@ -305,7 +316,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
         retriedUserRowIndex = findRetriedUserRowIndex(priorRowsForThisTurn, lastMessageText);
       }
 
-      // Auto-resolve a pending request_user_image/request_user_sketch the user is
+      // Auto-resolve a pending client request (request_user_image, ask_user…) the user is
       // sending a new message past — see findAbandonedClientToolCalls. Persisted
       // BEFORE the new user row so tool-call/tool-result pairing stays valid.
       const abandoned = findAbandonedClientToolCalls(priorRowsForThisTurn);
@@ -357,7 +368,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
 
       const resolvedClientToolParts = (lastMessage?.parts ?? []).filter(
         (p): p is { type: string; toolCallId: string; state: string; output?: unknown; errorText?: string } =>
-          (p.type === "tool-request_user_image" || p.type === "tool-request_user_sketch") &&
+          clientToolNameOfPartType(p.type) !== null &&
           typeof p.toolCallId === "string" &&
           (p.state === "output-available" || p.state === "output-error") &&
           !alreadyPersistedToolCallIds.has(p.toolCallId),
@@ -448,13 +459,25 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // throw (tools, provider options, streamText, the UI stream) frees the run.
   try {
     if (agentModel.fake) console.warn(FAKE_AGENT_WARNING);
+    // place_node (guided interview) broadcasts each placed node to the open
+    // canvas as a transient `data-canvas-patch` chunk of this turn's stream —
+    // the same stream the run buffers and replays. The writer exists as soon as
+    // the composed stream below is built, before any tool can run.
+    let patchWriter: UIMessageStreamWriter | null = null;
+    const placeNode = buildPlaceNodeTool({
+      projectId: run.projectId,
+      writePatch: (patch) => {
+        if (!patchWriter) throw new Error("canvas patch stream not ready");
+        patchWriter.write({ type: CANVAS_PATCH_PART, id: patch.node.id, transient: true, data: patch });
+      },
+    });
     const result = streamText({
       model: agentModel.model,
       system: systemText,
       messages: (isNewUserTurn && retriedUserRowIndex === -1
         ? [...priorMessages, { role: "user", content: userParts }]
         : [...priorMessages]) as ModelMessage[],
-      tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
+      tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS, [PLACE_NODE_TOOL_NAME]: placeNode },
       // finish_turn closes the turn: stop right after its step instead of
       // paying for one more model call that would only restate the answer.
       stopWhen: [isStepCount(settings.agentMaxSteps), hasToolCall(FINISH_TURN_TOOL_NAME)],
@@ -502,7 +525,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
     });
 
     let endStatus: EndedRunStatus = "done";
-    const uiStream = result.toUIMessageStream({
+    const modelStream = result.toUIMessageStream({
       // Per-chunk and log-only: it also fires for a routine `tool-error` part the
       // turn recovers from, so it must neither persist nor end the run.
       onError: (error) => {
@@ -531,9 +554,28 @@ export async function postV2(req: NextRequest): Promise<Response> {
       },
     });
 
+    // The model's stream plus the canvas patches, in one stream. Built outside
+    // `execute` so a throwing toUIMessageStream still frees the run (catch below).
+    // No generated message id: like the model's stream alone, the `start` chunk
+    // keeps no messageId (a continuation stays on the client's message).
+    let modelStreamFailed = false;
+    const uiStream = createUIMessageStream({
+      execute: ({ writer }) => {
+        patchWriter = writer;
+        writer.merge(modelStream);
+      },
+      // A read failure of the model's stream (previously a pump read error).
+      onError: (error) => {
+        modelStreamFailed = true;
+        console.error("[agent v2] run stream failed:", error);
+        return "An error occurred.";
+      },
+      generateId: (() => undefined) as unknown as () => string,
+    });
+
     // The server itself reads the turn to its end (not awaited by the response):
     // the model keeps running whatever happens to this HTTP request.
-    void pumpRunStream(run, uiStream, () => endStatus);
+    void pumpRunStream(run, uiStream, () => (modelStreamFailed ? "error" : endStatus));
   } catch (e) {
     console.error("[agent v2] failed to start the turn:", e);
     // Stops a model call streamText may already have started.

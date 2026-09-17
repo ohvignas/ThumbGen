@@ -1,5 +1,7 @@
 import type { ChatStatus, UIMessage } from "ai";
 import { toolLabel } from "@/lib/agent/tool-labels";
+import { CLIENT_TOOL_NAME_SET } from "@/lib/agent/client-tools";
+import { ASK_USER_TOOL_NAME, askUserStepLabel } from "@/lib/agent/browser-tools/ask-user";
 import {
   FINISH_TURN_TOOL_NAME,
   RESULT_ID_PREFIX,
@@ -18,8 +20,8 @@ import {
 export type MessagePart = UIMessage["parts"][number];
 export type ToolPart = Extract<MessagePart, { type: `tool-${string}` }>;
 
-/** Client tools the chat resolves itself (PendingUiAction) — matches should-auto-continue.ts. */
-export const CLIENT_TOOL_NAMES: ReadonlySet<string> = new Set(["request_user_image", "request_user_sketch"]);
+/** Client tools the chat resolves itself (PendingUiAction) — see src/lib/agent/client-tools.ts. */
+export const CLIENT_TOOL_NAMES: ReadonlySet<string> = CLIENT_TOOL_NAME_SET;
 
 export type ToolStatus = "running" | "done" | "error";
 
@@ -40,7 +42,9 @@ export type TurnStep = ReasoningStep | TextStep | ToolStep;
 
 export type NextAction =
   | { kind: "ask_agent"; label: string; message: string }
-  | { kind: "focus_node"; label: string; nodeId: string };
+  | { kind: "focus_node"; label: string; nodeId: string }
+  /** « Générer » on a generator node: label and cost are computed by the app at render. */
+  | { kind: "generate"; nodeId: string };
 
 /** Stored on reopened assistant messages by history-to-ui-messages.ts. */
 export type TurnMetadata = { durationMs?: number; interrupted?: boolean };
@@ -166,6 +170,8 @@ function normalizeResultId(id: string): string {
 }
 
 function toNextAction(action: FinishTurnInput["next_actions"][number]): NextAction | null {
+  if (action.kind === "generate" && action.node_id) return { kind: "generate", nodeId: action.node_id };
+  if (!action.label) return null;
   if (action.kind === "ask_agent" && action.message) return { kind: "ask_agent", label: action.label, message: action.message };
   if (action.kind === "focus_node" && action.node_id) return { kind: "focus_node", label: action.label, nodeId: action.node_id };
   return null;
@@ -180,6 +186,14 @@ function endedWithoutAnswer(parts: MessagePart[], stepTools: ToolPart[], pending
   const lastTool = stepTools.at(-1);
   if (lastTool && CLIENT_TOOL_NAMES.has(toolNameOf(lastTool))) return false;
   return stepTools.length > 0 || parts.some((part) => part.type === "reasoning" && part.text.trim() !== "");
+}
+
+/** A tool step's label; an answered guided-interview question reads « <question> : <réponse> ». */
+function stepLabel(part: ToolPart, toolName: string, status: ToolStatus): string {
+  if (toolName === ASK_USER_TOOL_NAME && status === "done" && part.state === "output-available") {
+    return askUserStepLabel(part.input, part.output) ?? toolLabel(toolName);
+  }
+  return toolLabel(toolName);
 }
 
 export function splitAssistantTurn(message: UIMessage): AssistantTurn {
@@ -269,7 +283,7 @@ export function splitAssistantTurn(message: UIMessage): AssistantTurn {
         kind: "tool",
         id,
         toolName,
-        label: toolLabel(toolName),
+        label: stepLabel(part, toolName, status),
         status,
         errorText,
         part,

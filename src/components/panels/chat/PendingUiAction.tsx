@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import LibraryPickerModal from "./LibraryPickerModal";
+import AskUserCard from "./AskUserCard";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Button } from "@/components/ui/button";
+import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 import type { UIMessage } from "ai";
 
 /**
@@ -33,7 +35,8 @@ export default function PendingUiAction({
   onResolve,
 }: {
   part: PendingToolPart;
-  onResolve: (toolCallId: string, result: unknown) => void;
+  /** May return the sending promise: a rejected one lets the user answer again. */
+  onResolve: (toolCallId: string, result: unknown) => void | Promise<unknown>;
 }) {
   const [showLib, setShowLib] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -47,7 +50,7 @@ export default function PendingUiAction({
   // (reason/suggested_kind); `initial_image_id` was already speculative/
   // unused in the OLD UiToolRequest["input"] type this replaces.
   const input = part.input as { reason?: string; suggested_kind?: string; initial_image_id?: string } | undefined;
-  const toolName = part.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
+  const toolName = clientToolNameOfPartType(part.type);
   const toolCallId = part.toolCallId;
 
   const skip = () => onResolve(toolCallId, { skipped: true });
@@ -85,6 +88,15 @@ export default function PendingUiAction({
     );
     setSketchOpen(true);
   };
+
+  if (toolName === "ask_user") {
+    return (
+      <div className="mx-3 my-2 rounded-xl p-3 bg-primary/10 border border-border">
+        {/* One card per question: a new tool call never inherits the previous card's selection or lock. */}
+        <AskUserCard key={toolCallId} input={part.input} onAnswer={(output) => onResolve(toolCallId, output)} />
+      </div>
+    );
+  }
 
   if (toolName === "request_user_image") {
     return (

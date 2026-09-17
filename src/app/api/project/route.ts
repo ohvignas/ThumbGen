@@ -5,8 +5,8 @@ export async function GET(request: NextRequest) {
   try {
     const projectId = request.nextUrl.searchParams.get("id") || "default";
     const project = getProject(projectId);
-    if (!project) return NextResponse.json({ nodes: [], edges: [] });
-    return NextResponse.json(project);
+    if (!project) return NextResponse.json({ nodes: [], edges: [], updatedAt: null });
+    return NextResponse.json({ nodes: project.nodes, edges: project.edges, updatedAt: project.updatedAt ?? null });
   } catch (err) {
     console.error("Load project error:", err);
     return NextResponse.json({ error: "Failed to load project" }, { status: 500 });
@@ -15,13 +15,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { projectId = "default", nodes, edges } = (await request.json()) as {
+    const { projectId = "default", nodes, edges, baseUpdatedAt } = (await request.json()) as {
       projectId?: string;
       nodes: FlowNode[];
       edges: FlowEdge[];
+      /** The `updated_at` the client's canvas was based on (chantier F2): agent nodes placed after it are kept. */
+      baseUpdatedAt?: unknown;
     };
-    const updatedAt = saveProject(projectId, nodes || [], edges || []);
-    return NextResponse.json({ success: true, updatedAt });
+    const { updatedAt, reinjected, reinjectedEdges, refreshed, removed } = saveProject(
+      projectId,
+      nodes || [],
+      edges || [],
+      typeof baseUpdatedAt === "string" ? baseUpdatedAt : null,
+    );
+    return NextResponse.json({ success: true, updatedAt, reinjected, reinjectedEdges, refreshed, removed });
   } catch (err) {
     console.error("Save project error:", err);
     return NextResponse.json({ error: "Failed to save project" }, { status: 500 });

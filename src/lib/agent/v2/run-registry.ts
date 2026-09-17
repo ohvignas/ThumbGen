@@ -1,5 +1,6 @@
 import type { UIMessageChunk } from "ai";
 import type { EndedRunStatus, RunStatus, RunSummary } from "./run-types";
+import { CLIENT_TOOL_NAME_SET } from "@/lib/agent/client-tools";
 
 /**
  * In-process registry of agent turns (chantier F1). A turn belongs to its run,
@@ -13,8 +14,6 @@ import type { EndedRunStatus, RunStatus, RunSummary } from "./run-types";
 export const RUN_RETENTION_MS = 5 * 60_000;
 /** Soft cap of the buffer: past it, consecutive deltas of one part are merged. */
 export const RUN_CHUNK_SOFT_CAP = 2_000;
-
-const CLIENT_TOOL_NAMES: ReadonlySet<string> = new Set(["request_user_image", "request_user_sketch"]);
 
 export type AgentRun = {
   conversationId: string;
@@ -174,7 +173,7 @@ export function finishRun(run: AgentRun, status: EndedRunStatus): void {
 export function hasPendingClientRequest(chunks: readonly UIMessageChunk[]): boolean {
   const pending = new Set<string>();
   for (const chunk of chunks) {
-    if (chunk.type === "tool-input-available" && CLIENT_TOOL_NAMES.has(chunk.toolName)) pending.add(chunk.toolCallId);
+    if (chunk.type === "tool-input-available" && CLIENT_TOOL_NAME_SET.has(chunk.toolName)) pending.add(chunk.toolCallId);
     else if (chunk.type === "tool-output-available" || chunk.type === "tool-output-error" || chunk.type === "tool-output-denied") {
       pending.delete(chunk.toolCallId);
     }

@@ -61,6 +61,25 @@ describe("duplicateNode", () => {
   const prompt: AppNode = { id: "p", type: "prompt", position: { x: 0, y: 0 }, data: { prompt: "hello" } };
   const edge: Edge = { id: "e1", source: "p", target: "gen", targetHandle: "prompt-in" };
 
+  it("never copies the agent's interview bookkeeping", () => {
+    const placed: AppNode = {
+      id: "iv-prompt",
+      type: "prompt",
+      position: { x: 0, y: 0 },
+      data: {
+        prompt: "x",
+        placedByAgentAt: "2026-09-17T10:00:00.000Z",
+        agentCreatedAt: "2026-09-17T10:00:00.000Z",
+        agentLinks: [{ node: "iv-generator", handle: "prompt-in", at: "2026-09-17T10:00:00.000Z" }],
+      } as AppNode["data"],
+    };
+    seed([placed]);
+    const newId = useCanvasStore.getState().duplicateNode("iv-prompt");
+    const copy = useCanvasStore.getState().nodes.find((n) => n.id === newId)!;
+    expect(copy.data).toEqual({ prompt: "x" });
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === "iv-prompt")!.data).toEqual(placed.data);
+  });
+
   it("adds a copy with a new id, offset by +40/+40, without isGenerating and without edges", () => {
     seed([generator, prompt], [edge]);
 

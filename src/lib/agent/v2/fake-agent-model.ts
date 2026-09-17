@@ -1,5 +1,7 @@
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3CallOptions, LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { getDb } from "@/lib/db";
+import { interviewScript, type FakeLibraryItem } from "./fake-interview-script";
 
 /**
  * DEV ONLY (chantier F1): a scripted, slow agent turn with no network call, so
@@ -9,6 +11,21 @@ import type { LanguageModelV3CallOptions, LanguageModelV3StreamPart } from "@ai-
 
 /** Delay between two chunks of the script (≈ 22 s for the whole turn). */
 export const FAKE_CHUNK_DELAY_MS = 1_000;
+
+/** THUMBGEN_FAKE_AGENT=interview plays the guided interview (chantier F2); any other value the slow F1 turn. */
+export const FAKE_INTERVIEW_SCENARIO = "interview";
+export type FakeAgentScenario = "slow" | typeof FAKE_INTERVIEW_SCENARIO;
+/** The interview's delay between chunks: quick enough to click through, slow enough to watch. */
+export const FAKE_INTERVIEW_CHUNK_DELAY_MS = 150;
+
+export function fakeAgentScenario(): FakeAgentScenario {
+  return process.env.THUMBGEN_FAKE_AGENT === FAKE_INTERVIEW_SCENARIO ? FAKE_INTERVIEW_SCENARIO : "slow";
+}
+
+/** Library images offered by the fake references question (local DB, newest first). */
+function libraryFromDb(): FakeLibraryItem[] {
+  return getDb().prepare("SELECT id, title FROM swipe_files ORDER BY created_at DESC LIMIT 6").all() as FakeLibraryItem[];
+}
 
 export function isFakeAgentEnabled(): boolean {
   // Literal `process.env.NODE_ENV`: Next inlines it at build time, so a
@@ -91,12 +108,17 @@ function script(options: LanguageModelV3CallOptions): LanguageModelV3StreamPart[
   ];
 }
 
-export function createFakeAgentModel({ chunkDelayMs = FAKE_CHUNK_DELAY_MS }: { chunkDelayMs?: number } = {}) {
+export function createFakeAgentModel({
+  chunkDelayMs,
+  scenario = "slow",
+  library = libraryFromDb,
+}: { chunkDelayMs?: number; scenario?: FakeAgentScenario; library?: () => FakeLibraryItem[] } = {}) {
+  const delay = chunkDelayMs ?? (scenario === FAKE_INTERVIEW_SCENARIO ? FAKE_INTERVIEW_CHUNK_DELAY_MS : FAKE_CHUNK_DELAY_MS);
   return new MockLanguageModelV3({
     provider: "thumbgen-fake",
-    modelId: "fake-agent",
+    modelId: scenario === FAKE_INTERVIEW_SCENARIO ? "fake-agent-interview" : "fake-agent",
     doStream: async (options) => {
-      const parts = script(options);
+      const parts = scenario === FAKE_INTERVIEW_SCENARIO ? interviewScript(options, library()) : script(options);
       let index = 0;
       return {
         stream: new ReadableStream<LanguageModelV3StreamPart>({
@@ -106,7 +128,7 @@ export function createFakeAgentModel({ chunkDelayMs = FAKE_CHUNK_DELAY_MS }: { c
               return;
             }
             // Rejects with an AbortError on stop: streamText then emits its `abort` chunk.
-            if (index > 0) await sleep(chunkDelayMs, options.abortSignal);
+            if (index > 0) await sleep(delay, options.abortSignal);
             controller.enqueue(parts[index++]);
           },
         }),

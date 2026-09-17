@@ -10,6 +10,7 @@ export type { CanvasSnapshotSummary };
 const REASON_LABELS: Record<SnapshotReason, string> = {
   apply_workflow: "Avant modification de l'agent",
   restore: "Avant restauration",
+  place_node: "Avant un nœud de l'interview",
 };
 
 export function snapshotReasonLabel(reason: SnapshotReason): string {

@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
+import { nextUpdatedAt } from "./canvas/canvas-patch";
 
 /**
  * Canvas states saved right before an agent write, so any agent change can be
@@ -12,9 +13,11 @@ import { getDb } from "./db";
 export const MAX_SNAPSHOTS_PER_PROJECT = 20;
 /** Pre-restore snapshots kept per project, on their own quota so restores never push agent snapshots out. */
 export const MAX_RESTORE_SNAPSHOTS_PER_PROJECT = 5;
+/** Guided-interview snapshots (`place_node`) kept per project, on their own quota too. */
+export const MAX_PLACE_NODE_SNAPSHOTS_PER_PROJECT = 20;
 
-/** `apply_workflow`: state before an agent write. `restore`: state before a restore. */
-export type SnapshotReason = "apply_workflow" | "restore";
+/** `apply_workflow`: state before an agent write. `restore`: state before a restore. `place_node`: state before an interview node. */
+export type SnapshotReason = "apply_workflow" | "restore" | "place_node";
 
 export type CanvasSnapshotSummary = {
   id: string;
@@ -27,6 +30,7 @@ export type CanvasSnapshotSummary = {
 const QUOTAS: Record<SnapshotReason, number> = {
   apply_workflow: MAX_SNAPSHOTS_PER_PROJECT,
   restore: MAX_RESTORE_SNAPSHOTS_PER_PROJECT,
+  place_node: MAX_PLACE_NODE_SNAPSHOTS_PER_PROJECT,
 };
 
 /**
@@ -83,15 +87,16 @@ export function projectExists(projectId: string): boolean {
 
 /**
  * Writes the canvas to `projects` with an ISO updated_at (same format as
- * saveProject) and bumps the meta row when there is one.
+ * saveProject) and bumps the meta row when there is one. `now` lets a caller
+ * stamp the same instant elsewhere (place_node's `placedByAgentAt`).
  */
 export function writeProjectCanvas(
   projectId: string,
   nodesJson: string,
   edgesJson: string,
   db: Database.Database = getDb(),
+  now: string = new Date().toISOString(),
 ): string {
-  const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET nodes = excluded.nodes, edges = excluded.edges, updated_at = excluded.updated_at`,
@@ -108,8 +113,8 @@ export function writeProjectCanvas(
 export function restoreCanvasSnapshot(projectId: string, snapshotId: string): { updated_at: string } | null {
   const db = getDb();
   return db.transaction(() => {
-    const current = db.prepare("SELECT nodes, edges FROM projects WHERE id = ?").get(projectId) as
-      | { nodes: string; edges: string }
+    const current = db.prepare("SELECT nodes, edges, updated_at FROM projects WHERE id = ?").get(projectId) as
+      | { nodes: string; edges: string; updated_at: string }
       | undefined;
     if (!current) return null;
     const snapshot = db
@@ -117,7 +122,7 @@ export function restoreCanvasSnapshot(projectId: string, snapshotId: string): { 
       .get(snapshotId, projectId) as { nodes: string; edges: string } | undefined;
     if (!snapshot) return null;
     createCanvasSnapshot(projectId, current.nodes, current.edges, "restore", db);
-    const updatedAt = writeProjectCanvas(projectId, snapshot.nodes, snapshot.edges, db);
+    const updatedAt = writeProjectCanvas(projectId, snapshot.nodes, snapshot.edges, db, nextUpdatedAt(current.updated_at));
     return { updated_at: updatedAt };
   })();
 }

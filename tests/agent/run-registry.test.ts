@@ -152,6 +152,14 @@ describe("run registry", () => {
     ]);
   });
 
+  it("counts an unanswered guided-interview question (ask_user) as a pending client request", () => {
+    const question: UIMessageChunk = { type: "tool-input-available", toolCallId: "q1", toolName: "ask_user", input: {} };
+    expect(hasPendingClientRequest([question])).toBe(true);
+    expect(hasPendingClientRequest([question, { type: "tool-output-available", toolCallId: "q1", output: { selected: ["a"] } }])).toBe(false);
+    const patch = { type: "data-canvas-patch", id: "iv-prompt", transient: true, data: {} } as unknown as UIMessageChunk;
+    expect(hasPendingClientRequest([patch, question])).toBe(true);
+  });
+
   it("maps stream outcomes to run statuses", () => {
     expect(runStatusForOutcome("completed")).toBe("done");
     expect(runStatusForOutcome("aborted")).toBe("stopped");

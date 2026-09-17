@@ -57,6 +57,7 @@ export function listVideos(rawQuery: VideoQuery, now: Date = new Date()): VideoL
     where.push("v.channel_id = @channelId");
     params.channelId = query.channelId;
   }
+  if (query.mine) where.push("c.is_mine = 1");
   if (query.period !== "all") {
     where.push("v.published_at >= @periodStart");
     params.periodStart = new Date(now.getTime() - PERIOD_DAYS[query.period] * DAY_MS).toISOString();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { getDb } from "@/lib/db";
+import { nextUpdatedAt } from "@/lib/canvas/canvas-patch";
 
 export const runtime = "nodejs";
 
@@ -48,8 +49,8 @@ export async function POST(req: NextRequest) {
   db.prepare("UPDATE generated_sketches SET attached = 1 WHERE id = ?").run(body.sketch_id);
 
   const row = db
-    .prepare("SELECT nodes, edges FROM projects WHERE id = ?")
-    .get(body.project_id) as { nodes: string; edges: string } | undefined;
+    .prepare("SELECT nodes, edges, updated_at FROM projects WHERE id = ?")
+    .get(body.project_id) as { nodes: string; edges: string; updated_at: string } | undefined;
   const nodes: CanvasNode[] = row ? JSON.parse(row.nodes) : [];
   const edges: CanvasEdge[] = row ? JSON.parse(row.edges) : [];
 
@@ -95,14 +96,22 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // ISO and strictly after the stored value, like every other canvas writer.
+  const updatedAt = nextUpdatedAt(row?.updated_at);
   if (row) {
-    db.prepare(
-      "UPDATE projects SET nodes = ?, edges = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
-    ).run(JSON.stringify(nodes), JSON.stringify(edges), body.project_id);
+    db.prepare("UPDATE projects SET nodes = ?, edges = ?, updated_at = ? WHERE id = ?").run(
+      JSON.stringify(nodes),
+      JSON.stringify(edges),
+      updatedAt,
+      body.project_id,
+    );
   } else {
-    db.prepare(
-      "INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-    ).run(body.project_id, JSON.stringify(nodes), JSON.stringify(edges));
+    db.prepare("INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, ?, ?, ?)").run(
+      body.project_id,
+      JSON.stringify(nodes),
+      JSON.stringify(edges),
+      updatedAt,
+    );
   }
 
   return NextResponse.json({

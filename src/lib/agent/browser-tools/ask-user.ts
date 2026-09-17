@@ -1,0 +1,145 @@
+import { z } from "zod";
+
+/**
+ * `ask_user` (chantier F2): one clickable question of the guided interview.
+ * A client tool — no `execute`: the turn pauses until the chat card answers
+ * `{ selected }`, `{ other }` or `{ skipped }`. Pure — shared by the chat
+ * route's tool declaration, the question card and the turn model.
+ */
+export const ASK_USER_TOOL_NAME = "ask_user";
+
+/** The guided interview's fixed number of questions (« Question n/8 »). */
+export const ASK_USER_TOTAL_STEPS = 8;
+
+export const ASK_USER_LIMITS = {
+  question: 200,
+  options: 6,
+  label: 60,
+  description: 140,
+  maxSelected: 3,
+  other: 300,
+  optionId: 40,
+} as const;
+
+const optionSchema = z.object({
+  id: z.string().trim().min(1).max(ASK_USER_LIMITS.optionId).describe("Stable id returned in `selected`."),
+  label: z.string().trim().min(1).max(ASK_USER_LIMITS.label).describe("Short option text, max 60 characters."),
+  description: z
+    .string()
+    .trim()
+    .max(ASK_USER_LIMITS.description)
+    .optional()
+    .describe("One short line under the label, max 140 characters."),
+  image: z
+    .string()
+    .optional()
+    .describe(
+      "Optional thumbnail: a ref from the list tools — stored:persona_<id>, stored:sf_<id>, stored:lg_<id> — or youtube:<videoId>.",
+    ),
+});
+
+export const askUserInputSchema = z
+  .object({
+    question: z.string().trim().min(1).max(ASK_USER_LIMITS.question).describe("The question, max 200 characters."),
+    step: z
+      .number()
+      .int()
+      .min(1)
+      .max(ASK_USER_TOTAL_STEPS)
+      .describe("The guided interview's question number (1 to 8), never renumbered when a question is skipped."),
+    multiple: z.boolean().default(false).describe("true lets the user pick several options, then « Valider »."),
+    max_selected: z
+      .number()
+      .int()
+      .min(1)
+      .max(ASK_USER_LIMITS.maxSelected)
+      .optional()
+      .describe("Only with multiple: at most this many picks (1 to 3)."),
+    options: z.array(optionSchema).min(1).max(ASK_USER_LIMITS.options).describe("1 to 6 options."),
+    allow_skip: z.boolean().default(true).describe("Shows « Passer »."),
+  })
+  .superRefine((input, ctx) => {
+    if (input.max_selected !== undefined && !input.multiple) {
+      ctx.addIssue({ code: "custom", path: ["max_selected"], message: "max_selected requires multiple: true" });
+    }
+    const seen = new Set<string>();
+    input.options.forEach((option, index) => {
+      if (seen.has(option.id)) {
+        ctx.addIssue({ code: "custom", path: ["options", index, "id"], message: `Duplicate option id: ${option.id}` });
+      }
+      seen.add(option.id);
+    });
+  });
+
+export type AskUserInput = z.output<typeof askUserInputSchema>;
+export type AskUserOption = AskUserInput["options"][number];
+
+export type AskUserOutput = { selected: string[] } | { other: string } | { skipped: true; reason?: string };
+
+export function parseAskUserInput(input: unknown): AskUserInput | null {
+  const parsed = askUserInputSchema.safeParse(input);
+  return parsed.success ? parsed.data : null;
+}
+
+/** How many options the card lets the user pick. */
+export function askUserMaxSelected(input: AskUserInput): number {
+  if (!input.multiple) return 1;
+  return input.max_selected ?? Math.min(ASK_USER_LIMITS.maxSelected, input.options.length);
+}
+
+/** The answer, live (`{ selected }`) or reopened (`{ type: "json", value: { selected } }`); null when unreadable. */
+export function readAskUserOutput(output: unknown): AskUserOutput | null {
+  if (!output || typeof output !== "object") return null;
+  const record = output as Record<string, unknown>;
+  const value = record.type === "json" && "value" in record ? record.value : output;
+  if (!value || typeof value !== "object") return null;
+  const answer = value as Record<string, unknown>;
+  if (Array.isArray(answer.selected) && answer.selected.every((id) => typeof id === "string")) {
+    return { selected: answer.selected as string[] };
+  }
+  if (typeof answer.other === "string") return { other: answer.other };
+  if (answer.skipped === true) {
+    return typeof answer.reason === "string" ? { skipped: true, reason: answer.reason } : { skipped: true };
+  }
+  return null;
+}
+
+/** « Choc, Démo », « Autre : … », « Passé », « sans réponse » (abandoned); null when there is no readable answer. */
+export function askUserAnswerText(input: AskUserInput | null, output: AskUserOutput | null): string | null {
+  if (!output) return null;
+  if ("selected" in output) {
+    return output.selected.map((id) => input?.options.find((option) => option.id === id)?.label ?? id).join(", ");
+  }
+  if ("other" in output) return `Autre : ${output.other}`;
+  return output.reason === "abandoned" ? "sans réponse" : "Passé";
+}
+
+/** Folded step line « <question> : <réponse> », or null when the input or the answer can't be read. */
+export function askUserStepLabel(input: unknown, output: unknown): string | null {
+  const parsed = parseAskUserInput(input);
+  if (!parsed) return null;
+  const answer = askUserAnswerText(parsed, readAskUserOutput(output));
+  return answer === null ? null : `${parsed.question} : ${answer}`;
+}
+
+export type AskUserOptionImage = { src: string; shape: "wide" | "square" };
+
+const SAFE_ID = /^[\w-]+$/;
+
+/** URL and tile shape of an option image; null for anything that is not a known reference. */
+export function askUserOptionImage(image: string | undefined): AskUserOptionImage | null {
+  if (!image) return null;
+  const match = image.match(/^(stored:persona_|stored:sf_|stored:lg_|youtube:)(.+)$/);
+  if (!match || !SAFE_ID.test(match[2])) return null;
+  const id = encodeURIComponent(match[2]);
+  switch (match[1]) {
+    case "stored:persona_":
+      return { src: `/api/personas/image?id=${id}&angle=front`, shape: "square" };
+    case "stored:sf_":
+      return { src: `/api/swipe-files/image?f=${id}`, shape: "wide" };
+    case "stored:lg_":
+      return { src: `/api/logos/image?f=${id}`, shape: "square" };
+    default:
+      return { src: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, shape: "wide" };
+  }
+}

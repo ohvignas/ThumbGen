@@ -66,7 +66,14 @@ describe("finish_turn input", () => {
   it("needs a node_id for focus_node and rejects unknown kinds", () => {
     expect(accepts({ summary: "ok", next_actions: [{ label: "Voir", kind: "focus_node" }] })).toBe(false);
     expect(accepts({ summary: "ok", next_actions: [{ label: "Voir", kind: "focus_node", node_id: "gen-1" }] })).toBe(true);
-    expect(accepts({ summary: "ok", next_actions: [{ label: "Go", kind: "generate", node_id: "gen-1" }] })).toBe(false);
+    expect(accepts({ summary: "ok", next_actions: [{ label: "Go", kind: "launch", node_id: "gen-1" }] })).toBe(false);
+  });
+
+  it("accepts a generate action on a node, without a label (the app computes it)", () => {
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "generate", node_id: "iv-generator" }] })).toBe(true);
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "generate" }] })).toBe(false);
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "ask_agent", message: "Oui." }] })).toBe(false);
+    expect(accepts({ summary: "ok", next_actions: [{ kind: "focus_node", node_id: "gen-1" }] })).toBe(false);
   });
 
   it("parses to null instead of throwing", () => {
@@ -86,8 +93,10 @@ describe("finish_turn tool", () => {
     expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual({ ok: true });
   });
 
-  it("is the only chat-only tool", () => {
-    expect(listTools().filter((tool) => tool.chatOnly).map((tool) => tool.name)).toEqual([FINISH_TURN_TOOL_NAME]);
+  it("is one of the chat-only tools", () => {
+    expect(listTools().filter((tool) => tool.chatOnly).map((tool) => tool.name).sort()).toEqual(
+      [FINISH_TURN_TOOL_NAME, "list_followed_videos"].sort(),
+    );
   });
 
   it("is not listed to MCP clients, unlike the other registry tools", async () => {

@@ -104,6 +104,8 @@ export type VideoQuery = {
   sort: VideoSort;
   types: ThumbTypeFilter[];
   channelId: string | null;
+  /** Only the channels marked « Ma chaîne » (same rule as the types summary's "mine" scope). */
+  mine?: boolean;
   period: VideoPeriod;
   q: string;
   offset: number;

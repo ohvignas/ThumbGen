@@ -1,10 +1,5 @@
 import { isToolUIPart, type UIMessage } from "ai";
-
-// The two client tools PendingUiAction.tsx ever resolves — matches
-// route-handler.ts's V2_CLIENT_TOOLS (request_user_sketch is registered
-// there too even though nothing currently prompts the model to call it,
-// same as v1).
-const CLIENT_TOOL_PART_TYPES = new Set(["tool-request_user_image", "tool-request_user_sketch"]);
+import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 
 /**
  * A narrower version of ai's own `lastAssistantMessageIsCompleteWithToolCalls`
@@ -34,7 +29,7 @@ export function lastAssistantMessageIsCompleteWithClientToolCalls({ messages }: 
     .filter(isToolUIPart)
     .filter((part) => !part.providerExecuted);
   return (
-    lastStepToolInvocations.some((part) => CLIENT_TOOL_PART_TYPES.has(part.type)) &&
+    lastStepToolInvocations.some((part) => clientToolNameOfPartType(part.type) !== null) &&
     lastStepToolInvocations.every((part) => part.state === "output-available" || part.state === "output-error")
   );
 }

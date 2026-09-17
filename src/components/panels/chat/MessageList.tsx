@@ -1,5 +1,5 @@
 "use client";
-import { ArrowDownIcon, Sparkles } from "lucide-react";
+import { ArrowDownIcon } from "lucide-react";
 import type { UIMessage } from "ai";
 import { MessageGroup } from "@/components/ui/message";
 import {
@@ -10,8 +10,8 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import AssistantTurn from "./AssistantTurn";
+import ChatEmptyState, { INTERVIEW_START_MESSAGE } from "./ChatEmptyState";
 import Message, { AssistantRow, type ChatTurnControls } from "./Message";
 import TurnProgress from "./TurnProgress";
 import { groupConsecutiveMessages, stoppedTurnPlacement, trailingAssistantRow } from "./chat-view-model";
@@ -27,19 +27,7 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
   // Empty state only when nothing is going on: a first send that failed or is
   // running before its message shows still gets its trailing row.
   if (messages.length === 0 && !trailing) {
-    return (
-      <Empty className="flex-1 border-none">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Sparkles />
-          </EmptyMedia>
-          <EmptyTitle>On commence par quoi ?</EmptyTitle>
-          <EmptyDescription>
-            Décris ta miniature, joins une image ou enregistre un vocal.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
+    return <ChatEmptyState onStart={() => controls.onAskAgent(INTERVIEW_START_MESSAGE)} />;
   }
 
   const groups = groupConsecutiveMessages(messages);
