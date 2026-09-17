@@ -31,6 +31,7 @@ import {
 import {
   conversationChangeEffects,
   liveTurnStart,
+  answeringAfterFailedSend,
   pendingClientToolPart,
   shouldReloadAfterFailedAnswer,
   retryableUserText,
@@ -299,7 +300,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         },
       }));
       // Not sent: the request can be answered again (PendingUiAction unlocks its card on the same rejection).
-      sending.catch(() => answeredToolCallIdsRef.current.delete(toolCallId));
+      sending.catch(() => {
+        answeredToolCallIdsRef.current.delete(toolCallId);
+        answeringRef.current = answeringAfterFailedSend(answeringRef.current, toolCallId);
+      });
       // The card is gone: typing goes back to the composer.
       composerInputRef.current?.focus();
       return sending;

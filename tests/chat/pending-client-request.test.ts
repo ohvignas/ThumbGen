@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
-import { pendingClientToolPart, shouldReloadAfterFailedAnswer } from "@/components/panels/chat/chat-view-model";
+import fs from "fs";
+import path from "path";
+import { answeringAfterFailedSend, pendingClientToolPart, shouldReloadAfterFailedAnswer } from "@/components/panels/chat/chat-view-model";
 
 const question = { type: "tool-ask_user", toolCallId: "q1", state: "input-available", input: {} };
 const assistant = (parts: unknown[], metadata?: unknown): UIMessage =>
@@ -38,5 +40,19 @@ describe("shouldReloadAfterFailedAnswer", () => {
     expect(shouldReloadAfterFailedAnswer({ ...base, answering: false })).toBe(false);
     expect(shouldReloadAfterFailedAnswer({ ...base, status: "ready" })).toBe(false);
     expect(shouldReloadAfterFailedAnswer({ ...base, previousStatus: "ready" })).toBe(false);
+  });
+});
+
+describe("answeringAfterFailedSend", () => {
+  it("forgets the answer being sent when its sending rejects, never another one", () => {
+    expect(answeringAfterFailedSend({ conversationId: "c1", toolCallId: "q1" }, "q1")).toBeNull();
+    const other = { conversationId: "c1", toolCallId: "q2" };
+    expect(answeringAfterFailedSend(other, "q1")).toBe(other);
+    expect(answeringAfterFailedSend(null, "q1")).toBeNull();
+  });
+
+  it("is applied in ChatPanel's rejection path", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "src/components/panels/ChatPanel.tsx"), "utf8");
+    expect(source).toContain("answeringRef.current = answeringAfterFailedSend(answeringRef.current, toolCallId);");
   });
 });

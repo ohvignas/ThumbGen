@@ -156,6 +156,11 @@ export function pendingClientToolPart(messages: UIMessage[], { stoppedLive }: { 
  * which has its own recovery): reload the stored history, so a request the
  * server never recorded as answered is offered again.
  */
+/** The answer being sent, once the sending of `toolCallId` rejected (the chat may never go busy). */
+export function answeringAfterFailedSend<T extends { toolCallId: string }>(current: T | null, toolCallId: string): T | null {
+  return current?.toolCallId === toolCallId ? null : current;
+}
+
 export function shouldReloadAfterFailedAnswer(input: {
   previousStatus: ChatStatus;
   status: ChatStatus;
