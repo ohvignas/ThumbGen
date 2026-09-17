@@ -72,20 +72,38 @@ function OptionThumbnail({
 /**
  * One guided-interview question (`ask_user`): options as a thumbnail grid or a
  * list, « Autre… » free text and « Passer ». Answers exactly once — every
- * control is disabled after the first answer.
+ * control is disabled after the first answer, and enabled again only when
+ * `onAnswer` throws or its promise rejects (the answer was not sent).
  */
-export default function AskUserCard({ input, onAnswer }: { input: unknown; onAnswer: (output: AskUserOutput) => void }) {
+export default function AskUserCard({
+  input,
+  onAnswer,
+}: {
+  input: unknown;
+  onAnswer: (output: AskUserOutput) => void | Promise<unknown>;
+}) {
   const [answered, setAnswered] = useState(false);
   const answeredRef = useRef(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [other, setOther] = useState("");
   const [failedImages, setFailedImages] = useState<string[]>([]);
 
+  const unlock = (error: unknown) => {
+    console.error("[ask_user] the answer could not be sent:", error);
+    answeredRef.current = false;
+    setAnswered(false);
+  };
+
   const answer = (output: AskUserOutput) => {
     if (answeredRef.current) return;
     answeredRef.current = true;
     setAnswered(true);
-    onAnswer(output);
+    try {
+      const sent = onAnswer(output);
+      if (sent instanceof Promise) sent.catch(unlock);
+    } catch (error) {
+      unlock(error);
+    }
   };
 
   const question = parseAskUserInput(input);
@@ -182,6 +200,12 @@ export default function AskUserCard({ input, onAnswer }: { input: unknown; onAns
       >
         {question.options.map(renderOption)}
       </div>
+
+      {question.multiple && (
+        <p className="-mt-1 text-xs text-muted-foreground">
+          Jusqu&apos;à {maxSelected} choix
+        </p>
+      )}
 
       {question.multiple && (
         <Button

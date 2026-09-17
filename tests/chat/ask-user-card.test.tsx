@@ -97,6 +97,7 @@ describe("AskUserCard — image grid", () => {
       max_selected: 2,
       options: videos.slice(0, 4),
     });
+    expect(container.textContent).toContain("Jusqu'à 2 choix");
     const validate = () => button("Valider")!;
     expect(validate().disabled).toBe(true);
     await click(button("Vidéo v3"));
@@ -110,6 +111,48 @@ describe("AskUserCard — image grid", () => {
     expect(validate().disabled).toBe(false);
     await click(validate());
     expect(onAnswer).toHaveBeenCalledWith({ selected: ["v1", "v3"] });
+  });
+});
+
+describe("AskUserCard — a failed answer", () => {
+  const input = { question: "Quel angle ?", step: 2, options: [{ id: "a", label: "Choc" }] };
+
+  it("unlocks the card when the answer throws", async () => {
+    const onAnswer = vi.fn(() => {
+      throw new Error("not sent");
+    });
+    await render(input, onAnswer);
+    await click(button("Choc"));
+    expect(button("Choc")!.disabled).toBe(false);
+    await click(button("Choc"));
+    expect(onAnswer).toHaveBeenCalledTimes(2);
+  });
+
+  it("unlocks the card when the answer's promise rejects", async () => {
+    const onAnswer = vi.fn(async () => {
+      throw new Error("not sent");
+    });
+    await render(input, onAnswer);
+    await click(button("Choc"));
+    expect(button("Choc")!.disabled).toBe(false);
+  });
+
+  it("stays locked while an answer is being sent", async () => {
+    const onAnswer = vi.fn(() => new Promise(() => {}));
+    await render(input, onAnswer);
+    await click(button("Choc"));
+    await click(button("Choc"));
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect(button("Choc")!.disabled).toBe(true);
+  });
+});
+
+describe("AskUserCard — invalid questions", () => {
+  it("renders an unreadable card for duplicate option ids or max_selected without multiple", async () => {
+    await render({ question: "?", step: 1, options: [{ id: "a", label: "A" }, { id: "a", label: "B" }] });
+    expect(container.textContent).toContain("Question illisible");
+    await render({ question: "?", step: 1, max_selected: 2, options: [{ id: "a", label: "A" }] });
+    expect(container.textContent).toContain("Question illisible");
   });
 });
 
@@ -162,6 +205,21 @@ describe("AskUserCard — text options and footer", () => {
 });
 
 describe("PendingUiAction — ask_user", () => {
+  it("starts a fresh card for each question", async () => {
+    const part = (toolCallId: string) =>
+      ({
+        type: "tool-ask_user",
+        toolCallId,
+        state: "input-available",
+        input: { question: "Quel angle ?", step: 2, options: [{ id: "a", label: "Choc" }] },
+      }) as unknown as PendingToolPart;
+    await act(async () => root.render(<PendingUiAction part={part("q1")} onResolve={() => {}} />));
+    await click(button("Choc"));
+    expect(button("Choc")!.disabled).toBe(true);
+    await act(async () => root.render(<PendingUiAction part={part("q2")} onResolve={() => {}} />));
+    expect(button("Choc")!.disabled).toBe(false);
+  });
+
   it("renders the card and resolves the tool call with the answer", async () => {
     const onResolve = vi.fn();
     const part = {

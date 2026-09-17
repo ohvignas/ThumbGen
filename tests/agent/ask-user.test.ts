@@ -115,6 +115,31 @@ describe("ask_user option images", () => {
   });
 });
 
+describe("ask_user rejection paths", () => {
+  const issues = (value: unknown) => {
+    const result = askUserInputSchema.safeParse(value);
+    return result.success ? [] : result.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message }));
+  };
+
+  it("names the duplicate option id", () => {
+    expect(issues({ ...base, options: [option("a"), option("b"), option("a")] })).toEqual([
+      { path: "options.2.id", message: "Duplicate option id: a" },
+    ]);
+  });
+
+  it("names max_selected without multiple", () => {
+    expect(issues({ ...base, max_selected: 2 })).toEqual([{ path: "max_selected", message: "max_selected requires multiple: true" }]);
+    expect(issues({ ...base, multiple: false, max_selected: 1 })).toHaveLength(1);
+  });
+
+  it("rejects both through the client tool the model calls", async () => {
+    const schema = V2_CLIENT_TOOLS.ask_user.inputSchema as { safeParse: (v: unknown) => { success: boolean } };
+    expect(schema.safeParse({ ...base, options: [option("a"), option("a")] }).success).toBe(false);
+    expect(schema.safeParse({ ...base, max_selected: 2 }).success).toBe(false);
+    expect(parseAskUserInput({ ...base, max_selected: 2 })).toBeNull();
+  });
+});
+
 describe("ask_user client tool", () => {
   it("is declared without execute, with its schema and a label", () => {
     expect(ASK_USER_TOOL_NAME).toBe("ask_user");
