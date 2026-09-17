@@ -1,10 +1,19 @@
 "use client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { cn } from "cn";
 
-export function TextMarkdown({ text, openAnnotate }: { text: string; openAnnotate?: (url: string) => void }) {
+export function TextMarkdown({
+  text,
+  openAnnotate,
+  className,
+}: {
+  text: string;
+  openAnnotate?: (url: string) => void;
+  className?: string;
+}) {
   return (
-    <div className="text-sm break-words chat-md leading-relaxed text-foreground">
+    <div className={cn("text-sm break-words chat-md leading-relaxed text-foreground", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
