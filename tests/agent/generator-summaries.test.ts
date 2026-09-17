@@ -39,6 +39,7 @@ describe("generator summaries expose the A/B/C test", () => {
       aspectRatio: "16x9",
       count: 2,
       abTest: { variants: ["A", "B", "C"] },
+      generatedCount: 0,
     });
     expect(state.edges[0].targetHandle).toBe("prompt-in-b");
   });
@@ -51,7 +52,7 @@ describe("generator summaries expose the A/B/C test", () => {
   it("the chat snapshot summarizes abTest the same way", () => {
     expect(
       summarizeNode("generator", { model: "m", aspectRatio: "16x9", numImages: 1, abTest: { variants: ["A", "B"] } }),
-    ).toEqual({ model: "m", aspectRatio: "16x9", count: 1, abTest: { variants: ["A", "B"] } });
+    ).toEqual({ model: "m", aspectRatio: "16x9", count: 1, abTest: { variants: ["A", "B"] }, generatedCount: 0 });
     expect(summarizeNode("generator", { model: "m", abTest: { variants: ["A"] } }).abTest).toBeUndefined();
   });
 
