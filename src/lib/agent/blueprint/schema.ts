@@ -4,7 +4,7 @@ import { activeVariants, baseGeneratorHandle, parseGeneratorHandle } from "@/lib
 // Stored prefixes map 1:1 to DB tables :
 //   lg_ → logos, sf_ → swipe_files, gi_ → generated_images,
 //   persona_ → personas (resolves to up to 3 angle images, not one — see
-//   blueprintToCanvasData's special-case handling in apply-workflow.ts).
+//   blueprintToCanvasData's special-case handling in ../tools/_helpers/blueprint-canvas-data.ts).
 // Single face photos (fr_) are no longer a source: faces are Personnages
 // only.
 export const ImageSourceSchema = z.string().refine(
@@ -55,7 +55,7 @@ const GeneratorData = z.object({
   type: z.literal("generator"),
   // "ideogram" and "grok" removed: dropped from the app's model roster when
   // image generation migrated to OpenRouter-only (neither has an OpenRouter
-  // equivalent) — see MODEL_ID_MAP in ../tools/apply-workflow.ts.
+  // equivalent) — see MODEL_ID_MAP in ./models.ts.
   model: z.enum(["nano-banana", "openai", "seedream"]),
   aspectRatio: z.enum(["16x9", "9x16", "1x1"]),
   count: z.number().int().min(1).max(4, "count must be at most 4 images (the UI's cap)").optional(),
@@ -102,7 +102,7 @@ const KNOWN_DATA_KEYS = new Set([
 ]);
 const RESERVED_NODE_KEYS = new Set(["id", "type", "position", "data"]);
 
-function normalizeNode(raw: unknown): unknown {
+export function normalizeNode(raw: unknown): unknown {
   if (typeof raw !== "object" || raw === null) return raw;
   const node = raw as Record<string, unknown>;
   const existingData = node.data;
@@ -120,6 +120,24 @@ function normalizeNode(raw: unknown): unknown {
     rest[key] = value;
   }
   return { ...rest, id: node.id, type: node.type, position: node.position, data: merged };
+}
+
+/**
+ * One node's data checked against its type's blueprint schema: in full for a
+ * new node, field by field (every field optional) for a node that already
+ * exists on the canvas. Issues are "path: message" lines.
+ */
+export function validateBlueprintNodeData(
+  type: string,
+  data: Record<string, unknown>,
+  { existing }: { existing: boolean },
+): { success: true } | { success: false; issues: string[] } {
+  const result = (existing ? NodeUpdateDataByType : NodeDataByType).safeParse({ ...data, type });
+  if (result.success) return { success: true };
+  return {
+    success: false,
+    issues: result.error.issues.map((issue) => `${["data", ...issue.path.map(String)].join(".")}: ${issue.message}`),
+  };
 }
 
 const NodeShape = z.object({

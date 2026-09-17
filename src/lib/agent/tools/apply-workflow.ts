@@ -7,7 +7,8 @@ import { mergeBlueprintSchema, type CanvasNodeRef } from "@/lib/agent/blueprint/
 import { createCanvasSnapshot, writeProjectCanvas } from "@/lib/canvas-snapshots";
 import { edgesToRemoveForVariants, type VariantId } from "@/lib/canvas/generator-variants";
 import { autoLayout, NODE_W } from "./_helpers/auto-layout";
-import { imageExists, markAttached, resolveImageSource } from "./_helpers/image-source";
+import { imageExists, markAttached } from "./_helpers/image-source";
+import { blueprintToCanvasData, blueprintUpdateToCanvasData, mergeCanvasData } from "./_helpers/blueprint-canvas-data";
 
 const EdgeRefSchema = z.object({
   source: z.string(),
@@ -30,135 +31,6 @@ const InputSchema = z.object({
 
 // Gap between the right edge of the existing canvas and the new nodes.
 const NEW_NODES_GAP = 200;
-
-// Maps the blueprint's coarse model name (nano-banana/openai/seedream) onto
-// the actual canvas model ID expected by GeneratorNode. nano-banana →
-// Gemini 3.1 Flash (fast, cheap, great with faces — the default
-// recommendation for thumbnail generation per the user). "ideogram"/"grok"
-// removed from the schema enum (see schema.ts) — no OpenRouter equivalent.
-const MODEL_ID_MAP: Record<string, string> = {
-  "nano-banana": "gemini-3.1-flash-image",
-  openai: "gpt-image-2.5-sunburst",
-  seedream: "bytedance-seed/seedream-4.5",
-};
-
-type CanvasData = Record<string, unknown>;
-
-async function blueprintToCanvasData(
-  type: string,
-  data: Record<string, unknown>,
-): Promise<CanvasData> {
-  const imageSource = typeof data.image_source === "string" ? data.image_source : undefined;
-
-  // A Personnage ref resolves to up to 3 angle images (front/left/right),
-  // not one — handled separately from the generic single-image resolver
-  // below, which only ever returns one image.
-  const personaMatch = type === "faceReference" ? imageSource?.match(/^stored:persona_(.+)$/) : null;
-  if (personaMatch) {
-    const personaId = personaMatch[1];
-    const photos = getDb()
-      .prepare("SELECT angle, mime_type, data FROM persona_photos WHERE persona_id = ?")
-      .all(personaId) as { angle: "front" | "left" | "right"; mime_type: string; data: Buffer }[];
-    const personaAngles: Record<string, string> = {};
-    for (const p of photos) {
-      personaAngles[p.angle] = `data:${p.mime_type};base64,${p.data.toString("base64")}`;
-    }
-    const personaRow = getDb().prepare("SELECT label FROM personas WHERE id = ?").get(personaId) as
-      | { label: string }
-      | undefined;
-    return {
-      personaId,
-      personaAngles,
-      label: (data.label as string) || personaRow?.label || "Personnage",
-    };
-  }
-
-  let imageBase64: string | undefined;
-  if (imageSource) {
-    imageBase64 = await resolveToDataUrl(imageSource);
-  }
-
-  switch (type) {
-    case "sketch":
-      return {
-        imageBase64,
-        label: data.label || "Sketch IA",
-        // Keep the source ref in case a future tool needs to re-resolve.
-        image_source: imageSource,
-      };
-    case "swipeFile":
-      return {
-        imageBase64,
-        label: data.label || (data.kind === "logo" ? "Logo" : "Image"),
-        kind: data.kind,
-        image_source: imageSource,
-      };
-    case "prompt":
-      return {
-        prompt: data.prompt,
-        negativePrompt: data.negativePrompt,
-      };
-    case "generator":
-      return {
-        model: MODEL_ID_MAP[data.model as string] ?? data.model,
-        aspectRatio: data.aspectRatio,
-        numImages: data.count ?? 1,
-        // A/B/C test: count stays per variant.
-        ...(data.abTest ? { abTest: data.abTest } : {}),
-      };
-    default:
-      return data;
-  }
-}
-
-async function resolveToDataUrl(imageSource: string): Promise<string> {
-  const resolved = await resolveImageSource(imageSource);
-  return `data:${resolved.mimeType};base64,${resolved.bytes.toString("base64")}`;
-}
-
-/**
- * Update of a node already on the canvas: only the fields the blueprint
- * gives, mapped to the canvas shape. The caller merges it over the node's
- * data, so everything else (generated images, imported image, persona
- * angles, generator settings…) is kept.
- */
-async function blueprintUpdateToCanvasData(
-  type: string,
-  data: Record<string, unknown>,
-): Promise<{ patch: CanvasData; replacesImage: boolean }> {
-  const patch: CanvasData = {};
-  const imageSource = typeof data.image_source === "string" ? data.image_source : undefined;
-  const has = (key: string) => data[key] !== undefined;
-  switch (type) {
-    case "faceReference":
-      if (imageSource) {
-        Object.assign(patch, await blueprintToCanvasData(type, data));
-        // Another Personnage keeps the name the user gave the node, unless a label is given.
-        if (!has("label")) delete patch.label;
-      } else if (has("label")) patch.label = data.label;
-      break;
-    case "sketch":
-    case "swipeFile":
-      if (imageSource) {
-        patch.imageBase64 = await resolveToDataUrl(imageSource);
-        patch.image_source = imageSource;
-      }
-      if (has("label")) patch.label = data.label;
-      if (type === "swipeFile" && has("kind")) patch.kind = data.kind;
-      break;
-    case "prompt":
-      if (has("prompt")) patch.prompt = data.prompt;
-      if (has("negativePrompt")) patch.negativePrompt = data.negativePrompt;
-      break;
-    case "generator":
-      if (has("model")) patch.model = MODEL_ID_MAP[data.model as string] ?? data.model;
-      if (has("aspectRatio")) patch.aspectRatio = data.aspectRatio;
-      if (has("count")) patch.numImages = data.count;
-      if (has("abTest")) patch.abTest = data.abTest;
-      break;
-  }
-  return { patch, replacesImage: Boolean(imageSource) && type !== "faceReference" };
-}
 
 type StoredNode = {
   id: string;
@@ -267,14 +139,8 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         continue;
       }
       const { patch, replacesImage } = await blueprintUpdateToCanvasData(node.type, update.data);
-      const data = { ...node.data, ...patch };
-      if (replacesImage) {
-        // The canvas shows imageUrl before imageBase64: a new image must drop the old URL,
-        // and a sketch's Excalidraw drawing no longer matches the new image.
-        delete data.imageUrl;
-        delete data.sketchElements;
-        delete data.sketchFiles;
-      }
+      // A new image drops the old URL and a sketch's now-stale Excalidraw drawing.
+      const data = mergeCanvasData(node.data, patch, replacesImage);
       if (node.type === "generator" && patch.abTest) {
         variantChanges.push({ id: node.id, variants: (patch.abTest as { variants: VariantId[] }).variants });
       }
