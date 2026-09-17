@@ -1,6 +1,7 @@
 import type { ChatStatus, UIMessage } from "ai";
 import { toolLabel } from "@/lib/agent/tool-labels";
 import { CLIENT_TOOL_NAME_SET } from "@/lib/agent/client-tools";
+import { ASK_USER_TOOL_NAME, askUserStepLabel } from "@/lib/agent/browser-tools/ask-user";
 import {
   FINISH_TURN_TOOL_NAME,
   RESULT_ID_PREFIX,
@@ -183,6 +184,14 @@ function endedWithoutAnswer(parts: MessagePart[], stepTools: ToolPart[], pending
   return stepTools.length > 0 || parts.some((part) => part.type === "reasoning" && part.text.trim() !== "");
 }
 
+/** A tool step's label; an answered guided-interview question reads « <question> : <réponse> ». */
+function stepLabel(part: ToolPart, toolName: string, status: ToolStatus): string {
+  if (toolName === ASK_USER_TOOL_NAME && status === "done" && part.state === "output-available") {
+    return askUserStepLabel(part.input, part.output) ?? toolLabel(toolName);
+  }
+  return toolLabel(toolName);
+}
+
 export function splitAssistantTurn(message: UIMessage): AssistantTurn {
   const parts = message.parts;
   const metadata = readTurnMetadata(message);
@@ -270,7 +279,7 @@ export function splitAssistantTurn(message: UIMessage): AssistantTurn {
         kind: "tool",
         id,
         toolName,
-        label: toolLabel(toolName),
+        label: stepLabel(part, toolName, status),
         status,
         errorText,
         part,

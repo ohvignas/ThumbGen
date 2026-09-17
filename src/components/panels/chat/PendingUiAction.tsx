@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import LibraryPickerModal from "./LibraryPickerModal";
+import AskUserCard from "./AskUserCard";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Button } from "@/components/ui/button";
 import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
@@ -86,6 +87,14 @@ export default function PendingUiAction({
     );
     setSketchOpen(true);
   };
+
+  if (toolName === "ask_user") {
+    return (
+      <div className="mx-3 my-2 rounded-xl p-3 bg-primary/10 border border-border">
+        <AskUserCard input={part.input} onAnswer={(output) => onResolve(toolCallId, output)} />
+      </div>
+    );
+  }
 
   if (toolName === "request_user_image") {
     return (
