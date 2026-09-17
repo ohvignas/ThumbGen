@@ -22,7 +22,7 @@ const PREVIOUS_ITEM_PEEK_PX = 48;
 
 export default function MessageList({ messages, controls }: { messages: UIMessage[]; controls: ChatTurnControls }) {
   const stopped = stoppedTurnPlacement(messages, controls.stoppedLive, controls.liveTurnStart);
-  const trailing = trailingAssistantRow(messages, controls.status, stopped);
+  const trailing = trailingAssistantRow(messages, controls.status, stopped, controls.orphanUserTurn ?? false);
 
   // Empty state only when nothing is going on: a first send that failed or is
   // running before its message shows still gets its trailing row.
