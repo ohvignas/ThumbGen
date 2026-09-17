@@ -26,14 +26,10 @@ export function guardSketchHandler(conversationId: string, handler: ToolHandler<
     const reservation = reserveBriefUsage(conversationId, "sketches", sketchRefusal);
     if (reservation.status === "no-brief") return handler(input);
     if (reservation.status === "refused") return { isError: true, content: [{ type: "text", text: reservation.reason }] };
-    let result: ToolResult;
-    try {
-      result = await handler(input);
-    } catch (error) {
-      releaseBriefUsage(conversationId, "sketches");
-      throw error;
-    }
-    if (result.isError) releaseBriefUsage(conversationId, "sketches");
+    // Only an error that happened before the paid request left the app gives the
+    // reservation back; a provider error, a missing image or an unknown throw stays counted.
+    const result: ToolResult = await handler(input);
+    if (result.isError && result.requestNotSent) releaseBriefUsage(conversationId, "sketches");
     return result;
   };
 }

@@ -50,14 +50,23 @@ describe("sketch guard", () => {
     expect(getBrief(conversationId)!.brief.usage.sketches).toBe(7);
   });
 
-  it("gives the reservation back when the sketch fails", async () => {
+  it("gives the reservation back only when the paid request was never sent", async () => {
     const conversationId = briefAt(7);
-    const failed = { isError: true, content: [{ type: "text" as const, text: "OpenRouter API error 500" }] };
-    expect(await guardSketchHandler(conversationId, vi.fn(async () => failed))({ prompt: "x" })).toBe(failed);
-    const boom = guardSketchHandler(conversationId, vi.fn(async () => {
-      throw new Error("network");
-    }));
-    await expect(boom({ prompt: "x" })).rejects.toThrow("network");
+    const notSent = { isError: true, requestNotSent: true, content: [{ type: "text" as const, text: "Network error: offline" }] };
+    expect(await guardSketchHandler(conversationId, vi.fn(async () => notSent))({ prompt: "x" })).toBe(notSent);
     expect(getBrief(conversationId)!.brief.usage.sketches).toBe(0);
+  });
+
+  it("keeps counting a sketch whose request reached the provider, or whose failure is unknown", async () => {
+    const conversationId = briefAt(7);
+    const noImage = { isError: true, content: [{ type: "text" as const, text: "OpenRouter returned no image" }] };
+    const apiError = { isError: true, content: [{ type: "text" as const, text: "OpenRouter API error 500" }] };
+    expect(await guardSketchHandler(conversationId, vi.fn(async () => noImage))({ prompt: "x" })).toBe(noImage);
+    expect(await guardSketchHandler(conversationId, vi.fn(async () => apiError))({ prompt: "x" })).toBe(apiError);
+    const boom = guardSketchHandler(conversationId, vi.fn(async () => {
+      throw new Error("unexpected");
+    }));
+    await expect(boom({ prompt: "x" })).rejects.toThrow("unexpected");
+    expect(getBrief(conversationId)!.brief.usage.sketches).toBe(3);
   });
 });

@@ -44,6 +44,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     if (!apiKey) {
       return {
         isError: true,
+        requestNotSent: true,
         content: [{ type: "text" as const, text: "Clé API OpenRouter non configurée. Ajoute-la dans Réglages." }],
       };
     }
@@ -62,6 +63,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       } catch (e) {
         return {
           isError: true,
+          requestNotSent: true,
           content: [{ type: "text" as const, text: `Cannot resolve image_source ${src}: ${(e as Error).message}` }],
         };
       }
@@ -102,8 +104,10 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         body: JSON.stringify(body),
       });
     } catch (e) {
+      // fetch threw: no response came back, the request was not billed.
       return {
         isError: true,
+        requestNotSent: true,
         content: [{ type: "text" as const, text: `Network error: ${(e as Error).message}` }],
       };
     }

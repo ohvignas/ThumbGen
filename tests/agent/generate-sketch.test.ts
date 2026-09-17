@@ -53,6 +53,28 @@ describe("generate_sketch", () => {
     const r = await generateSketchTool.handler({ prompt: "x" });
     expect(r.isError).toBe(true);
     expect((r.content[0] as { text: string }).text).toMatch(/API key|Clé API/i);
+    expect(r.requestNotSent).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("marks an unreadable image source and a network failure as never sent", async () => {
+    const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
+    const badSource = await generateSketchTool.handler({ prompt: "x", reference_sources: ["stored:sf_does-not-exist"] });
+    expect(badSource.isError).toBe(true);
+    expect(badSource.requestNotSent).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRejectedValueOnce(new Error("offline"));
+    const network = await generateSketchTool.handler({ prompt: "x" });
+    expect(network.isError).toBe(true);
+    expect(network.requestNotSent).toBe(true);
+  });
+
+  it("does not mark a request the provider answered as never sent", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+    const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
+    const noImage = await generateSketchTool.handler({ prompt: "x" });
+    expect(noImage.isError).toBe(true);
+    expect(noImage.requestNotSent).toBeUndefined();
   });
 
   it("returns error on OpenRouter failure", async () => {
@@ -66,6 +88,7 @@ describe("generate_sketch", () => {
     const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
     const r = await generateSketchTool.handler({ prompt: "x" });
     expect(r.isError).toBe(true);
+    expect(r.requestNotSent).toBeUndefined();
   });
 
   it("defaults aspect_ratio to 16x9", async () => {
