@@ -114,6 +114,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const pendingStopRef = useRef<string | null>(null);
   // A send (composer or « Et maintenant ») is being started or is running: a second one is ignored.
   const sendInFlightRef = useRef(false);
+  // Client requests (request_user_image / request_user_sketch) already answered from this panel.
+  const answeredToolCallIdsRef = useRef(new Set<string>());
 
   // One transport for the panel's life. `reconnectStatus` holds the HTTP status of
   // the last reconnection (200 replays a run, 204 means none runs), written by the
@@ -258,7 +260,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   // is required: the auto-continuation goes through the same transport as a send.
   const respondToUiTool = useCallback(
     (toolCallId: string, result: unknown) => {
-      if (!pendingToolPart) return;
+      // One answer per request: a double submit before the re-render would post the continuation twice.
+      if (!pendingToolPart || answeredToolCallIdsRef.current.has(toolCallId)) return;
+      answeredToolCallIdsRef.current.add(toolCallId);
       const toolName = pendingToolPart.type.slice("tool-".length) as "request_user_image" | "request_user_sketch";
       setStoppedConversationId(null);
       setOrphanConversationId(null);
@@ -387,6 +391,23 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   // Runs one turn (a send, an « Et maintenant » reply or a « Réessayer »), then
   // canonicalizes the conversation from the DB. `restoreInput` puts back what a
   // refused send (409) had taken from the composer.
+  // After a 409: the toast instead of an error, then the stored history and a
+  // reconnection to the turn that runs there.
+  const recoverFromBusyConflict = useCallback(
+    async (conversationId: string) => {
+      clearError();
+      // A refused client-request answer can be given again once the history is reloaded.
+      answeredToolCallIdsRef.current.clear();
+      toast({ title: AGENT_BUSY_MESSAGE });
+      if (!isActiveConversation(conversationId)) return;
+      const history = await loadHistoryMessages(conversationId);
+      if (!isActiveConversation(conversationId)) return;
+      setMessages(history);
+      await resumeConversation(conversationId, history);
+    },
+    [clearError, setMessages, resumeConversation],
+  );
+
   const runTurn = useCallback(
     async (conversationId: string, start: () => Promise<void>, restoreInput?: () => void) => {
       setStoppedConversationId(null);
@@ -402,14 +423,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         // 409: the server already runs a turn here (another tab, or one not reconnected yet).
         busyConflictRef.current = false;
         setMessages((messages) => withoutTrailingUserMessage(messages));
-        clearError();
         restoreInput?.();
-        toast({ title: AGENT_BUSY_MESSAGE });
-        if (!isActiveConversation(conversationId)) return;
-        const history = await loadHistoryMessages(conversationId);
-        if (!isActiveConversation(conversationId)) return;
-        setMessages(history);
-        await resumeConversation(conversationId, history);
+        await recoverFromBusyConflict(conversationId);
         return;
       }
       // A failed turn keeps its live messages: the refetch would drop the
@@ -422,8 +437,18 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       // Picks up an auto-generated title (fire-and-forget on the first turn).
       useChatStore.getState().bumpConversationListVersion();
     },
-    [chatMessages, setMessages, clearError, resumeConversation],
+    [chatMessages, setMessages, recoverFromBusyConflict],
   );
+
+  // A 409 on a client-request answer (its automatic continuation, not a runTurn):
+  // same recovery as a refused send instead of a raw error Alert. The request stays
+  // pending in the reloaded history, so it can be answered again later.
+  useEffect(() => {
+    if (status !== "error" || !busyConflictRef.current || sendInFlightRef.current) return;
+    busyConflictRef.current = false;
+    const conversationId = useChatStore.getState().activeConversationId;
+    if (conversationId) void recoverFromBusyConflict(conversationId);
+  }, [status, recoverFromBusyConflict]);
 
   const onSend = useCallback(async () => {
     // Two send events before React re-renders (a double click, Enter + click)
@@ -477,7 +502,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     if (busy || !retryText || !activeConversationId) return null;
     const conversationId = activeConversationId;
     return () => {
-      void runTurn(conversationId, () => regenerate({ body: requestBody(conversationId) }));
+      if (sendInFlightRef.current) return;
+      sendInFlightRef.current = true;
+      void runTurn(conversationId, () => regenerate({ body: requestBody(conversationId) })).finally(() => {
+        sendInFlightRef.current = false;
+      });
     };
   }, [busy, retryText, activeConversationId, runTurn, regenerate, requestBody]);
 

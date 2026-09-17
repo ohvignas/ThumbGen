@@ -26,7 +26,14 @@ describe("ChatPanel wiring", () => {
     expect(source).toContain("void stopAgentRun(conversationId).finally(abandonLocalStream);");
   });
 
-  it("drops a second send started before the first one is under way", () => {
-    expect(source.match(/if \((?:busy \|\| )?sendInFlightRef\.current\) return;/g)).toHaveLength(2);
+  it("drops a second send, retry or client-request answer started before the first one is under way", () => {
+    // onSend, onAskAgent and « Réessayer ».
+    expect(source.match(/if \((?:busy \|\| )?sendInFlightRef\.current\) return;/g)).toHaveLength(3);
+    expect(source).toContain("answeredToolCallIdsRef.current.has(toolCallId)) return;");
+  });
+
+  it("answers a 409 on a client-request continuation with the busy toast, not an error", () => {
+    expect(source).toContain('if (status !== "error" || !busyConflictRef.current || sendInFlightRef.current) return;');
+    expect(source.match(/recoverFromBusyConflict\(conversationId\)/g)).toHaveLength(2);
   });
 });
