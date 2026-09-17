@@ -25,6 +25,22 @@ export function parseRunsMemory(raw: string | null): RunsMemory {
   }
 }
 
+/** Both memories (this tab's and another tab's, read back from storage): the latest endedAt per conversation. `a` itself when `b` adds nothing. */
+export function mergeRunsMemory(a: RunsMemory, b: RunsMemory): RunsMemory {
+  const merge = (record: Record<string, number>, other: Record<string, number>) => {
+    let next: Record<string, number> | null = null;
+    for (const [conversationId, endedAt] of Object.entries(other)) {
+      if ((record[conversationId] ?? 0) >= endedAt) continue;
+      next ??= { ...record };
+      next[conversationId] = endedAt;
+    }
+    return next ?? record;
+  };
+  const seen = merge(a.seen, b.seen);
+  const toasted = merge(a.toasted, b.toasted);
+  return seen === a.seen && toasted === a.toasted ? a : { seen, toasted };
+}
+
 export function nextPollDelay(snapshot: AgentRunsSnapshot): number {
   return snapshot.running.length > 0 ? RUNS_POLL_ACTIVE_MS : RUNS_POLL_IDLE_MS;
 }

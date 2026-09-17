@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act } from "react";
+import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AgentRunsSnapshot } from "@/lib/agent/v2/run-types";
 
@@ -24,8 +25,13 @@ const SNAPSHOT: AgentRunsSnapshot = {
   attention: [{ conversationId: "c1", projectId: "p1", projectName: "Vidéo F1", kind: "finished", endedAt: 1000 }],
 };
 
+const probe: { refresh: null | (() => Promise<AgentRunsSnapshot>) } = { refresh: null };
+
 function Probe() {
-  const { unseen } = useAgentRuns();
+  const { unseen, refreshRuns } = useAgentRuns();
+  useEffect(() => {
+    probe.refresh = refreshRuns;
+  }, [refreshRuns]);
   return <span data-testid="unseen">{unseen.length}</span>;
 }
 
@@ -85,5 +91,48 @@ describe("AgentRunsProvider", () => {
     await vi.waitFor(() => expect(JSON.parse(localStorage.getItem(RUNS_MEMORY_KEY) ?? "{}").seen).toEqual({ c1: 1000 }));
     await vi.waitFor(() => expect(unseenCount()).toBe("0"));
     expect(toastMock).not.toHaveBeenCalled();
+  });
+
+  it("re-reads what another tab already toasted or saw before toasting, and keeps both tabs' entries", async () => {
+    pathname = "/bibliotheque";
+    await mount();
+    await vi.waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+
+    // Another tab toasted c2 meanwhile.
+    const stored = JSON.parse(localStorage.getItem(RUNS_MEMORY_KEY)!);
+    localStorage.setItem(RUNS_MEMORY_KEY, JSON.stringify({ ...stored, toasted: { ...stored.toasted, c2: 2000 } }));
+    const both: AgentRunsSnapshot = {
+      running: [],
+      attention: [...SNAPSHOT.attention, { conversationId: "c2", projectId: "p2", projectName: "Autre", kind: "error", endedAt: 2000 }],
+    };
+    vi.mocked(fetch).mockImplementation(async () => Response.json(both));
+    await act(async () => {
+      await probe.refresh!();
+    });
+    expect(toastMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem(RUNS_MEMORY_KEY)!).toasted).toEqual({ c1: 1000, c2: 2000 });
+  });
+
+  it("ignores a response older than one already applied", async () => {
+    pathname = "/m/p9";
+    await mount();
+    await vi.waitFor(() => expect(unseenCount()).toBe("1"));
+
+    const resolvers: Array<(response: Response) => void> = [];
+    vi.mocked(fetch).mockImplementation(() => new Promise<Response>((resolve) => resolvers.push(resolve)));
+    let older!: Promise<AgentRunsSnapshot>;
+    let newer!: Promise<AgentRunsSnapshot>;
+    await act(async () => {
+      older = probe.refresh!();
+      newer = probe.refresh!();
+    });
+    await vi.waitFor(() => expect(resolvers).toHaveLength(2));
+    await act(async () => {
+      resolvers[1](Response.json({ running: [], attention: [] }));
+      await newer;
+      resolvers[0](Response.json(SNAPSHOT));
+      await older;
+    });
+    expect(unseenCount()).toBe("0");
   });
 });

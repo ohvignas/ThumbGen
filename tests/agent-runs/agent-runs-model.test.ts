@@ -6,6 +6,7 @@ import {
   attentionToastTitle,
   markSeenEntries,
   markToasted,
+  mergeRunsMemory,
   nextPollDelay,
   openProjectIdFromPath,
   parseRunsMemory,
@@ -99,5 +100,12 @@ describe("agent runs model", () => {
     expect(pickConversationId(list, snapshot({ attention: s.attention }), "p1")).toBe("ended");
     expect(pickConversationId(list, EMPTY_RUNS, "p1")).toBe("recent");
     expect(pickConversationId([], s, "p1")).toBeNull();
+  });
+
+  it("merges two tabs' memories, keeping the latest endedAt per conversation", () => {
+    const a = { seen: { c1: 10 }, toasted: { c1: 10 } };
+    const b = { seen: { c1: 5, c2: 7 }, toasted: {} };
+    expect(mergeRunsMemory(a, b)).toEqual({ seen: { c1: 10, c2: 7 }, toasted: { c1: 10 } });
+    expect(mergeRunsMemory(a, { seen: { c1: 3 }, toasted: {} })).toBe(a);
   });
 });

@@ -11,6 +11,7 @@ import {
   attentionToastTitle,
   markSeenEntries,
   markToasted,
+  mergeRunsMemory,
   nextPollDelay,
   openProjectIdFromPath,
   parseRunsMemory,
@@ -91,7 +92,12 @@ export function AgentRunsProvider({ children }: { children: ReactNode }) {
     writeMemory(next);
   }, []);
 
+  // Numbers each fetch: a response older than one already applied is ignored.
+  const requestSeqRef = useRef(0);
+  const appliedSeqRef = useRef(0);
+
   const refreshRuns = useCallback(async (): Promise<AgentRunsSnapshot> => {
+    const seq = ++requestSeqRef.current;
     let next: AgentRunsSnapshot;
     try {
       const res = await fetch("/api/agent/runs", { cache: "no-store" });
@@ -100,12 +106,15 @@ export function AgentRunsProvider({ children }: { children: ReactNode }) {
     } catch {
       return snapshotRef.current;
     }
+    if (seq < appliedSeqRef.current) return snapshotRef.current;
+    appliedSeqRef.current = seq;
     snapshotRef.current = next;
     setSnapshot(next);
 
     // The open miniature's endings are seen at once; every other one gets a single toast.
+    // Another tab may have seen or toasted some of them since: its entries are read back first.
     const open = openProjectIdRef.current;
-    const current = memoryRef.current;
+    const current = mergeRunsMemory(memoryRef.current, readMemory());
     const seen = markSeenEntries(current, unseenAttentions(next, current).filter((entry) => entry.projectId === open));
     const toFire = toastsToFire(next, seen, open);
     for (const entry of toFire) {
@@ -148,7 +157,7 @@ export function AgentRunsProvider({ children }: { children: ReactNode }) {
   const markSeen = useCallback(
     (conversationIds: string[]) => {
       const entries = snapshotRef.current.attention.filter((entry) => conversationIds.includes(entry.conversationId));
-      commitMemory(markSeenEntries(memoryRef.current, entries));
+      commitMemory(markSeenEntries(mergeRunsMemory(memoryRef.current, readMemory()), entries));
     },
     [commitMemory],
   );
