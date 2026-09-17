@@ -85,9 +85,11 @@ async function importNewVideos(
     let resumeToken: string | null = channel.sync_page_token;
     while (resumeToken) {
       const page = await fetchPlaylistPage(apiKey, playlist.id, resumeToken);
-      const reachedKnown = page.videoIds.some((videoId) => known.has(videoId));
+      // Tokens are offsets from the newest video: uploads since the failure push already imported videos onto
+      // this page, so only a page with nothing new means the gap is filled.
+      const allKnown = page.videoIds.every((videoId) => known.has(videoId));
       await importPage(page.videoIds);
-      resumeToken = reachedKnown ? null : page.nextPageToken;
+      resumeToken = allKnown ? null : page.nextPageToken;
       store.setSyncPageToken(channel.id, resumeToken);
     }
   }

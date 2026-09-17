@@ -189,6 +189,28 @@ describe("syncChannel", () => {
     expect(store.getChannel(channelId)?.sync_page_token).toBeNull();
   });
 
+  it("finishes an interrupted walk even when new uploads shifted the saved page position", async () => {
+    useFake(longVideos(10));
+    const channelId = follow();
+    await syncChannel(channelId, at(0));
+
+    for (let index = 0; index < 130; index += 1) {
+      fake.addVideo({ id: `nw${String(index).padStart(9, "0")}`, channelId: CHANNEL, publishedAt: daysBefore(7 - index / 100), views: 10 });
+    }
+    fake.setQuotaAfter(2);
+    expect(await syncChannel(channelId, at(1))).toEqual({ status: "quota" });
+    expect(store.getChannel(channelId)?.sync_page_token).toBe("50");
+
+    // Uploads published before the retry push already imported videos onto the saved page.
+    for (let index = 0; index < 3; index += 1) {
+      fake.addVideo({ id: `up${String(index).padStart(9, "0")}`, channelId: CHANNEL, publishedAt: daysBefore(1 - index / 10), views: 10 });
+    }
+    fake.setQuotaAfter(null);
+    expect(await syncChannel(channelId, at(25))).toMatchObject({ status: "done", imported: 83 });
+    expect(store.knownVideoIds(channelId).size).toBe(143);
+    expect(store.getChannel(channelId)?.sync_page_token).toBeNull();
+  });
+
   it("stops the stale queue when refreshing the channel details hits the quota, without failing the sync", async () => {
     useFake(longVideos(3));
     const channelId = follow();

@@ -38,13 +38,14 @@ function runSync(channelId: string): Promise<void> {
   const runtime = channelRuntime();
   const job: Promise<void> = syncChannel(channelId)
     .then((outcome) => {
-      // Rows are imported page by page, so an interrupted sync may also have added thumbnails to classify.
-      if (outcome.status === "done" || outcome.status === "quota" || outcome.status === "error") kickClassification();
       if (outcome.status === "quota" || isQuotaBlocked(new Date())) runtime.staleQueue.length = 0;
     })
     .catch((err) => logFailure(`sync ${channelId} failed`, err))
     .finally(() => {
       if (runtime.running.get(channelId) === job) runtime.running.delete(channelId);
+      // Whatever the outcome: rows are imported page by page, and the worker never approves while a lock is
+      // held, so thumbnails another sync added meanwhile must be re-evaluated once this one lets go.
+      kickClassification();
     });
   runtime.running.set(channelId, job);
   return job;
