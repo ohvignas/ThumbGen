@@ -2,7 +2,7 @@
  * Shared YouTube channel utilities.
  *
  * Used by:
- *  - src/app/api/youtube/playlist/route.ts
+ *  - src/lib/youtube/api.ts (followed channels)
  *  - src/lib/agent/tools/search-youtube-channel.ts
  *  - src/lib/agent/tools/get-channel-videos.ts
  */
@@ -99,35 +99,4 @@ export async function resolveChannelId(
   const id = data.items?.[0]?.id;
   if (!id) return { ok: false, error: `No channel found for handle ${parsed.value}` };
   return { ok: true, id };
-}
-
-export async function resolveUploadsPlaylistId(
-  apiKey: string,
-  input: string
-): Promise<string | null> {
-  const parsed = parseChannelInput(input);
-
-  // If it looks like a playlist ID already, use it directly
-  if (!parsed) return input;
-
-  let channelId: string;
-
-  if (parsed.type === "channelId") {
-    channelId = parsed.value;
-  } else {
-    // Resolve handle to channel ID
-    const params = new URLSearchParams({
-      part: "id",
-      forHandle: parsed.value.replace("@", ""),
-      key: apiKey,
-    });
-    const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?${params}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    channelId = data.items?.[0]?.id;
-    if (!channelId) return null;
-  }
-
-  // Convert channel ID (UCxxxxxx) to uploads playlist (UUxxxxxx)
-  return channelId.replace(/^UC/, "UU");
 }

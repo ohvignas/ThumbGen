@@ -184,6 +184,16 @@ function pushHistory(get: () => CanvasState, set: (s: Partial<CanvasState>) => v
   }, 300);
 }
 
+/**
+ * React Flow reports selection and measured sizes on its own, e.g. right
+ * after an undo remounts the nodes. They are view state: recording them would
+ * push a duplicate snapshot and wipe the redo stack. A resize by the user
+ * (dimensions with `resizing`) is a real edit.
+ */
+function isViewOnlyNodeChange(change: NodeChange<AppNode>): boolean {
+  return change.type === "select" || (change.type === "dimensions" && !change.resizing);
+}
+
 export const useCanvasStore = create<CanvasState>((set, get) => ({
   nodes: [],
   edges: [],
@@ -198,7 +208,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
-    if (get().loaded) {
+    if (get().loaded && !changes.every(isViewOnlyNodeChange)) {
       pushHistory(get, set);
       debouncedSave(get(), set);
     }
@@ -206,7 +216,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   onEdgesChange: (changes) => {
     set({ edges: applyEdgeChanges(changes, get().edges) });
-    if (get().loaded) {
+    if (get().loaded && !changes.every((change) => change.type === "select")) {
       pushHistory(get, set);
       debouncedSave(get(), set);
     }

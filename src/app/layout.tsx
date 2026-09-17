@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { cn } from "cn";
+import ChannelSyncTrigger from "@/components/ChannelSyncTrigger";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getTypedSettings } from "@/lib/settings";
@@ -54,6 +55,7 @@ export default async function RootLayout({
         suppressHydrationWarning
       >
         <TooltipProvider>
+          <ChannelSyncTrigger />
           {/* Reopens in the state the user left it (sidebar_state cookie written
               by ui/sidebar.tsx), expanded when there is no cookie yet. The
               SidebarTrigger in AppSidebar's header collapses it back to the 4rem

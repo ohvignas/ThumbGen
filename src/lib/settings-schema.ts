@@ -115,6 +115,7 @@ export const SettingsSchema = z.object({
   defaultImageCount: intRange(1, 4, 1, "Entre 1 et 4 images"),
   defaultResolution: z.enum(IMAGE_RESOLUTIONS, { error: "Résolution inconnue" }).default("2K"),
   language: z.enum(LANGUAGE_CODES, { error: "Langue inconnue" }).default("fr"),
+  inspirationAutoClassify: flag(true),
   youtubePlaylistId: z.string().trim().max(300, "300 caractères maximum").default(""),
   channelProfile: ChannelProfileSchema.default(emptyChannelProfile),
   theme: z.enum(THEMES, { error: "Thème inconnu" }).default("dark"),

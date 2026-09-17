@@ -1,4 +1,5 @@
 import { LogoPickerGrid, LogoSearchPicker, PersonaPickerGrid, SwipePickerGrid } from "./picker-grids";
+import FollowedChannelsPickerTab from "./followed-channels/FollowedChannelsPickerTab";
 
 export type LibraryKind = "personnages" | "logos" | "inspirations";
 
@@ -36,6 +37,11 @@ export const PICKER_TABS: Record<LibraryKind, PickerTab[]> = {
       id: "mes-images",
       label: "Mes images",
       render: ({ query, onPick }) => <SwipePickerGrid query={query} onPick={onPick} />,
+    },
+    {
+      id: "chaines-suivies",
+      label: "Chaînes suivies",
+      render: ({ query, onPick }) => <FollowedChannelsPickerTab query={query} onPick={onPick} />,
     },
   ],
 };

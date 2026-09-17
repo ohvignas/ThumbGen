@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { AGENT_TABLES_DDL } from "./agent/migrations";
+import { migrateChannelTables } from "./youtube/migrations";
 
 const DB_FILE = process.env.THUMBGEN_DB_PATH || path.join(process.cwd(), "data", "thumbgen.db");
 const DATA_DIR = path.dirname(DB_FILE);
@@ -114,6 +115,7 @@ function init(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_generations_log_provider   ON generations_log(provider);
   `);
   database.exec(AGENT_TABLES_DDL);
+  migrateChannelTables(database);
 
   // `CREATE TABLE IF NOT EXISTS` never alters a table that already exists —
   // a face_reactions table created before the `tags` column was added above

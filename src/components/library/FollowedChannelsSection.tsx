@@ -1,127 +1,106 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Tv } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { KeyRound, Tv } from "lucide-react";
+import { Alert, AlertTitle } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { VideoListItem } from "@/lib/youtube/types";
+import ChannelBar from "./followed-channels/ChannelBar";
+import ClassificationNotice from "./followed-channels/ClassificationNotice";
+import FollowChannelDialog from "./followed-channels/FollowChannelDialog";
+import TypesSummary from "./followed-channels/TypesSummary";
+import UseAsReferenceDialog from "./followed-channels/UseAsReferenceDialog";
+import { useFollowedChannels } from "./followed-channels/useFollowedChannels";
+import VideoGrid from "./followed-channels/VideoGrid";
 
-type PlaylistItem = { videoId: string; title: string; thumbnailUrl: string; addedAt: string };
-type PlaylistResponse = { items?: PlaylistItem[]; configured?: boolean; error?: string };
-type FeedState =
-  | { status: "loading" }
-  | { status: "unconfigured" }
-  | { status: "error" }
-  | { status: "ready"; items: PlaylistItem[] };
+const GOOGLE_KEY_HELP = "https://console.cloud.google.com/apis/credentials";
 
-/**
- * « Chaînes suivies » of the Inspirations tab. Until chantier D ships it, the
- * section shows the read-only « Ma chaîne » feed that used to live in the sidebar.
- */
+/** Inspirations → « Chaînes suivies » (chantier D). Default export without props: chantier C's contract. */
 export default function FollowedChannelsSection() {
-  const [feed, setFeed] = useState<FeedState>({ status: "loading" });
-
-  // Shared by the mount effect below and the `youtube-channel-saved` handler
-  // — kept as a plain function (not called from the mount effect itself) so
-  // the effect body never calls setState synchronously (react-hooks/set-state-in-effect).
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/youtube/playlist", { cache: "no-store" });
-      const body = (await res.json()) as PlaylistResponse;
-      if (body.configured === false) setFeed({ status: "unconfigured" });
-      else if (body.error || !res.ok) setFeed({ status: "error" });
-      else setFeed({ status: "ready", items: body.items ?? [] });
-    } catch {
-      setFeed({ status: "error" });
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/youtube/playlist", { cache: "no-store" });
-        const body = (await res.json()) as PlaylistResponse;
-        if (cancelled) return;
-        if (body.configured === false) setFeed({ status: "unconfigured" });
-        else if (body.error || !res.ok) setFeed({ status: "error" });
-        else setFeed({ status: "ready", items: body.items ?? [] });
-      } catch {
-        if (!cancelled) setFeed({ status: "error" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Saving « Ma chaîne » in Réglages (ChaineSection) dispatches this event.
-  useEffect(() => {
-    const handler = () => {
-      void load();
-    };
-    window.addEventListener("youtube-channel-saved", handler);
-    return () => window.removeEventListener("youtube-channel-saved", handler);
-  }, [load]);
+  const { data, error, reload, version } = useFollowedChannels();
+  const [followOpen, setFollowOpen] = useState(false);
+  const [referenceVideo, setReferenceVideo] = useState<VideoListItem | null>(null);
 
   return (
-    <section className="grid gap-4">
-      <div>
-        <div className="flex items-center gap-2">
-          <h2 className="font-heading text-lg font-medium">Chaînes suivies</h2>
-          <Badge variant="secondary">Bientôt</Badge>
-        </div>
+    <section aria-labelledby="followed-channels-title" className="grid gap-4">
+      <div className="grid gap-1">
+        <h2 id="followed-channels-title" className="text-lg font-semibold">
+          Chaînes suivies
+        </h2>
         <p className="text-sm text-muted-foreground">
-          Bientôt : suis ta chaîne et d&apos;autres chaînes, avec les vues et les miniatures qui marchent. En attendant, voici
-          les vidéos de ta chaîne.
+          Les miniatures de ta chaîne et des chaînes que tu suis, avec leurs vues et leur score de surperformance.
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Tv className="size-4" />
-            Ma chaîne
-          </CardTitle>
-          <CardDescription>Lecture seule. La chaîne se règle dans Réglages → Ma chaîne.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {feed.status === "loading" && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[0, 1, 2, 3].map((index) => (
-                <Skeleton key={index} className="aspect-video w-full rounded-lg" />
-              ))}
-            </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>{error}</AlertTitle>
+        </Alert>
+      )}
+
+      {data === null ? (
+        <Skeleton className="h-24 w-full" />
+      ) : !data.youtubeConfigured ? (
+        <YouTubeKeyCard />
+      ) : (
+        <>
+          <ChannelBar channels={data.channels} onFollow={() => setFollowOpen(true)} onChanged={() => void reload()} />
+          <ClassificationNotice status={data.classification} onChanged={() => void reload()} />
+          {data.channels.length === 0 ? (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Tv />
+                </EmptyMedia>
+                <EmptyTitle>Aucune chaîne suivie</EmptyTitle>
+                <EmptyDescription>
+                  Suis une chaîne pour importer ses vidéos longues, leurs vues et leurs miniatures. Renseigne aussi « Ma
+                  chaîne » dans Réglages pour l&apos;ajouter automatiquement.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <>
+              <TypesSummary channels={data.channels} version={version} />
+              <VideoGrid channels={data.channels} version={version} onUse={setReferenceVideo} />
+            </>
           )}
-          {feed.status === "unconfigured" && (
-            <p className="text-sm text-muted-foreground">
-              Ajoute ta clé YouTube et ta chaîne pour voir tes vidéos ici :{" "}
-              <Link href="/reglages/chaine" className="underline underline-offset-4 hover:text-foreground">
-                Réglages → Ma chaîne
-              </Link>
-              .
-            </p>
-          )}
-          {feed.status === "error" && (
-            <p className="text-sm text-destructive">Impossible de charger les vidéos de ta chaîne pour l&apos;instant.</p>
-          )}
-          {feed.status === "ready" && feed.items.length === 0 && (
-            <p className="text-sm text-muted-foreground">Aucune vidéo trouvée sur ta chaîne.</p>
-          )}
-          {feed.status === "ready" && feed.items.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {feed.items.map((item) => (
-                <figure key={item.videoId} className="grid gap-1.5">
-                  <img src={item.thumbnailUrl} alt={item.title} loading="lazy" className="aspect-video w-full rounded-lg bg-muted object-cover" />
-                  <figcaption className="line-clamp-2 text-xs text-muted-foreground">{item.title}</figcaption>
-                </figure>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </>
+      )}
+
+      <FollowChannelDialog open={followOpen} onOpenChange={setFollowOpen} onFollowed={() => void reload()} />
+      {referenceVideo && (
+        <UseAsReferenceDialog key={referenceVideo.videoId} video={referenceVideo} onClose={() => setReferenceVideo(null)} />
+      )}
     </section>
+  );
+}
+
+function YouTubeKeyCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KeyRound className="size-4" />
+          Ajoute ta clé YouTube (gratuite)
+        </CardTitle>
+        <CardDescription>
+          Elle sert à importer les vidéos des chaînes suivies avec leurs vues. Sans clé, ThumbGen n&apos;envoie aucune
+          requête à YouTube.
+        </CardDescription>
+      </CardHeader>
+      <CardFooter className="flex flex-wrap gap-2">
+        <Link href="/reglages/connexions" className={buttonVariants()}>
+          Ajouter ma clé
+        </Link>
+        <a href={GOOGLE_KEY_HELP} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline" })}>
+          Créer une clé dans Google Cloud
+        </a>
+      </CardFooter>
+    </Card>
   );
 }
