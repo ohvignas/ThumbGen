@@ -89,3 +89,13 @@ describe("timestamp parsing is strict", () => {
     expect(compareUpdatedAt("SELF-SAVE-2", "SELF-SAVE-1")).toBe(1);
   });
 });
+
+describe("SQLite timestamps with fractional seconds", () => {
+  it("compares them as instants", async () => {
+    const { compareUpdatedAt, isKnownUpdatedAt } = await import("@/lib/canvas/canvas-patch");
+    expect(compareUpdatedAt("2026-09-17 12:00:00.500", "2026-09-17T12:00:00.400Z")).toBe(1);
+    expect(compareUpdatedAt("2026-09-17 12:00:00.500", "2026-09-17T12:00:00.600Z")).toBe(-1);
+    expect(compareUpdatedAt("2026-09-17 12:00:00.500", "2026-09-17T12:00:00.500Z")).toBe(0);
+    expect(isKnownUpdatedAt("2026-09-17 12:00:00.500", "2026-09-17T13:00:00.000Z")).toBe(true);
+  });
+});
