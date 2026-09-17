@@ -138,6 +138,70 @@ function findAbandonedClientToolCalls(rows: { role: string; content_json: string
   return out;
 }
 
+type StoredRow = { role: string; content_json: string; interrupted?: number };
+
+/** Text of a stored user row (its text parts joined), or null when it can't be read. */
+function storedUserText(row: StoredRow): string | null {
+  try {
+    const parsed: unknown = JSON.parse(row.content_json);
+    if (!Array.isArray(parsed)) return null;
+    return parsed
+      .flatMap((m) => {
+        const content = (m as { role?: unknown; content?: unknown } | null)?.content;
+        return (m as { role?: unknown } | null)?.role === "user" && Array.isArray(content) ? content : [];
+      })
+      .map((c) => {
+        const part = c as { type?: unknown; text?: unknown } | null;
+        return part?.type === "text" && typeof part.text === "string" ? part.text : "";
+      })
+      .join("");
+  } catch {
+    return null;
+  }
+}
+
+/** A row that only records an abandoned client request (the skip results appended before a new user row). */
+function isAbandonedSkipRow(row: StoredRow): boolean {
+  try {
+    const parsed: unknown = JSON.parse(row.content_json);
+    return (
+      Array.isArray(parsed) &&
+      parsed.length > 0 &&
+      parsed.every((m) => {
+        const msg = m as { role?: unknown; content?: unknown } | null;
+        return (
+          msg?.role === "tool" &&
+          Array.isArray(msg.content) &&
+          msg.content.every((c) => {
+            const value = (c as { output?: { value?: { skipped?: unknown; reason?: unknown } } } | null)?.output?.value;
+            return value?.skipped === true && value.reason === "abandoned";
+          })
+        );
+      })
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Index of the stored user row that a new user message repeats after its turn
+ * never finished — what « Réessayer » (useChat's regenerate) sends — or -1.
+ * Only interrupted assistant rows (a stop or a stream failure) and abandoned-
+ * request skip rows may follow it; after a completed answer the same text is a
+ * genuinely new message. A request that failed before writing anything (e.g. a
+ * 400 for a missing key) left no user row, so it is appended as usual.
+ */
+export function findRetriedUserRowIndex(rows: StoredRow[], text: string): number {
+  if (!text) return -1;
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const row = rows[index];
+    if (row.role === "user") return storedUserText(row) === text ? index : -1;
+    if (row.role !== "assistant" || !(row.interrupted === 1 || isAbandonedSkipRow(row))) return -1;
+  }
+  return -1;
+}
+
 export async function postV2(req: NextRequest): Promise<Response> {
   // `messages` here is the wire shape @ai-sdk/react's useChat/DefaultChatTransport
   // actually sends (the full UIMessage[] the client holds) — there is no
@@ -218,6 +282,9 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // Task 11's brief header note (bugs #1/#2).
   const lastMessage = body.messages?.at(-1);
   const isNewUserTurn = lastMessage?.role === "user";
+  // A retry reuses its stored user row (index in the rows read before this
+  // turn), so the model and the DB never see the message twice; -1 otherwise.
+  let retriedUserRowIndex = -1;
 
   try {
     userParts = [];
@@ -244,6 +311,9 @@ export async function postV2(req: NextRequest): Promise<Response> {
       // comment on why this doesn't need to be awaited).
       const priorRowsForThisTurn = listMessages(conversationId);
       const isFirstTurn = priorRowsForThisTurn.length === 0;
+      if ((body.attachments ?? []).length === 0) {
+        retriedUserRowIndex = findRetriedUserRowIndex(priorRowsForThisTurn, lastMessageText);
+      }
 
       // Auto-resolve any pending request_user_image/request_user_sketch the
       // user is about to send a new message past instead of answering — see
@@ -275,15 +345,17 @@ export async function postV2(req: NextRequest): Promise<Response> {
         });
       }
 
-      appendMessage({
-        conversation_id: conversationId,
-        role: "user",
-        content_json: JSON.stringify([{ role: "user", content: userParts }]),
-        interrupted: 0,
-        total_input_tokens: 0,
-        total_output_tokens: 0,
-        cost_estimate: 0,
-      });
+      if (retriedUserRowIndex === -1) {
+        appendMessage({
+          conversation_id: conversationId,
+          role: "user",
+          content_json: JSON.stringify([{ role: "user", content: userParts }]),
+          interrupted: 0,
+          total_input_tokens: 0,
+          total_output_tokens: 0,
+          cost_estimate: 0,
+        });
+      }
 
       if (isFirstTurn && lastMessageText.trim() && settings.agentAutoTitle) {
         void generateAndPersistTitle(conversationId, lastMessageText);
@@ -400,7 +472,17 @@ export async function postV2(req: NextRequest): Promise<Response> {
     // continuation there's nothing to re-add afterward — the freshly
     // appended tool-result row (if any) IS the last row and belongs in
     // `priorMessages` as-is, so nothing is sliced off.
-    const priorRows = isNewUserTurn ? listMessages(conversationId).slice(0, -1) : listMessages(conversationId);
+    //
+    // On a retry (retriedUserRowIndex !== -1) nothing was appended: the rows
+    // up to and including the stored user row are the prompt, so the model
+    // sees neither a duplicate user message nor the interrupted attempts'
+    // leftovers, and the stored row keeps any image the first attempt sent.
+    const priorRows =
+      retriedUserRowIndex !== -1
+        ? listMessages(conversationId).slice(0, retriedUserRowIndex + 1)
+        : isNewUserTurn
+          ? listMessages(conversationId).slice(0, -1)
+          : listMessages(conversationId);
     priorMessages = [];
     for (const row of priorRows) {
       const parsed: unknown = JSON.parse(row.content_json);
@@ -444,7 +526,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
     // false) — `priorMessages` alone (assistant tool-call + the freshly
     // persisted tool-result row above) is the correct prompt; streamText
     // just resumes from where the model paused.
-    messages: (isNewUserTurn
+    messages: (isNewUserTurn && retriedUserRowIndex === -1
       ? [...priorMessages, { role: "user", content: userParts }]
       : [...priorMessages]) as ModelMessage[],
     tools: { ...buildAiSdkTools(), ...V2_CLIENT_TOOLS },
