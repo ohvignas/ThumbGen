@@ -99,6 +99,41 @@ describe("flushPendingSave", () => {
     expect(saves()).toHaveLength(1);
   });
 
+  it("waits for a save already in flight, then saves the edit made meanwhile — nothing saves afterwards", async () => {
+    let releaseFirstSave: () => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseFirstSave = () => resolve({ ok: true, json: async () => ({}) });
+        }),
+    );
+    const { addNode } = useCanvasStore.getState();
+    addNode("prompt", { x: 0, y: 0 }, { prompt: "first" });
+    await vi.advanceTimersByTimeAsync(2000); // debounced save starts and hangs
+    expect(saves()).toHaveLength(1);
+    expect(useCanvasStore.getState().saving).toBe(true);
+
+    addNode("prompt", { x: 0, y: 300 }, { prompt: "second" }); // edit while that save is in flight
+    const flushed = useCanvasStore.getState().flushPendingSave();
+    releaseFirstSave();
+    await flushed;
+
+    expect(saves()).toHaveLength(2);
+    const lastBody = JSON.parse(String(saves()[1][1]?.body)) as { nodes: unknown[] };
+    expect(lastBody.nodes).toHaveLength(2);
+
+    // The restore that follows can't be overwritten by a late autosave.
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(saves()).toHaveLength(2);
+  });
+
+  it("cancelPendingSave drops a scheduled autosave", async () => {
+    useCanvasStore.getState().addNode("prompt", { x: 0, y: 0 }, { prompt: "x" });
+    useCanvasStore.getState().cancelPendingSave();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(saves()).toHaveLength(0);
+  });
+
   it("does nothing when there is no pending edit", async () => {
     await useCanvasStore.getState().flushPendingSave();
     expect(saves()).toHaveLength(0);

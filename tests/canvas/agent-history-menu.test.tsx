@@ -15,8 +15,16 @@ const SNAPSHOTS = [
 let container: HTMLDivElement;
 let root: Root;
 const fetchMock = vi.fn();
-const loadProject = vi.fn(async () => {});
-const flushPendingSave = vi.fn(async () => {});
+const loadProject = vi.fn<(projectId?: string) => Promise<void>>(async () => {
+  calls.push("load");
+});
+const calls: string[] = [];
+const flushPendingSave = vi.fn(async () => {
+  calls.push("flush");
+});
+const cancelPendingSave = vi.fn(() => {
+  calls.push("cancel");
+});
 
 function routes(url: string, init?: RequestInit) {
   if (url === "/api/project/proj-1/snapshots") {
@@ -43,7 +51,8 @@ function byText(text: string): HTMLElement | undefined {
 beforeEach(async () => {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => routes(url, init));
   vi.stubGlobal("fetch", fetchMock);
-  useCanvasStore.setState({ currentProjectId: "proj-1", loadProject, flushPendingSave });
+  calls.length = 0;
+  useCanvasStore.setState({ currentProjectId: "proj-1", loadProject, flushPendingSave, cancelPendingSave });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -58,7 +67,14 @@ afterEach(async () => {
   fetchMock.mockReset();
   loadProject.mockClear();
   flushPendingSave.mockClear();
+  cancelPendingSave.mockClear();
 });
+
+const trigger = () => container.querySelector<HTMLButtonElement>("button[aria-label=\"Historique de l'agent\"]")!;
+const dialogButton = (label: string) =>
+  Array.from(document.body.querySelectorAll<HTMLButtonElement>("[role='dialog'] button")).find(
+    (el) => el.textContent === label,
+  );
 
 describe("AgentHistoryMenu", () => {
   it("lists the snapshots with their reason and time, then restores after confirmation", async () => {
@@ -98,6 +114,58 @@ describe("AgentHistoryMenu", () => {
       body: "{}",
     });
     expect(loadProject).toHaveBeenCalledWith("proj-1");
+    expect(calls).toEqual(["flush", "cancel", "load"]);
+  });
+
+  it("shows a failed restore in its own alert line and keeps the dialog open", async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url).endsWith("/restore")
+        ? { ok: false, json: async () => ({ error: "Instantané introuvable" }) }
+        : routes(url, init),
+    );
+    await act(async () => trigger().click());
+    await flush();
+    await act(async () => byText("Avant modification de l'agent")!.click());
+    await flush();
+    expect(document.body.querySelector("[role='dialog'] [role='alert']")).toBeNull();
+    await act(async () => dialogButton("Restaurer")!.click());
+    await flush();
+
+    const alert = document.body.querySelector("[role='dialog'] [role='alert']");
+    expect(alert?.textContent).toBe("Instantané introuvable");
+    expect(document.body.querySelector("[role='dialog'] [data-slot='dialog-description']")?.textContent).not.toContain(
+      "Instantané introuvable",
+    );
+    expect(loadProject).not.toHaveBeenCalled();
+  });
+
+  it("ignores a list response that arrives after a newer one", async () => {
+    let releaseStale: () => void = () => {};
+    let listCalls = 0;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/snapshots")) {
+        listCalls++;
+        if (listCalls === 1) {
+          return new Promise((resolve) => {
+            releaseStale = () => resolve({ ok: true, json: async () => ({ snapshots: [] }) });
+          });
+        }
+      }
+      return routes(url, init);
+    });
+    await act(async () => trigger().click()); // open: first request hangs
+    await flush();
+    await act(async () => trigger().click()); // close
+    await flush();
+    await act(async () => trigger().click()); // reopen: second request answers
+    await flush();
+    expect(listCalls).toBe(2);
+    expect(document.body.textContent).toContain("14 étapes");
+
+    await act(async () => releaseStale());
+    await flush();
+    expect(document.body.textContent).toContain("14 étapes");
+    expect(document.body.textContent).not.toContain("Aucune modification");
   });
 
   it("cancelling the confirmation restores nothing", async () => {

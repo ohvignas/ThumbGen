@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { History } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,10 @@ export default function AgentHistoryMenu() {
   const projectId = useCanvasStore((s) => s.currentProjectId);
   const loadProject = useCanvasStore((s) => s.loadProject);
   const flushPendingSave = useCanvasStore((s) => s.flushPendingSave);
+  const cancelPendingSave = useCanvasStore((s) => s.cancelPendingSave);
+  // Only the latest list request may update the menu (reopening quickly
+  // starts a new one while the previous may still be in flight).
+  const latestLoad = useRef(0);
   const [snapshots, setSnapshots] = useState<CanvasSnapshotSummary[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [pending, setPending] = useState<CanvasSnapshotSummary | null>(null);
@@ -39,11 +43,14 @@ export default function AgentHistoryMenu() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
 
   const load = async () => {
+    const request = ++latestLoad.current;
     setSnapshots(null);
     setListError(null);
     try {
-      setSnapshots(await fetchAgentSnapshots(projectId));
+      const list = await fetchAgentSnapshots(projectId);
+      if (request === latestLoad.current) setSnapshots(list);
     } catch (err) {
+      if (request !== latestLoad.current) return;
       setListError(err instanceof Error ? err.message : "Historique indisponible.");
       setSnapshots([]);
     }
@@ -58,6 +65,8 @@ export default function AgentHistoryMenu() {
       // the « Avant restauration » snapshot and can't be written back afterwards.
       await flushPendingSave();
       await restoreAgentSnapshot(projectId, pending.id);
+      // No autosave scheduled during the restore may write the old canvas back.
+      cancelPendingSave();
       await loadProject(projectId);
       setPending(null);
     } catch (err) {
@@ -69,7 +78,7 @@ export default function AgentHistoryMenu() {
 
   const pendingWhen = pending ? formatSnapshotTime(pending.created_at) : "";
   const description = pending
-    ? `Le canvas revient à son état de ${pendingWhen} (${snapshotReasonLabel(pending.reason).toLowerCase()}, ${pending.node_count} étape${pending.node_count > 1 ? "s" : ""}). L'état actuel est gardé dans l'historique : tu pourras y revenir.${restoreError ? ` ${restoreError}` : ""}`
+    ? `Le canvas revient à son état de ${pendingWhen} (${snapshotReasonLabel(pending.reason).toLowerCase()}, ${pending.node_count} étape${pending.node_count > 1 ? "s" : ""}). L'état actuel est gardé dans l'historique : tu pourras y revenir.`
     : "";
 
   return (
@@ -139,6 +148,7 @@ export default function AgentHistoryMenu() {
         busy={restoring}
         onConfirm={() => void confirmRestore()}
         contentClassName="nokey"
+        error={restoreError}
       />
     </>
   );

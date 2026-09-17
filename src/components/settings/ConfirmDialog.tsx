@@ -20,6 +20,7 @@ export default function ConfirmDialog({
   destructive = true,
   onConfirm,
   contentClassName,
+  error = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,6 +35,9 @@ export default function ConfirmDialog({
   // ignores Backspace/Delete pressed while a button in this dialog has
   // focus. Undefined by default: no behaviour change for other callers.
   contentClassName?: string;
+  // Shown on its own line (role="alert") under the description, e.g. why the
+  // confirmed action failed.
+  error?: string | null;
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => onOpenChange(next)}>
@@ -42,6 +46,11 @@ export default function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
         <DialogFooter>
           <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             Annuler
