@@ -45,14 +45,22 @@ export function stoppedTurnPlacement(messages: UIMessage[], stoppedLive: boolean
 
 export type TrailingRow = "progress" | "error" | "interrupted" | null;
 
-/** The assistant row to show at the end of the list while the running (or failed, or stopped) turn has no assistant message. */
-export function trailingAssistantRow(messages: UIMessage[], status: ChatStatus, stopped: StoppedPlacement): TrailingRow {
+/**
+ * The assistant row to show at the end of the list while the running (or failed, or stopped) turn has no assistant message.
+ * `orphanUserTurn`: the conversation was reopened on a user message the server never answered and no turn runs.
+ */
+export function trailingAssistantRow(
+  messages: UIMessage[],
+  status: ChatStatus,
+  stopped: StoppedPlacement,
+  orphanUserTurn = false,
+): TrailingRow {
   const last = messages.at(-1);
   // No message at all: a new conversation's first send whose user message is not shown yet.
   if (!last || last.role === "user") {
     if (isBusyStatus(status)) return "progress";
     if (status === "error") return "error";
-    return stopped === "trailing" ? "interrupted" : null;
+    return stopped === "trailing" || (orphanUserTurn && last !== undefined) ? "interrupted" : null;
   }
   // The last message is an older turn's answer: the stopped turn produced nothing.
   if (!isBusyStatus(status) && status !== "error" && stopped === "trailing") return "interrupted";

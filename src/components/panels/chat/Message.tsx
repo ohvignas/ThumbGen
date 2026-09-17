@@ -21,6 +21,8 @@ export type ChatTurnControls = {
   stoppedLive: boolean;
   /** Messages present when the running turn started, so a stop never marks an older turn. */
   liveTurnStart: LiveTurnStart | null;
+  /** Reopened on a user message the server never answered, with no turn running (« Tour interrompu »). */
+  orphanUserTurn?: boolean;
   onAskAgent: (message: string) => void;
   /** Re-runs the last user message; null when there is nothing to retry. */
   onRetry: (() => void) | null;
