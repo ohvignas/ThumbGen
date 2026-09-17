@@ -171,6 +171,17 @@ function toNextAction(action: FinishTurnInput["next_actions"][number]): NextActi
   return null;
 }
 
+/** Answer of a turn that has steps but ended without text, finish_turn or failed tool. */
+export const STOPPED_WITHOUT_ANSWER = "L'agent s'est arrêté sans réponse.";
+
+function endedWithoutAnswer(parts: MessagePart[], stepTools: ToolPart[], pending: ToolPart[]): boolean {
+  // Paused on a client request (or reopened up to its answered request): waiting, not stopped.
+  if (pending.length > 0) return false;
+  const lastTool = stepTools.at(-1);
+  if (lastTool && CLIENT_TOOL_NAMES.has(toolNameOf(lastTool))) return false;
+  return stepTools.length > 0 || parts.some((part) => part.type === "reasoning" && part.text.trim() !== "");
+}
+
 export function splitAssistantTurn(message: UIMessage): AssistantTurn {
   const parts = message.parts;
   const metadata = readTurnMetadata(message);
@@ -222,6 +233,9 @@ export function splitAssistantTurn(message: UIMessage): AssistantTurn {
       const last = texts[texts.length - 1];
       answer = last.text;
       answerTextIndexes.add(last.index);
+    } else if (endedWithoutAnswer(parts, stepTools, pending)) {
+      // E.g. the step limit was reached: say so instead of leaving the turn blank.
+      answer = STOPPED_WITHOUT_ANSWER;
     }
   }
 
@@ -233,6 +247,9 @@ export function splitAssistantTurn(message: UIMessage): AssistantTurn {
       const part = byId.get(normalizeResultId(id));
       if (part && isShowableResult(part) && !results.includes(part)) results.push(part);
     }
+    // Ids listed but none of them known: finish_turn was likely called in the same
+    // step as the visual tool, before the model could read its result id.
+    if (finish.results.length > 0 && results.length === 0) results = stepTools.filter(isShowableResult);
   } else {
     results = stepTools.filter(isShowableResult);
   }

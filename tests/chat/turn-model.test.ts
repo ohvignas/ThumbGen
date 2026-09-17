@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
 import {
   INTERRUPTED_TURN_ERROR,
+  STOPPED_WITHOUT_ANSWER,
   currentStepLabel,
   emptyAssistantTurn,
   formatElapsed,
@@ -373,5 +374,40 @@ describe("turnDisplay", () => {
     expect(["submitted", "streaming"].every((s) => isBusyStatus(s as "submitted"))).toBe(true);
     expect(isBusyStatus("ready")).toBe(false);
     expect(emptyAssistantTurn()).toMatchObject({ answer: "", stepCount: 0, steps: [], results: [] });
+  });
+});
+
+describe("final fixes — results and blank turns", () => {
+  it("shows every visual output when finish_turn lists ids but none of them is known (M1)", () => {
+    const turn = splitAssistantTurn(assistant([sketch("c1"), sketch("c2"), finish({ summary: "Deux croquis.", results: ["sk_1", "result_id: x"] })]));
+    expect(ids(turn.results)).toEqual(["c1", "c2"]);
+    expect(turn.steps.map((step) => step.kind === "tool" && step.shownInResults)).toEqual([true, true]);
+  });
+
+  it("still shows no result when finish_turn gives an explicitly empty list (M1)", () => {
+    const turn = splitAssistantTurn(assistant([sketch("c1"), finish({ summary: "Rien.", results: [] })]));
+    expect(turn.results).toEqual([]);
+  });
+
+  it("keeps only the known ids when at least one of them matches (M1)", () => {
+    const turn = splitAssistantTurn(assistant([sketch("c1"), sketch("c2"), finish({ summary: "Un.", results: ["c2", "inconnu"] })]));
+    expect(ids(turn.results)).toEqual(["c2"]);
+  });
+
+  it("gives a neutral answer to a turn that stopped after its steps without any text (M2)", () => {
+    const turn = splitAssistantTurn(assistant([{ type: "step-start" }, tool("get_canvas_state", "c1"), tool("list_logos", "c2")]));
+    expect(turn.answer).toBe(STOPPED_WITHOUT_ANSWER);
+    expect(STOPPED_WITHOUT_ANSWER).toBe("L'agent s'est arrêté sans réponse.");
+    expect(turn.stepCount).toBe(2);
+  });
+
+  it("leaves empty messages, paused requests and answered requests without that answer (M2)", () => {
+    expect(splitAssistantTurn(assistant([])).answer).toBe("");
+    expect(
+      splitAssistantTurn(
+        assistant([tool("get_canvas_state", "c0"), { type: "tool-request_user_image", toolCallId: "c1", state: "input-available", input: {} }]),
+      ).answer,
+    ).toBe("");
+    expect(splitAssistantTurn(assistant([tool("request_user_image", "c1", { output: { source_ids: [] } })])).answer).toBe("");
   });
 });
