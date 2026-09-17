@@ -65,9 +65,11 @@ function drainQueue(): void {
       if (isChannelLocked(channelId) || !store.channelExists(channelId)) continue;
       await runSync(channelId);
     }
-  })().finally(() => {
-    runtime.staleDrain = null;
-  });
+  })()
+    .catch((err) => logFailure("stale sync queue failed", err))
+    .finally(() => {
+      runtime.staleDrain = null;
+    });
 }
 
 /**
