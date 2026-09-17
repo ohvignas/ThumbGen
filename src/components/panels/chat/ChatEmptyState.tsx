@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles, WandSparklesIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -18,11 +18,22 @@ export const START_RETRY_MS = 10_000;
  */
 export default function ChatEmptyState({ onStart }: { onStart: () => void }) {
   const [started, setStarted] = useState(false);
+  const retryTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (retryTimerRef.current !== null) window.clearTimeout(retryTimerRef.current);
+    },
+    [],
+  );
 
   const start = () => {
     if (started) return;
     setStarted(true);
-    window.setTimeout(() => setStarted(false), START_RETRY_MS);
+    retryTimerRef.current = window.setTimeout(() => {
+      retryTimerRef.current = null;
+      setStarted(false);
+    }, START_RETRY_MS);
     onStart();
   };
 

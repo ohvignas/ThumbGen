@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { CheckIcon, ImageOffIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -87,6 +87,19 @@ export default function AskUserCard({
   const [selected, setSelected] = useState<string[]>([]);
   const [other, setOther] = useState("");
   const [failedImages, setFailedImages] = useState<string[]>([]);
+  const groupRef = useRef<HTMLDivElement>(null);
+
+  // A new question takes the focus (keyboard and screen reader users land on it),
+  // unless the user is typing something elsewhere.
+  useEffect(() => {
+    const active = document.activeElement;
+    const typing =
+      active instanceof HTMLElement &&
+      !groupRef.current?.contains(active) &&
+      (active.isContentEditable ||
+        ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && active.value.trim() !== ""));
+    if (!typing) groupRef.current?.focus({ preventScroll: true });
+  }, []);
 
   const unlock = (error: unknown) => {
     console.error("[ask_user] the answer could not be sent:", error);
@@ -187,7 +200,7 @@ export default function AskUserCard({
   };
 
   return (
-    <div role="group" aria-label={question.question} className="flex flex-col gap-2.5">
+    <div ref={groupRef} tabIndex={-1} role="group" aria-label={question.question} className="flex flex-col gap-2.5 outline-none">
       <div className="flex flex-col gap-0.5">
         <p className="text-xs text-muted-foreground">
           Question {question.step}/{ASK_USER_TOTAL_STEPS}

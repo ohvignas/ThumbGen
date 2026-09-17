@@ -86,6 +86,17 @@ describe("chat empty state — Construire avec l'agent", () => {
     vi.useRealTimers();
   });
 
+  it("leaves no timer behind when it unmounts", async () => {
+    vi.useFakeTimers();
+    await act(async () => root.render(list([], controls())));
+    const button = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.includes("Construire avec l'agent"))!;
+    await act(async () => button.click());
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    await act(async () => root.render(<div />));
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
   it("is not shown once the conversation has messages", () => {
     const messages = [{ id: "u1", role: "user", parts: [{ type: "text", text: "Salut" }] }] as UIMessage[];
     expect(renderToStaticMarkup(list(messages, controls()))).not.toContain("Construire avec");

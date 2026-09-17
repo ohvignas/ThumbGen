@@ -114,6 +114,36 @@ describe("AskUserCard — image grid", () => {
   });
 });
 
+describe("AskUserCard — focus", () => {
+  const input = { question: "Quel angle ?", step: 2, options: [{ id: "a", label: "Choc" }] };
+
+  it("takes the focus when it appears", async () => {
+    await render(input);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Quel angle ?");
+  });
+
+  it("never takes it from a field the user is typing in", async () => {
+    const field = document.createElement("textarea");
+    field.value = "Je tape…";
+    document.body.appendChild(field);
+    field.focus();
+    await render(input);
+    expect(document.activeElement).toBe(field);
+    field.remove();
+  });
+});
+
+describe("AskUserCard — focus from an empty composer", () => {
+  it("takes the focus from an empty field (the composer after an answer)", async () => {
+    const field = document.createElement("textarea");
+    document.body.appendChild(field);
+    field.focus();
+    await render({ question: "Quel angle ?", step: 2, options: [{ id: "a", label: "Choc" }] });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Quel angle ?");
+    field.remove();
+  });
+});
+
 describe("AskUserCard — a failed answer", () => {
   const input = { question: "Quel angle ?", step: 2, options: [{ id: "a", label: "Choc" }] };
 
