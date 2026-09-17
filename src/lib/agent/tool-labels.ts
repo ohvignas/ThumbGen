@@ -1,22 +1,27 @@
 /**
- * Single source of truth for tool display labels — replaces the two
- * independently-drifted FRIENDLY_NAMES tables that used to live in
- * ToolCallCard.tsx and AgentActivity.tsx (both referenced tools that were
- * never registered, and both were missing tools that were).
+ * Single source of truth for tool display labels in the chat (live step line
+ * and step detail). Each label says what the agent is doing, in French.
  */
 export const TOOL_LABELS: Record<string, string> = {
-  list_logos: "bibliothèque · logos",
-  list_personas: "bibliothèque · personnages",
-  list_swipe_files: "bibliothèque · références",
-  list_projects: "liste projets",
-  list_past_generations: "générations passées",
-  get_canvas_state: "lecture canvas",
-  apply_workflow: "workflow appliqué",
-  generate_sketch: "croquis",
-  extract_youtube_script: "transcript YouTube",
-  search_youtube: "recherche YouTube",
-  search_youtube_channel: "recherche dans la chaîne",
-  get_channel_videos: "vidéos de la chaîne",
-  import_youtube_thumbnail: "import miniature YouTube",
-  request_user_image: "demande image",
+  list_logos: "Liste tes logos",
+  list_personas: "Liste tes personnages",
+  list_swipe_files: "Liste tes références",
+  list_projects: "Liste tes miniatures",
+  list_past_generations: "Relit les générations passées",
+  get_canvas_state: "Lit le canvas",
+  apply_workflow: "Construit le workflow",
+  generate_sketch: "Dessine le croquis",
+  extract_youtube_script: "Lit la transcription YouTube",
+  search_youtube: "Cherche sur YouTube",
+  search_youtube_channel: "Cherche dans la chaîne",
+  get_channel_videos: "Liste les vidéos de la chaîne",
+  import_youtube_thumbnail: "Importe la miniature",
+  request_user_image: "Demande une image",
+  request_user_sketch: "Demande un croquis",
+  finish_turn: "Rédige la réponse",
 };
+
+/** The label of a tool, or its name made readable when it has none. */
+export function toolLabel(toolName: string): string {
+  return TOOL_LABELS[toolName] ?? toolName.replace(/_/g, " ");
+}
