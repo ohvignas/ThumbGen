@@ -228,6 +228,59 @@ describe("apply_workflow — non-destructive merge", () => {
     expect(data.kind).toBe("logo");
   });
 
+  it("updates a faceReference to another Personnage without a label: keeps the node's label", async () => {
+    const personaId = uuid();
+    getDb().prepare("INSERT INTO personas (id, label) VALUES (?, ?)").run(personaId, "Florence");
+    getDb()
+      .prepare("INSERT INTO persona_photos (id, persona_id, angle, mime_type, size, data) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(uuid(), personaId, "front", "image/png", 1, Buffer.from([7]));
+    seed([node("face-1", "faceReference", 0, 0, { personaId: "old", personaAngles: { front: IMPORTED }, label: "Mon visage" })], []);
+    const r = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [{ id: "face-1", type: "faceReference", data: { image_source: `stored:persona_${personaId}` } }], edges: [] },
+    });
+    expect(r.isError).toBeFalsy();
+    const data = persisted().nodes[0].data;
+    expect(data.personaId).toBe(personaId);
+    expect((data.personaAngles as Record<string, string>).front).toMatch(/^data:image\/png;base64,/);
+    expect(data.label).toBe("Mon visage");
+  });
+
+  it("a new image on an existing sketch drops the stale Excalidraw drawing", async () => {
+    seed(
+      [node("sk-1", "sketch", 0, 0, { label: "Croquis", imageBase64: IMPORTED, sketchElements: "[{}]", sketchFiles: "{}" })],
+      [],
+    );
+    const r = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [{ id: "sk-1", type: "sketch", data: { image_source: IMPORTED } }], edges: [] },
+    });
+    expect(r.isError).toBeFalsy();
+    const data = persisted().nodes[0].data;
+    expect(data).not.toHaveProperty("sketchElements");
+    expect(data).not.toHaveProperty("sketchFiles");
+    expect(data.image_source).toBe(IMPORTED);
+    expect(data.label).toBe("Croquis");
+  });
+
+  it("accepts an existing node given without data (nothing changes), not a new one", async () => {
+    seed([node("g-1", "generator", 0, 0, { model: "openai", aspectRatio: "16x9", numImages: 2 })], []);
+    const ok = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: {
+        nodes: [{ id: "g-1", type: "generator" }, { id: "p-new", type: "prompt", data: { prompt: "x" } }],
+        edges: [{ source: "p-new", target: "g-1", targetHandle: "prompt-in" }],
+      },
+    });
+    expect(ok.isError).toBeFalsy();
+    expect(persisted().nodes[0].data).toEqual({ model: "openai", aspectRatio: "16x9", numImages: 2 });
+    const bad = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [{ id: "g-new", type: "generator" }], edges: [] },
+    });
+    expect(bad.isError).toBe(true);
+  });
+
   it("places new nodes right of the existing canvas without moving existing nodes", async () => {
     seed(
       [

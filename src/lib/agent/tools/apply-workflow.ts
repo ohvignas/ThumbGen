@@ -131,8 +131,11 @@ async function blueprintUpdateToCanvasData(
   const has = (key: string) => data[key] !== undefined;
   switch (type) {
     case "faceReference":
-      if (imageSource) Object.assign(patch, await blueprintToCanvasData(type, data));
-      else if (has("label")) patch.label = data.label;
+      if (imageSource) {
+        Object.assign(patch, await blueprintToCanvasData(type, data));
+        // Another Personnage keeps the name the user gave the node, unless a label is given.
+        if (!has("label")) delete patch.label;
+      } else if (has("label")) patch.label = data.label;
       break;
     case "sketch":
     case "swipeFile":
@@ -216,9 +219,11 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     }
 
     const db = getDb();
-    const row = db.prepare("SELECT nodes, edges FROM projects WHERE id = ?").get(project_id) as
-      | { nodes: string; edges: string }
-      | undefined;
+    const readCanvas = () =>
+      db.prepare("SELECT nodes, edges, updated_at FROM projects WHERE id = ?").get(project_id) as
+        | { nodes: string; edges: string; updated_at: string }
+        | undefined;
+    const row = readCanvas();
     const currentNodes = row ? parseArray<StoredNode>(row.nodes) : [];
     const currentEdges = row ? parseArray<StoredEdge>(row.edges) : [];
     const currentIds = new Set(currentNodes.map((n) => n.id));
@@ -263,8 +268,13 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       }
       const { patch, replacesImage } = await blueprintUpdateToCanvasData(node.type, update.data);
       const data = { ...node.data, ...patch };
-      // The canvas shows imageUrl before imageBase64: a new image must drop the old URL.
-      if (replacesImage) delete data.imageUrl;
+      if (replacesImage) {
+        // The canvas shows imageUrl before imageBase64: a new image must drop the old URL,
+        // and a sketch's Excalidraw drawing no longer matches the new image.
+        delete data.imageUrl;
+        delete data.sketchElements;
+        delete data.sketchFiles;
+      }
       if (node.type === "generator" && patch.abTest) {
         variantChanges.push({ id: node.id, variants: (patch.abTest as { variants: VariantId[] }).variants });
       }
@@ -330,11 +340,31 @@ export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     }
     const unknownRemoveEdges = remove_edges.filter((e: EdgeRef) => !matchedRemoveKeys.has(edgeKey(e)));
 
-    // Snapshot the current canvas, then write — in one transaction.
-    db.transaction(() => {
-      if (row) createCanvasSnapshot(project_id, row.nodes, row.edges, "apply_workflow", db);
+    // The merge above awaited image resolution: the browser's autosave or another
+    // client may have written meanwhile. Re-read inside the write transaction and
+    // refuse rather than overwrite a change the merge never saw. Otherwise snapshot
+    // that fresh read, then write.
+    const written = db.transaction(() => {
+      const fresh = readCanvas();
+      const changed =
+        Boolean(fresh) !== Boolean(row) ||
+        (fresh && row && (fresh.updated_at !== row.updated_at || fresh.nodes !== row.nodes || fresh.edges !== row.edges));
+      if (changed) return false;
+      if (fresh) createCanvasSnapshot(project_id, fresh.nodes, fresh.edges, "apply_workflow", db);
       writeProjectCanvas(project_id, JSON.stringify(finalNodes), JSON.stringify(finalEdges), db);
+      return true;
     })();
+    if (!written) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: "The canvas changed while apply_workflow was running (the user or another client edited it), so nothing was written. Call get_canvas_state, then retry apply_workflow against the current canvas.",
+          },
+        ],
+      };
+    }
 
     // Mark referenced uploads/sketches as attached (skip GC)
     for (const node of target.nodes) {

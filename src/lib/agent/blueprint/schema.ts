@@ -233,7 +233,8 @@ export function mergeBlueprintSchema(canvasNodes: CanvasNodeRef[], removeNodeIds
   const canvasById = new Map(canvasNodes.filter((n) => !removeNodeIds.has(n.id)).map((n) => [n.id, n]));
   return z
     .object({
-      nodes: z.array(z.preprocess(normalizeNode, NodeShape)),
+      // `data` may be left out: an existing node given as { id, type } changes nothing.
+      nodes: z.array(z.preprocess(normalizeNode, NodeShape.extend({ data: NodeShape.shape.data.default({}) }))),
       edges: z.array(EdgeSchema),
     })
     .superRefine((bp, ctx) => {
