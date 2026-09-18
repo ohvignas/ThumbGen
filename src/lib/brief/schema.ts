@@ -184,6 +184,12 @@ export const thumbAnalysisSchema = z.object({
   hasArrowOrCircle: z.boolean(),
 });
 
+export type BriefResearch = z.output<typeof researchSchema>;
+export type LogoCandidate = z.output<typeof logoCandidateSchema>;
+export type BriefLogo = z.output<typeof logoSchema>;
+export type BriefCompetition = z.output<typeof competitionSchema>;
+export type ThumbAnalysis = z.output<typeof thumbAnalysisSchema>;
+
 export const referenceSchema = z.object({
   videoId: z.string().regex(/^[\w-]{6,20}$/, "Identifiant de vidéo invalide"),
   title: max(200),

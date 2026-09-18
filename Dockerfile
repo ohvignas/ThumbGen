@@ -42,6 +42,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# SKILL.md files are read at runtime by catalog.ts (cwd + src/lib/agent/skills).
+# Next standalone tracing does not reliably keep that tree.
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/agent/skills ./src/lib/agent/skills
+
 # Native module (better-sqlite3) — Next standalone tracing sometimes misses .node files
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/bindings ./node_modules/bindings
