@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchChannelDetails,
+  fetchMineChannel,
   fetchPlaylistPage,
   fetchVideos,
   localChannelId,
@@ -96,6 +97,7 @@ describe("resolveChannelInput", () => {
         avatarUrl: `https://yt3.example/${MINE}.jpg`,
         subscriberCount: 12_500,
         videoCount: 2,
+        description: null,
       },
     });
   });
@@ -176,6 +178,23 @@ describe("fetchChannelDetails", () => {
   });
 });
 
+describe("fetchMineChannel", () => {
+  it("asks YouTube for mine=true with a bearer token and no API key", async () => {
+    install(
+      createFakeYouTube({
+        channels: [{ id: MINE, handle: "@MaChaine", title: "Ma chaîne" }],
+      }),
+    );
+    const mine = await fetchMineChannel("ya29.access-token");
+    expect(mine?.youtubeChannelId).toBe(MINE);
+    expect(mine?.title).toBe("Ma chaîne");
+    const call = fake.calls.find((entry) => entry.resource === "channels");
+    expect(call?.params.get("mine")).toBe("true");
+    expect(call?.params.get("key")).toBeNull();
+    expect(call?.params.get("part")).toContain("brandingSettings");
+  });
+});
+
 describe("fetchPlaylistPage", () => {
   it("pages through a playlist 50 items at a time, newest first", async () => {
     install(
@@ -220,6 +239,7 @@ describe("fetchVideos", () => {
     expect(batch.foundIds).toEqual(new Set(["long0000001", "hidden00001"]));
     expect(batch.videos[0]).toEqual({
       videoId: "long0000001",
+      channelId: MINE,
       title: "Vidéo long0000001",
       publishedAt: "2026-09-01T10:00:00.000Z",
       durationSeconds: 754,
@@ -227,6 +247,7 @@ describe("fetchVideos", () => {
       likeCount: 30,
       thumbnailUrl: "https://i.ytimg.com/vi/long0000001/mqdefault.jpg",
       liveBroadcastContent: "none",
+      description: "",
     });
     expect(batch.videos[1].likeCount).toBeNull();
     const call = fake.calls.find((entry) => entry.resource === "videos");
@@ -245,19 +266,19 @@ describe("fetchVideos", () => {
       items: [
         {
           id: "negativevw1",
-          snippet: { title: "Négatif", publishedAt: "2026-01-01T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Négatif", publishedAt: "2026-01-01T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "-5", likeCount: "12.5" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "junkcounts01",
-          snippet: { title: "Charabia", publishedAt: "2026-01-02T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Charabia", publishedAt: "2026-01-02T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "abc", likeCount: "-1" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "missingview1",
-          snippet: { title: "Sans vues", publishedAt: "2026-01-03T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Sans vues", publishedAt: "2026-01-03T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: {},
           contentDetails: { duration: "PT1M" },
         },
@@ -278,19 +299,19 @@ describe("fetchVideos", () => {
       items: [
         {
           id: "baddate0001",
-          snippet: { title: "Date invalide", publishedAt: "pas-une-date", liveBroadcastContent: "none" },
+          snippet: { title: "Date invalide", publishedAt: "pas-une-date", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "10" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "nodate00001",
-          snippet: { title: "Sans date", liveBroadcastContent: "none" },
+          snippet: { title: "Sans date", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "10" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "gooddate001",
-          snippet: { title: "Date valide", publishedAt: "2026-01-05T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Date valide", publishedAt: "2026-01-05T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "10" },
           contentDetails: { duration: "PT1M" },
         },

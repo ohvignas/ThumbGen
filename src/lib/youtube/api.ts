@@ -50,11 +50,22 @@ export function youtubeNetworkError(): YouTubeApiError {
   return new YouTubeApiError(0, "network", "YouTube injoignable");
 }
 
-async function youtubeGet<T>(apiKey: string, resource: string, params: Record<string, string>): Promise<T> {
-  const search = new URLSearchParams({ ...params, key: apiKey });
+async function youtubeGet<T>(
+  apiKey: string,
+  resource: string,
+  params: Record<string, string>,
+  accessToken?: string | null,
+): Promise<T> {
+  const search = new URLSearchParams(params);
+  if (!accessToken) search.set("key", apiKey);
+  const headers: HeadersInit = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/${resource}?${search.toString()}`, { signal: AbortSignal.timeout(YOUTUBE_FETCH_TIMEOUT_MS) });
+    res = await fetch(`${API_BASE}/${resource}?${search.toString()}`, {
+      headers,
+      signal: AbortSignal.timeout(YOUTUBE_FETCH_TIMEOUT_MS),
+    });
   } catch {
     // Network failure, DNS, or the timeout (TimeoutError DOMException).
     throw youtubeNetworkError();
@@ -117,8 +128,9 @@ type ThumbnailSet = Record<string, { url?: string } | undefined>;
 type ChannelsResponse = {
   items?: Array<{
     id: string;
-    snippet?: { title?: string; customUrl?: string; thumbnails?: ThumbnailSet };
+    snippet?: { title?: string; customUrl?: string; description?: string; thumbnails?: ThumbnailSet };
     statistics?: { subscriberCount?: string; hiddenSubscriberCount?: boolean; videoCount?: string };
+    brandingSettings?: { channel?: { description?: string; keywords?: string } };
   }>;
 };
 
@@ -141,11 +153,33 @@ function toChannelDetails(item: NonNullable<ChannelsResponse["items"]>[number]):
     avatarUrl: thumbnails.medium?.url ?? thumbnails.high?.url ?? thumbnails.default?.url ?? null,
     subscriberCount: item.statistics?.hiddenSubscriberCount ? null : toCount(item.statistics?.subscriberCount),
     videoCount: toCount(item.statistics?.videoCount),
+    description: item.brandingSettings?.channel?.description?.trim() || item.snippet?.description?.trim() || null,
   };
 }
 
-export async function fetchChannelDetails(apiKey: string, youtubeChannelId: string): Promise<ChannelDetails | null> {
-  const data = await youtubeGet<ChannelsResponse>(apiKey, "channels", { part: CHANNEL_PARTS, id: youtubeChannelId });
+export async function fetchChannelDetails(
+  apiKey: string,
+  youtubeChannelId: string,
+  accessToken?: string | null,
+): Promise<ChannelDetails | null> {
+  const data = await youtubeGet<ChannelsResponse>(
+    apiKey,
+    "channels",
+    { part: CHANNEL_PARTS, id: youtubeChannelId },
+    accessToken,
+  );
+  const item = data.items?.[0];
+  return item ? toChannelDetails(item) : null;
+}
+
+/** Owner's channel via OAuth (`mine=true`); includes the About text. */
+export async function fetchMineChannel(accessToken: string): Promise<ChannelDetails | null> {
+  const data = await youtubeGet<ChannelsResponse>(
+    "",
+    "channels",
+    { part: `${CHANNEL_PARTS},brandingSettings`, mine: "true" },
+    accessToken,
+  );
   const item = data.items?.[0];
   return item ? toChannelDetails(item) : null;
 }
@@ -153,7 +187,11 @@ export async function fetchChannelDetails(apiKey: string, youtubeChannelId: stri
 export type ResolvedChannel = { status: "found"; channel: ChannelDetails } | { status: "not-found" };
 
 /** A channel URL, @handle, bare handle, UC… id, UU… uploads playlist or PL… playlist → channel details. */
-export async function resolveChannelInput(apiKey: string, input: string): Promise<ResolvedChannel> {
+export async function resolveChannelInput(
+  apiKey: string,
+  input: string,
+  accessToken?: string | null,
+): Promise<ResolvedChannel> {
   const raw = input.trim();
   if (!raw) return { status: "not-found" };
 
@@ -165,10 +203,15 @@ export async function resolveChannelInput(apiKey: string, input: string): Promis
   } else if (parsed?.type === "handle") {
     query = { forHandle: parsed.value.replace(/^@/, "") };
   } else if (PLAYLIST_ID.test(raw)) {
-    const playlists = await youtubeGet<{ items?: Array<{ snippet?: { channelId?: string } }> }>(apiKey, "playlists", {
-      part: "snippet",
-      id: raw,
-    });
+    const playlists = await youtubeGet<{ items?: Array<{ snippet?: { channelId?: string } }> }>(
+      apiKey,
+      "playlists",
+      {
+        part: "snippet",
+        id: raw,
+      },
+      accessToken,
+    );
     const channelId = playlists.items?.[0]?.snippet?.channelId;
     if (!channelId) return { status: "not-found" };
     query = { id: channelId };
@@ -177,20 +220,26 @@ export async function resolveChannelInput(apiKey: string, input: string): Promis
   }
   if (!query) return { status: "not-found" };
 
-  const data = await youtubeGet<ChannelsResponse>(apiKey, "channels", { part: CHANNEL_PARTS, ...query });
+  const data = await youtubeGet<ChannelsResponse>(apiKey, "channels", { part: CHANNEL_PARTS, ...query }, accessToken);
   const item = data.items?.[0];
   return item ? { status: "found", channel: toChannelDetails(item) } : { status: "not-found" };
 }
 
 export type PlaylistPage = { videoIds: string[]; nextPageToken: string | null };
 
-export async function fetchPlaylistPage(apiKey: string, playlistId: string, pageToken?: string | null): Promise<PlaylistPage> {
+export async function fetchPlaylistPage(
+  apiKey: string,
+  playlistId: string,
+  pageToken?: string | null,
+  accessToken?: string | null,
+): Promise<PlaylistPage> {
   const params: Record<string, string> = { part: "contentDetails", playlistId, maxResults: String(PLAYLIST_PAGE_SIZE) };
   if (pageToken) params.pageToken = pageToken;
   const data = await youtubeGet<{ nextPageToken?: string; items?: Array<{ contentDetails?: { videoId?: string } }> }>(
     apiKey,
     "playlistItems",
     params,
+    accessToken,
   );
   return {
     videoIds: (data.items ?? [])
@@ -203,7 +252,14 @@ export async function fetchPlaylistPage(apiKey: string, playlistId: string, page
 type VideosResponse = {
   items?: Array<{
     id?: string;
-    snippet?: { title?: string; publishedAt?: string; liveBroadcastContent?: string; channelId?: string; thumbnails?: ThumbnailSet };
+    snippet?: {
+      title?: string;
+      description?: string;
+      publishedAt?: string;
+      liveBroadcastContent?: string;
+      channelId?: string;
+      thumbnails?: ThumbnailSet;
+    };
     statistics?: { viewCount?: string; likeCount?: string };
     contentDetails?: { duration?: string };
   }>;
@@ -214,10 +270,19 @@ export type VideosBatch = { videos: VideoDetails[]; foundIds: Set<string> };
 /** At most 50 ids. `foundIds` lists every id YouTube still returns (private or deleted videos are absent). A video
  * whose `publishedAt` doesn't parse as a date is left out of `videos` — its id still exists, but nothing downstream
  * can trust an undated video, so it isn't returned rather than being returned with a made-up date. */
-export async function fetchVideos(apiKey: string, videoIds: readonly string[]): Promise<VideosBatch> {
+export async function fetchVideos(
+  apiKey: string,
+  videoIds: readonly string[],
+  accessToken?: string | null,
+): Promise<VideosBatch> {
   if (videoIds.length === 0) return { videos: [], foundIds: new Set() };
   if (videoIds.length > VIDEOS_BATCH_SIZE) throw new Error(`fetchVideos takes at most ${VIDEOS_BATCH_SIZE} ids`);
-  const data = await youtubeGet<VideosResponse>(apiKey, "videos", { part: VIDEO_PARTS, id: videoIds.join(",") });
+  const data = await youtubeGet<VideosResponse>(
+    apiKey,
+    "videos",
+    { part: VIDEO_PARTS, id: videoIds.join(",") },
+    accessToken,
+  );
 
   const videos: VideoDetails[] = [];
   const foundIds = new Set<string>();
@@ -238,6 +303,7 @@ export async function fetchVideos(apiKey: string, videoIds: readonly string[]): 
       likeCount: toCount(item.statistics?.likeCount),
       thumbnailUrl: item.snippet?.thumbnails?.medium?.url ?? youtubeThumbnailUrl(item.id),
       liveBroadcastContent: item.snippet?.liveBroadcastContent ?? "none",
+      description: item.snippet?.description?.trim() || "",
     });
   }
   return { videos, foundIds };

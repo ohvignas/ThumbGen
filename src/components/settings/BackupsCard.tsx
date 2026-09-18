@@ -76,7 +76,10 @@ export default function BackupsCard() {
     <Card>
       <CardHeader>
         <CardTitle>Sauvegardes</CardTitle>
-        <CardDescription>Copies complètes de la base, enregistrées dans data/backups/.</CardDescription>
+        <CardDescription>
+          Copies de la base, enregistrées dans data/backups/. Les jetons Google YouTube n&apos;y figurent pas : après
+          une restauration, reconnecte Ma chaîne.
+        </CardDescription>
         <CardAction>
           <Button type="button" disabled={creating} onClick={() => void create()}>
             {creating ? "Sauvegarde…" : "Créer une sauvegarde"}

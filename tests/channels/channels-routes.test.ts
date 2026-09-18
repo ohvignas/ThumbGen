@@ -86,6 +86,7 @@ describe("POST /api/channels/preview", () => {
         avatarUrl: `https://yt3.example/${TIERCE}.jpg`,
         subscriberCount: 4200,
         videoCount: 2,
+        description: null,
         alreadyFollowed: false,
       },
     });

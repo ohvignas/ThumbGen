@@ -41,7 +41,11 @@ describe("MCP server (in-memory)", () => {
       "get_channel_videos",
       "import_youtube_thumbnail",
     ].forEach((n) => expect(names).toContain(n));
+    expect(names).toContain("get_my_channel_knowledge");
+    expect(names).toContain("search_my_channel");
+    expect(names).toContain("get_my_video");
     expect(names).not.toContain("list_face_reactions");
+    expect(names).not.toContain("list_followed_videos");
   });
 
   it("calls list_logos through the transport (returns text content)", async () => {

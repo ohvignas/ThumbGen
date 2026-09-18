@@ -29,6 +29,9 @@ describe("full registry", () => {
       "search_youtube_channel",
       "get_channel_videos",
       "import_youtube_thumbnail",
+      "get_my_channel_knowledge",
+      "search_my_channel",
+      "get_my_video",
     ];
     for (const name of expected) {
       expect(names, `tool "${name}" should be registered`).toContain(name);

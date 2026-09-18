@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import Database from "better-sqlite3";
 import { getDb, getDbFilePath } from "@/lib/db";
 
 export type StorageStats = {
@@ -160,6 +161,7 @@ export async function createBackup(now: Date = new Date()): Promise<BackupEntry>
   const filePath = path.join(dir, name);
   try {
     await getDb().backup(filePath);
+    redactYoutubeOauthFromBackup(filePath);
     const entry = locate(dir, name, false);
     if (!entry) throw new Error(`Backup file missing after backup: ${name}`);
     return { name: entry.name, createdAt: entry.createdAt, size: entry.size, legacy: entry.legacy };
@@ -175,6 +177,22 @@ export async function createBackup(now: Date = new Date()): Promise<BackupEntry>
     throw err;
   } finally {
     setBackupRunning(false);
+  }
+}
+
+/** Google refresh tokens must not leave the live DB (downloadable backups, copies). */
+function redactYoutubeOauthFromBackup(filePath: string): void {
+  const copy = new Database(filePath);
+  try {
+    const tables = (
+      copy
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('youtube_oauth', 'youtube_oauth_state')")
+        .all() as { name: string }[]
+    ).map((row) => row.name);
+    if (tables.includes("youtube_oauth")) copy.exec("DELETE FROM youtube_oauth");
+    if (tables.includes("youtube_oauth_state")) copy.exec("DELETE FROM youtube_oauth_state");
+  } finally {
+    copy.close();
   }
 }
 

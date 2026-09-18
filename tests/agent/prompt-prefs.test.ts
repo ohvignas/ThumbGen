@@ -16,6 +16,7 @@ describe("loadAgentPromptPrefs", () => {
       youtubeChannel: "",
       channelProfile: EMPTY_CHANNEL_PROFILE,
       defaultPersona: null,
+      channelKnowledge: null,
     });
   });
 
