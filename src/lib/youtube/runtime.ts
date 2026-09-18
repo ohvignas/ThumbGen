@@ -29,6 +29,8 @@ export type ChannelRuntime = {
   myChannelBackoff: { input: string; until: number; notFound: boolean } | null;
   /** « Utiliser comme référence » copies in flight by video id → library id (null: no thumbnail on YouTube). */
   thumbnailCopies: Map<string, Promise<string | null>>;
+  /** Background ingest of « Ma chaîne » (OAuth → videos → analytics → transcripts → bible). */
+  ingest: Promise<void> | null;
 };
 
 declare global {
@@ -48,6 +50,7 @@ function createRuntime(): ChannelRuntime {
     myChannel: null,
     myChannelBackoff: null,
     thumbnailCopies: new Map(),
+    ingest: null,
   };
 }
 

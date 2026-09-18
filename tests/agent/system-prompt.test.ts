@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   AGENT_SYSTEM_PROMPT,
   DEFAULT_AGENT_PROMPT_PREFS,
+  buildChannelKnowledgeBlock,
   buildChannelProfileBlock,
   buildResponseLanguageBlock,
   buildSystemMessages,
@@ -179,5 +180,23 @@ describe("<channel_profile>", () => {
     expect(text).not.toContain("<project_id>");
     // A normal profile with no angle brackets renders exactly as before.
     expect(buildChannelProfileBlock(PROFILE_PREFS)).toContain("- Channel name: Demo Tech");
+  });
+});
+
+describe("<channel_knowledge>", () => {
+  it("is absent by default", () => {
+    expect(buildChannelKnowledgeBlock(DEFAULT_AGENT_PROMPT_PREFS)).toBeNull();
+    const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc");
+    expect(blocks.slice(1).some((block) => block.text.startsWith("<channel_knowledge>"))).toBe(false);
+  });
+
+  it("sits after the profile and before project_id", () => {
+    const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc", {
+      ...PROFILE_PREFS,
+      channelKnowledge: "- Niche: tests\n- Winning thumbnail types: face_text",
+    });
+    expect(blockIndex(blocks, "<channel_knowledge>")).toBeGreaterThan(blockIndex(blocks, "<channel_profile>"));
+    expect(blockIndex(blocks, "<channel_knowledge>")).toBeLessThan(blockIndex(blocks, "<project_id>"));
+    expect(blocks.some((block) => block.text.includes("get_my_video"))).toBe(true);
   });
 });

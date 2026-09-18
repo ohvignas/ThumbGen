@@ -71,6 +71,7 @@ export function getTypedSettings(): TypedSettings {
     const storedValue = stored.get(key);
     let raw: unknown = storedValue;
     if (raw === undefined && isSecretKey(key)) raw = process.env[ENV_FALLBACK[key]] || undefined;
+    if (raw === undefined && key === "googleOAuthClientId") raw = process.env.GOOGLE_OAUTH_CLIENT_ID || undefined;
     if (key === "channelProfile" && typeof storedValue === "string") {
       try {
         raw = JSON.parse(storedValue);

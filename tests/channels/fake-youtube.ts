@@ -125,8 +125,10 @@ export function createFakeYouTube(
 
     if (resource === "channels") {
       const handle = params.get("forHandle");
-      const matches =
-        handle !== null
+      const mine = params.get("mine") === "true";
+      const matches = mine
+        ? [...channels.values()]
+        : handle !== null
           ? [...channels.values()].filter(
               (channel) => channel.handle.replace(/^@/, "").toLowerCase() === handle.replace(/^@/, "").toLowerCase(),
             )
@@ -169,6 +171,7 @@ export function createFakeYouTube(
           id: video.id,
           snippet: {
             title: video.title ?? `Vidéo ${video.id}`,
+            description: "",
             publishedAt: video.publishedAt,
             liveBroadcastContent: video.live ?? "none",
             channelId: video.channelId,

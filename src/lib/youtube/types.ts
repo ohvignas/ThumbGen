@@ -33,6 +33,7 @@ export type ChannelDetails = {
   avatarUrl: string | null;
   subscriberCount: number | null;
   videoCount: number | null;
+  description?: string | null;
 };
 
 export type ChannelPreview = ChannelDetails & { alreadyFollowed: boolean };
@@ -47,6 +48,7 @@ export type VideoDetails = {
   likeCount: number | null;
   thumbnailUrl: string;
   liveBroadcastContent: string;
+  description?: string;
 };
 
 export type ChannelListItem = {

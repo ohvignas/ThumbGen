@@ -25,6 +25,7 @@ export type ChannelRow = {
   backfill_done: number;
   /** Where an interrupted newest-first walk (not the first import) resumes. */
   sync_page_token: string | null;
+  about: string | null;
   created_at: string;
 };
 
@@ -38,6 +39,7 @@ export type VideoRow = {
   like_count: number | null;
   thumbnail_url: string;
   stats_updated_at: string;
+  description: string | null;
   thumb_type: string | null;
   thumb_type_source: "ai" | "manual" | null;
   classify_attempts: number;
@@ -136,9 +138,16 @@ export function deleteChannel(id: string): boolean {
 export function updateChannelDetails(id: string, details: ChannelDetails): void {
   getDb()
     .prepare(
-      "UPDATE followed_channels SET title = @title, handle = @handle, avatar_url = @avatarUrl, subscriber_count = @subscriberCount WHERE id = @id",
+      "UPDATE followed_channels SET title = @title, handle = @handle, avatar_url = @avatarUrl, subscriber_count = @subscriberCount, about = @about WHERE id = @id",
     )
-    .run({ id, title: details.title, handle: details.handle, avatarUrl: details.avatarUrl, subscriberCount: details.subscriberCount });
+    .run({
+      id,
+      title: details.title,
+      handle: details.handle,
+      avatarUrl: details.avatarUrl,
+      subscriberCount: details.subscriberCount,
+      about: details.description ?? null,
+    });
 }
 
 export function setSyncState(id: string, state: { status: SyncStatus; error?: string | null }): void {
@@ -223,14 +232,15 @@ export function upsertVideos(channelId: string, videos: readonly VideoDetails[],
   const db = getDb();
   const statement = db.prepare(
     `INSERT INTO channel_videos
-       (video_id, channel_id, title, published_at, duration_seconds, view_count, like_count, thumbnail_url, stats_updated_at)
-     VALUES (@videoId, @channelId, @title, @publishedAt, @durationSeconds, @viewCount, @likeCount, @thumbnailUrl, @stamp)
+       (video_id, channel_id, title, published_at, duration_seconds, view_count, like_count, thumbnail_url, description, stats_updated_at)
+     VALUES (@videoId, @channelId, @title, @publishedAt, @durationSeconds, @viewCount, @likeCount, @thumbnailUrl, @description, @stamp)
      ON CONFLICT(video_id) DO UPDATE SET
        title = excluded.title,
        duration_seconds = excluded.duration_seconds,
        view_count = excluded.view_count,
        like_count = excluded.like_count,
        thumbnail_url = excluded.thumbnail_url,
+       description = excluded.description,
        stats_updated_at = excluded.stats_updated_at`,
   );
   db.transaction(() => {
@@ -244,6 +254,7 @@ export function upsertVideos(channelId: string, videos: readonly VideoDetails[],
         viewCount: video.viewCount,
         likeCount: video.likeCount,
         thumbnailUrl: video.thumbnailUrl,
+        description: video.description ?? "",
         stamp: stampIso,
       });
     }
@@ -265,7 +276,7 @@ export function updateVideoStats(videos: readonly VideoDetails[], stampIso: stri
   const statement = db.prepare(
     `UPDATE channel_videos SET
        title = @title, duration_seconds = @durationSeconds, view_count = @viewCount,
-       like_count = @likeCount, thumbnail_url = @thumbnailUrl, stats_updated_at = @stamp
+       like_count = @likeCount, thumbnail_url = @thumbnailUrl, description = @description, stats_updated_at = @stamp
      WHERE video_id = @videoId`,
   );
   db.transaction(() => {
@@ -277,6 +288,7 @@ export function updateVideoStats(videos: readonly VideoDetails[], stampIso: stri
         viewCount: video.viewCount,
         likeCount: video.likeCount,
         thumbnailUrl: video.thumbnailUrl,
+        description: video.description ?? "",
         stamp: stampIso,
       });
     }

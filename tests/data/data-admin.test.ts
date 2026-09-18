@@ -155,6 +155,25 @@ describe("backups", () => {
     const entry = await createBackup(new Date(2026, 8, 16, 16, 0, 1));
     expect(entry.size).toBeGreaterThan(0);
   });
+
+  it("strips YouTube OAuth tokens from the copy, not the live database", async () => {
+    getDb()
+      .prepare(
+        `INSERT INTO youtube_oauth (id, refresh_token, access_token, access_token_expires_at, scopes, connected_at, ingest_status)
+         VALUES ('default', 'refresh-secret', 'access-secret', 1, 'youtube.readonly', '2026-09-18T10:00:00.000Z', 'idle')`,
+      )
+      .run();
+    const entry = await createBackup(new Date(2026, 8, 16, 17, 0, 0));
+    const copy = new Database(path.join(backupsDir(), entry.name), { readonly: true });
+    const backupRow = copy.prepare("SELECT COUNT(*) AS n FROM youtube_oauth").get() as { n: number };
+    copy.close();
+    expect(backupRow.n).toBe(0);
+    const live = getDb().prepare("SELECT refresh_token FROM youtube_oauth WHERE id = 'default'").get() as {
+      refresh_token: string;
+    };
+    expect(live.refresh_token).toBe("refresh-secret");
+    getDb().exec("DELETE FROM youtube_oauth");
+  });
 });
 
 describe("cleanup", () => {
