@@ -202,12 +202,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     useChatStore.getState().setActive(null);
   }, [projectId]);
 
-  // The open conversation's thumbnail brief (« Fiche », step line): a free local GET.
+  // The open conversation's thumbnail brief (« Fiche »): a free local GET.
   useEffect(() => {
     void useBriefStore.getState().load(activeConversationId);
   }, [activeConversationId]);
-
-  const journeyStep = useBriefStore((s) => (s.conversationId === activeConversationId ? (s.brief?.step ?? null) : null));
 
   // Reconnects to the turn the server may be running for this conversation.
   // Never starts one: a GET that answers 204 when nothing runs.
@@ -610,11 +608,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       stoppedLive: stoppedConversationId !== null && stoppedConversationId === activeConversationId,
       liveTurnStart: liveTurn,
       orphanUserTurn: orphanConversationId !== null && orphanConversationId === activeConversationId,
-      journeyStep,
       onAskAgent,
       onRetry,
     }),
-    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, liveTurn, orphanConversationId, journeyStep, onAskAgent, onRetry],
+    [status, error, turnStartedAt, stoppedConversationId, activeConversationId, liveTurn, orphanConversationId, onAskAgent, onRetry],
   );
 
   return (
@@ -628,7 +625,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         <Card className="flex h-full flex-col gap-0 overflow-hidden py-0 shadow-2xl">
           <ChatHeader projectId={projectId} status={status} onMinimize={() => setOpen(false)} />
 
-          <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
+          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
             <MessageList messages={chatMessages} controls={controls} />
 
             {/* A pending client request stays visible, outside the folded steps, right above the composer. */}
@@ -637,7 +634,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
             )}
           </CardContent>
 
-          <CardFooter className="p-0">
+          <CardFooter className="relative z-10 shrink-0 overflow-visible p-0">
             <Composer onSend={onSend} status={status} onStop={onStop} inputRef={composerInputRef} />
           </CardFooter>
         </Card>

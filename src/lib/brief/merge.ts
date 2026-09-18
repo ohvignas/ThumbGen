@@ -68,7 +68,7 @@ export const variantSetSchema = z.object({
 });
 
 export const briefUpdateInputSchema = z.object({
-  step: z.number().int().min(1).max(BRIEF_TOTAL_STEPS).optional().describe("The journey step you are moving to (1-7)"),
+  step: z.number().int().min(1).max(BRIEF_TOTAL_STEPS).optional().describe("Optional leftover. Do not drive a 7-step pipeline."),
   video: videoPatchSchema.optional(),
   research: researchPatchSchema.optional(),
   common: commonPatchSchema.optional(),

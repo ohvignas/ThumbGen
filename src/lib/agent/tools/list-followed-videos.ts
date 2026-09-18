@@ -37,7 +37,7 @@ function hasMyChannel(): boolean {
 export const listFollowedVideosTool: ToolDefinition<Input> = {
   name: "list_followed_videos",
   description:
-    "Lists videos already synced from the user's followed YouTube channels (local data, no YouTube API call, no quota). scope \"mine\" = the channels marked « Ma chaîne », \"all\" = every followed channel; sort \"date\" or \"score\" (views divided by the channel's median views); best_type keeps only the best performing thumbnail type. One line per video: youtube:<videoId> (usable as an ask_user option image, and its id with import_youtube_thumbnail), title, channel, thumbnail type and performance ratio.",
+    "Lists videos already synced from followed YouTube channels (local, no API quota). Use for the user's own or followed thumbs. scope mine = Ma chaîne, all = every followed channel. Image refs youtube:<videoId> for ask_user. Not a live YouTube search (search_youtube). Don't stall a new-video brief on old videos if they already described this one.",
   inputSchema: InputSchema,
   chatOnly: true,
   handler: async ({ scope, sort, best_type, limit }) => {

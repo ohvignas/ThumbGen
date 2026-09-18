@@ -13,7 +13,7 @@ const InputSchema = z.object({
 export const searchYoutubeChannelTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "search_youtube_channel",
   description:
-    "Searches videos within a specific YouTube channel. Provide a channel handle (@xxx), URL, or channel ID. Optional `query` filters by keyword; without it returns the most recent videos. Useful to ground thumbnail design in the user's existing content. QUOTA: 100 units per call.",
+    "Searches videos inside one YouTube channel (handle, URL, or id). Use to ground design in that channel's content. Optional query filters; without it, newest. For top videos by views, get_channel_videos with sort=viewCount. Open-web topic: search_youtube. Local followed cache: list_followed_videos. QUOTA: 100 units.",
   inputSchema: InputSchema,
   handler: async ({ channel, query, limit }) => {
     const apiKey = getSetting("youtubeApiKey");

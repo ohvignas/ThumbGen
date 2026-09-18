@@ -7,7 +7,8 @@ const InputSchema = z.object({});
 
 export const listProjectsTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "list_projects",
-  description: "Lists all ThumbGen projects.",
+  description:
+    "Lists all ThumbGen miniatures (projects): id, name, updated_at. Use when the user asks about another miniature. The open canvas is already in <project_id>/<canvas_state> — do not list just to learn the current id. Past images of THIS miniature: list_past_generations.",
   inputSchema: InputSchema,
   handler: async () => {
     const rows = getDb()

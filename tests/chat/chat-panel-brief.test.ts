@@ -15,13 +15,13 @@ describe("ChatPanel — thumbnail brief wiring", () => {
     expect(handler).not.toMatch(/sendMessage|addToolOutput|regenerate|resumeStream/);
   });
 
-  it("loads the open conversation's brief and passes its step to the turn rows", () => {
+  it("loads the open conversation's brief without piping a journey step into the turn rows", () => {
     expect(source).toContain("useBriefStore.getState().load(activeConversationId)");
-    expect(source).toMatch(/journeyStep,/);
+    expect(source).not.toMatch(/journeyStep/);
   });
 
-  it("shows the step on both live lines", () => {
-    expect(read("src/components/panels/chat/Message.tsx")).toContain("journeyStep={controls.journeyStep ?? null}");
-    expect(read("src/components/panels/chat/MessageList.tsx")).toContain("journeyStep={controls.journeyStep ?? null}");
+  it("does not show a pipeline step on live lines", () => {
+    expect(read("src/components/panels/chat/Message.tsx")).not.toContain("journeyStep");
+    expect(read("src/components/panels/chat/MessageList.tsx")).not.toContain("journeyStep");
   });
 });

@@ -28,15 +28,14 @@ export function executeUpdateBrief(context: UpdateBriefContext, input: BriefUpda
 }
 
 /**
- * The thumbnail journey's `update_brief`, built for ONE chat request: the
- * conversation and its project come from the request, never from the model.
- * Not in the tool registry, so never listed to MCP clients.
+ * `update_brief` for ONE chat request: conversation and project come from the
+ * request, never from the model. Not in the tool registry, so never listed to MCP.
  */
 export function buildUpdateBriefTool(context: UpdateBriefContext): Tool {
   return aiTool({
     description: [
-      "Thumbnail journey: writes decisions into this conversation's thumbnail brief (the « Fiche » the user sees and edits). Send only what changes.",
-      "step: the journey step you are moving to (1-7). video, common, competition: merged field by field (null clears a field). research: summary, keyPoints, entities (sources come from the research tool). abStrategy, abVariable. logos and references: replaced whole. variant: { key: A|B|C, set } merged by key — set.composition and set.sketch replace the whole card or sketch. removeVariant: A|B|C.",
+      "Writes optional memory into this chat's Fiche (promise, packages, logos, composition). Use after a decision worth keeping. Send only changed fields. Omit step — do not drive a 7-step wizard. Trust <thumbnail_brief> over chat history for those fields.",
+      "step: optional leftover (1-7), not a pipeline. video, common, competition: merged field by field (null clears a field). research: summary, keyPoints, entities. abStrategy, abVariable. logos and references: replaced whole. variant: { key: A|B|C, set } merged by key — set.composition and set.sketch replace the whole card or sketch. removeVariant: A|B|C.",
       "Refused with the reasons when the brief would break a rule (thumbnail text over 4 words or 20 characters, a card without exactly one hero, 4 elements, sizes over 110 %, a text zone on the hero's cell, an emotion without a character): fix what it names and retry once.",
       "Returns the saved brief (without the full script) and warnings to rephrase once (a thumbnail text repeating the title, variants too close for the strategy).",
     ].join("\n"),

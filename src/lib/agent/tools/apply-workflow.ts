@@ -61,7 +61,7 @@ function parseArray<T>(json: string): T[] {
 export const applyWorkflowTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "apply_workflow",
   description: [
-    "Adds to or edits the project's canvas workflow — this is how you SHIP a design. It MERGES the blueprint into the existing canvas; it never replaces the canvas.",
+    "Merges a blueprint into the canvas (create/update named nodes; omitted nodes stay). Use to ship a new workflow or edit an existing one. For ONE live iv-* node, place_node is simpler. Never delete unless the user asked. A/B: one generator with abTest, not separate workflows. Never starts a paid generation — finish_turn kind generate, user clicks.",
     "Merge rules:",
     "1. A blueprint node whose id already exists on the canvas is an UPDATE: only the data fields you give change, every other field is kept (generated images, imported images, persona angles, generator settings) and so is its position. image_source is optional there (omit it to keep the current image). Its type cannot change.",
     "2. A node with a new id is CREATED: it needs its full data (image_source for faceReference/swipeFile/sketch). New nodes are laid out to the right of the existing canvas; existing nodes are never moved.",

@@ -24,6 +24,12 @@ export const TOOL_LABELS: Record<string, string> = {
   request_user_sketch: "Demande un croquis",
   ask_user: "Te pose une question",
   finish_turn: "Rédige la réponse",
+  read_skill: "Lit une skill",
+  research_topic: "Recherche le sujet",
+  find_logos: "Cherche les logos",
+  add_logo: "Enregistre le logo",
+  find_competitor_thumbnails: "Cherche les miniatures concurrentes",
+  analyze_thumbnails: "Analyse les miniatures concurrentes",
 };
 
 /** The label of a tool, or its name made readable when it has none. */

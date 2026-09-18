@@ -2,12 +2,10 @@ import { z } from "zod";
 import { THUMB_TYPE_IDS } from "@/lib/youtube/thumb-types";
 
 /**
- * The thumbnail brief (« fiche miniature », chantier F3): every decision of the
- * thumbnail journey, one brief per conversation. Pure and client-safe — shared
- * by the store, the update_brief tool, the routes and the « Fiche » panel.
- * Fields filled by later tools (research, logo candidates, competition,
- * references, sketch review) are already defined so stored briefs never need
- * a migration.
+ * The thumbnail brief (« fiche miniature »): optional memory for one
+ * conversation. Pure and client-safe — shared by the store, the update_brief
+ * tool, the routes and the « Fiche » panel. `step` is leftover from an old
+ * 1–7 pipeline: stored, not shown, not sent to the agent.
  */
 
 export const BRIEF_TOTAL_STEPS = 7;

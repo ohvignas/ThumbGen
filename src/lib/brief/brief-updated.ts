@@ -1,7 +1,6 @@
 /**
  * The transient chunk update_brief writes into the chat stream after a brief
- * write (chantier F3): the « Fiche » badge, the sheet and the live step line
- * refresh from it. Pure and client-safe.
+ * write: the Fiche sheet reloads from it. Pure and client-safe.
  */
 export const BRIEF_UPDATED_PART = "data-brief-updated" as const;
 

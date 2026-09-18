@@ -1,15 +1,14 @@
 import { z } from "zod";
 
 /**
- * `ask_user` (chantiers F2, F3): one clickable question of the thumbnail
- * journey. A client tool — no `execute`: the turn pauses until the chat card
- * answers `{ selected }`, `{ other }` or `{ skipped }`. With no option it is a
- * free question answered with `{ other }`. Pure — shared by the chat route's
- * tool declaration, the question card and the turn model.
+ * `ask_user`: one clickable question card. A client tool — no `execute`: the
+ * turn pauses until the chat answers `{ selected }`, `{ other }` or `{ skipped }`.
+ * With no option it is a free question answered with `{ other }`. Pure — shared
+ * by the chat route's tool declaration, the question card and the turn model.
  */
 export const ASK_USER_TOOL_NAME = "ask_user";
 
-/** The thumbnail journey's number of steps (« Étape n/7 »). */
+/** Leftover bound on stored `step` (old 1–7 cards, plus F2's step 8 remapped here). */
 export const ASK_USER_TOTAL_STEPS = 7;
 
 export const ASK_USER_LIMITS = {
@@ -35,48 +34,52 @@ const optionSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Optional thumbnail: stored:persona_<id>, stored:sf_<id>, stored:lg_<id>, youtube:<videoId> or generated:sk_<id> (a sketch).",
+      "Optional thumbnail: stored:persona_<id>, stored:sf_<id>, stored:lg_<id>, youtube:<videoId>, generated:sk_<id> or logo-candidate:<id>.",
     ),
 });
 
-export const askUserInputSchema = z
-  .object({
-    question: z.string().trim().min(1).max(ASK_USER_LIMITS.question).describe("The question, max 200 characters."),
-    step: z
-      .number()
-      .int()
-      .min(1)
-      .max(ASK_USER_TOTAL_STEPS)
-      .describe("The thumbnail journey step (1 to 7) this question belongs to; several questions may share a step."),
-    multiple: z.boolean().default(false).describe("true lets the user pick several options, then « Valider »."),
-    max_selected: z
-      .number()
-      .int()
-      .min(1)
-      .max(ASK_USER_LIMITS.maxSelected)
-      .optional()
-      .describe("Only with multiple: at most this many picks (1 to 5)."),
-    options: z
-      .array(optionSchema)
-      .max(ASK_USER_LIMITS.options)
-      .describe("0 to 12 options. No option = a free question: the user types the answer."),
-    allow_skip: z.boolean().default(true).describe("Shows « Passer »."),
-  })
-  .superRefine((input, ctx) => {
-    if (input.max_selected !== undefined && !input.multiple) {
-      ctx.addIssue({ code: "custom", path: ["max_selected"], message: "max_selected requires multiple: true" });
+const askUserObjectSchema = z.object({
+  question: z.string().trim().min(1).max(ASK_USER_LIMITS.question).describe("The question, max 200 characters."),
+  // Optional so old stored cards still parse. No .describe(): the model must not see a step field.
+  step: z.number().int().min(1).max(ASK_USER_TOTAL_STEPS).optional(),
+  multiple: z.boolean().default(false).describe("true lets the user pick several options, then « Valider »."),
+  max_selected: z
+    .number()
+    .int()
+    .min(1)
+    .max(ASK_USER_LIMITS.maxSelected)
+    .optional()
+    .describe("Only with multiple: at most this many picks (1 to 5)."),
+  options: z
+    .array(optionSchema)
+    .max(ASK_USER_LIMITS.options)
+    .describe("0 to 12 options. No option = a free question: the user types the answer."),
+  allow_skip: z.boolean().default(true).describe("Shows « Passer »."),
+});
+
+function refineAskUserInput(
+  input: { multiple: boolean; max_selected?: number; options: Array<{ id: string }> },
+  ctx: z.RefinementCtx,
+) {
+  if (input.max_selected !== undefined && !input.multiple) {
+    ctx.addIssue({ code: "custom", path: ["max_selected"], message: "max_selected requires multiple: true" });
+  }
+  if (input.multiple && input.options.length === 0) {
+    ctx.addIssue({ code: "custom", path: ["multiple"], message: "multiple requires at least one option" });
+  }
+  const seen = new Set<string>();
+  input.options.forEach((option, index) => {
+    if (seen.has(option.id)) {
+      ctx.addIssue({ code: "custom", path: ["options", index, "id"], message: `Duplicate option id: ${option.id}` });
     }
-    if (input.multiple && input.options.length === 0) {
-      ctx.addIssue({ code: "custom", path: ["multiple"], message: "multiple requires at least one option" });
-    }
-    const seen = new Set<string>();
-    input.options.forEach((option, index) => {
-      if (seen.has(option.id)) {
-        ctx.addIssue({ code: "custom", path: ["options", index, "id"], message: `Duplicate option id: ${option.id}` });
-      }
-      seen.add(option.id);
-    });
+    seen.add(option.id);
   });
+}
+
+export const askUserInputSchema = askUserObjectSchema.superRefine(refineAskUserInput);
+
+/** What the model is allowed to send: same card, without leftover `step`. */
+export const askUserToolInputSchema = askUserObjectSchema.omit({ step: true }).superRefine(refineAskUserInput);
 
 export type AskUserInput = z.output<typeof askUserInputSchema>;
 export type AskUserOption = AskUserInput["options"][number];
@@ -88,12 +91,12 @@ export function parseAskUserInput(input: unknown): AskUserInput | null {
   return parsed.success ? parsed.data : null;
 }
 
-/** The F2 guided interview's last question (« Question 8/8 »), still found in stored conversations. */
+/** F2's last question (« Question 8/8 »), still found in stored conversations. */
 const F2_LAST_STEP = 8;
 
 /**
- * For display only (folded history lines): also reads a question stored by the
- * F2 interview with step 8. The model's schema and the answer card keep 1 to 7.
+ * For folded history lines: also reads a question stored by F2 with step 8.
+ * New calls omit `step`.
  */
 export function parseStoredAskUserInput(input: unknown): AskUserInput | null {
   const strict = parseAskUserInput(input);
@@ -149,8 +152,13 @@ export type AskUserOptionImage = { src: string; shape: "wide" | "square" };
 const SAFE_ID = /^[\w-]+$/;
 
 /** URL and tile shape of an option image; null for anything that is not a known reference. */
-export function askUserOptionImage(image: string | undefined): AskUserOptionImage | null {
+export function askUserOptionImage(image: string | undefined, conversationId?: string | null): AskUserOptionImage | null {
   if (!image) return null;
+  if (image.startsWith("logo-candidate:") && conversationId) {
+    const id = image.slice("logo-candidate:".length);
+    if (!SAFE_ID.test(id)) return null;
+    return { src: `/api/briefs/${encodeURIComponent(conversationId)}/logo-candidates/${encodeURIComponent(id)}`, shape: "square" };
+  }
   const match = image.match(/^(stored:persona_|stored:sf_|stored:lg_|youtube:|generated:sk_)(.+)$/);
   if (!match || !SAFE_ID.test(match[2])) return null;
   const id = encodeURIComponent(match[2]);

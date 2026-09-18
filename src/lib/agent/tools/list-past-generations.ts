@@ -11,7 +11,7 @@ const InputSchema = z.object({
 export const listPastGenerationsTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "list_past_generations",
   description:
-    "Lists past generations for a project — useful for iteration or remix. Returns model, prompt, cost, and stored:gi_<id> refs to the generated images.",
+    "Lists past paid generations of one project (model, prompt, cost, stored:gi_<id>). Use to iterate or remix an image already produced on this miniature. Not a canvas listing (get_canvas_state) and not the global library. Wire stored:gi_<id> as swipeFile kind=reference on ref-in.",
   inputSchema: InputSchema,
   handler: async ({ project_id, limit }) => {
     const rows = getDb()

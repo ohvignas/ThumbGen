@@ -1,4 +1,4 @@
-import { BRIEF_TOTAL_STEPS, type ThumbnailBrief } from "./schema";
+import type { ThumbnailBrief } from "./schema";
 
 /**
  * What the agent reads of the thumbnail brief: the per-turn `<thumbnail_brief>`
@@ -20,6 +20,7 @@ function scrubImages(value: unknown): unknown {
 
 export function briefContextView(brief: ThumbnailBrief, { script }: { script: "truncate" | "omit" }): Record<string, unknown> {
   const { script: fullScript, ...video } = brief.video;
+  const { step: _step, video: _video, research, logoCandidates, ...rest } = brief;
   const videoView: Record<string, unknown> = { ...video };
   if (fullScript) {
     if (script === "truncate") {
@@ -29,10 +30,10 @@ export function briefContextView(brief: ThumbnailBrief, { script }: { script: "t
     videoView.scriptChars = fullScript.length;
   }
   const view = {
-    ...brief,
+    ...rest,
     video: videoView,
-    research: brief.research ? { ...brief.research, sources: brief.research.sources.map((source) => source.title) } : undefined,
-    logoCandidates: brief.logoCandidates.map(({ id, name }) => ({ id, name })),
+    research: research ? { ...research, sources: research.sources.map((source) => source.title) } : undefined,
+    logoCandidates: logoCandidates.map(({ id, name }) => ({ id, name })),
   };
   // JSON round trip: drops undefined fields, then no data URL survives.
   return scrubImages(JSON.parse(JSON.stringify(view))) as Record<string, unknown>;
@@ -45,7 +46,7 @@ export function buildThumbnailBriefBlock(brief: ThumbnailBrief): string {
     .replace(/>/g, "›");
   return [
     "<thumbnail_brief>",
-    "The thumbnail brief of this conversation (THUMBNAIL JOURNEY): every decision so far. It is the source of truth — trust it over the chat history, and resume at its step unless the request is about the existing workflow.",
+    "Optional memory for this conversation (the « Fiche »). Trust it over chat history for these fields. It is not a 7-step pipeline.",
     json,
     "</thumbnail_brief>",
   ].join("\n");
@@ -53,7 +54,7 @@ export function buildThumbnailBriefBlock(brief: ThumbnailBrief): string {
 
 /** update_brief's answer: the saved brief without the full script, then the warnings. */
 export function briefToolSummary(brief: ThumbnailBrief, warnings: string[]): string {
-  const lines = [`Fiche enregistrée (étape ${brief.step}/${BRIEF_TOTAL_STEPS}).`, JSON.stringify(briefContextView(brief, { script: "omit" }))];
+  const lines = [`Fiche enregistrée.`, JSON.stringify(briefContextView(brief, { script: "omit" }))];
   if (warnings.length > 0) lines.push("Avertissements (reformule une fois, puis continue) :", ...warnings.map((warning) => `- ${warning}`));
   return lines.join("\n");
 }

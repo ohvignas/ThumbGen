@@ -2,7 +2,7 @@ import { summarizeNode } from "@/lib/canvas/node-summary";
 
 export { summarizeNode };
 
-export type SnapshotNode = { id: string; type?: string; data?: Record<string, unknown> };
+export type SnapshotNode = { id: string; type?: string; data?: Record<string, unknown>; selected?: boolean };
 export type SnapshotEdge = { source: string; target: string; targetHandle?: string | null };
 
 /**
@@ -14,6 +14,7 @@ export function snapshotCanvas(nodes: SnapshotNode[], edges: SnapshotEdge[]): un
     nodes: nodes.map((n) => ({
       id: n.id,
       type: n.type,
+      ...(n.selected ? { selected: true } : {}),
       summary: summarizeNode(n.type ?? "", n.data ?? {}),
     })),
     edges: edges.map((e) => ({ source: e.source, target: e.target, targetHandle: e.targetHandle })),

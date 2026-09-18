@@ -115,7 +115,7 @@ function nodeTitle(node: CanvasNode): string {
 export const viewCanvasImagesTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "view_canvas_images",
   description:
-    "Lets you SEE the images on the project's canvas: sketches, imported or library reference images, logos, the Personnage (front angle), a generator's generated images (at most 2 per generator, its selected image first) and preview outputs. Pass node_ids to look at specific nodes; without node_ids every node that carries an image is shown, in canvas order. At most 8 images per call, each downscaled to 768px. Each image is preceded by a line « node <id> (<type>, <label>) — image k/n » followed by its stored ref when it has one (e.g. stored:gi_<id>, reusable as an image_source). Call it before analysing, completing or modifying an existing workflow.",
+    "Lets you SEE the images on the project's canvas: sketches, imported or library reference images, logos, the Personnage (front angle), a generator's generated images (at most 2 per generator, its selected image first) and preview outputs. Use before analysing or editing an existing workflow — not to list ids (get_canvas_state / <canvas_state>). Pass node_ids to look at specific nodes; without node_ids every node that carries an image is shown, in canvas order. At most 8 images per call, each downscaled to 768px. Each image is preceded by a line « node <id> (<type>, <label>) — image k/n » followed by its stored ref when it has one (e.g. stored:gi_<id>, reusable as an image_source).",
   inputSchema: InputSchema,
   handler: async ({ project_id, node_ids }) => {
     const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(project_id) as

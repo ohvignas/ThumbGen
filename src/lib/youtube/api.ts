@@ -2,8 +2,9 @@ import { parseChannelInput } from "./channel";
 import { youtubeThumbnailUrl, type ChannelDetails, type VideoDetails } from "./types";
 
 /**
- * YouTube Data API v3 client for followed channels. Every call costs 1 quota
- * unit (channels.list, playlists.list, playlistItems.list, videos.list).
+ * YouTube Data API v3 client for followed channels. channels.list,
+ * playlists.list, playlistItems.list and videos.list cost 1 quota unit;
+ * search.list costs 100.
  * Errors never carry the API key: the request URL is not part of any message.
  *
  * Counts and dates are the only fields this client hands to the rest of the
@@ -202,7 +203,7 @@ export async function fetchPlaylistPage(apiKey: string, playlistId: string, page
 type VideosResponse = {
   items?: Array<{
     id?: string;
-    snippet?: { title?: string; publishedAt?: string; liveBroadcastContent?: string; thumbnails?: ThumbnailSet };
+    snippet?: { title?: string; publishedAt?: string; liveBroadcastContent?: string; channelId?: string; thumbnails?: ThumbnailSet };
     statistics?: { viewCount?: string; likeCount?: string };
     contentDetails?: { duration?: string };
   }>;
@@ -225,8 +226,11 @@ export async function fetchVideos(apiKey: string, videoIds: readonly string[]): 
     foundIds.add(item.id);
     const published = Date.parse(item.snippet?.publishedAt ?? "");
     if (Number.isNaN(published)) continue;
+    const channelId = item.snippet?.channelId?.trim();
+    if (!channelId) continue;
     videos.push({
       videoId: item.id,
+      channelId,
       title: item.snippet?.title?.trim() || item.id,
       publishedAt: new Date(published).toISOString(),
       durationSeconds: parseIsoDuration(item.contentDetails?.duration),
@@ -237,4 +241,61 @@ export async function fetchVideos(apiKey: string, videoIds: readonly string[]): 
     });
   }
   return { videos, foundIds };
+}
+
+export const SEARCH_LIST_UNITS = 100;
+export const VIDEOS_LIST_UNITS = 1;
+export const PLAYLIST_ITEMS_UNITS = 1;
+
+export type SearchVideoHit = {
+  videoId: string;
+  channelId: string;
+  channelTitle: string;
+  title: string;
+  publishedAt: string;
+};
+
+/** `search.list` (100 quota units). Video ids only — details come from `fetchVideos`. */
+export async function searchVideos(
+  apiKey: string,
+  params: {
+    q: string;
+    publishedAfter: string;
+    maxResults: number;
+    relevanceLanguage?: string;
+    regionCode?: string;
+  },
+): Promise<SearchVideoHit[]> {
+  const query: Record<string, string> = {
+    part: "snippet",
+    type: "video",
+    order: "relevance",
+    q: params.q,
+    publishedAfter: params.publishedAfter,
+    maxResults: String(params.maxResults),
+  };
+  if (params.relevanceLanguage) query.relevanceLanguage = params.relevanceLanguage;
+  if (params.regionCode) query.regionCode = params.regionCode;
+  const data = await youtubeGet<{
+    items?: Array<{
+      id?: { kind?: string; videoId?: string };
+      snippet?: { title?: string; channelId?: string; channelTitle?: string; publishedAt?: string };
+    }>;
+  }>(apiKey, "search", query);
+  const hits: SearchVideoHit[] = [];
+  for (const item of data.items ?? []) {
+    if (item.id?.kind && item.id.kind !== "youtube#video") continue;
+    const videoId = item.id?.videoId;
+    const channelId = item.snippet?.channelId?.trim();
+    const published = Date.parse(item.snippet?.publishedAt ?? "");
+    if (!videoId || !channelId || Number.isNaN(published)) continue;
+    hits.push({
+      videoId,
+      channelId,
+      channelTitle: item.snippet?.channelTitle?.trim() || channelId,
+      title: item.snippet?.title?.trim() || videoId,
+      publishedAt: new Date(published).toISOString(),
+    });
+  }
+  return hits;
 }

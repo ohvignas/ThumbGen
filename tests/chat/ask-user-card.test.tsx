@@ -50,10 +50,10 @@ const videos = ["v1", "v2", "v3", "v4", "v5"].map((id) => ({
 }));
 
 describe("AskUserCard — image grid", () => {
-  it("shows the question, the counter and a 16:9 grid; one click answers once", async () => {
+  it("shows the question and a 16:9 grid; one click answers once", async () => {
     const onAnswer = await render({ question: "De quoi parle la vidéo ?", step: 1, options: videos });
     expect(container.textContent).toContain("De quoi parle la vidéo ?");
-    expect(container.textContent).toContain("Étape 1/7");
+    expect(container.textContent).not.toContain("Étape");
     expect(container.querySelector(".grid-cols-2")).not.toBeNull();
     const images = Array.from(container.querySelectorAll("img")).map((img) => img.getAttribute("src"));
     expect(images).toEqual(videos.map((v) => `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`));
@@ -293,14 +293,20 @@ describe("AskUserCard — text options and footer", () => {
 });
 
 describe("AskUserCard — thumbnail journey", () => {
+  it("does not show Étape when leftover step is 1", async () => {
+    await render({ question: "De quoi parle la vidéo…", step: 1, options: [] });
+    expect(container.textContent).toContain("De quoi parle la vidéo…");
+    expect(container.textContent).not.toContain("Étape");
+  });
+
   it("asks a free question with a text field only", async () => {
     const onAnswer = await render({ question: "De quoi parle la vidéo ?", step: 1, options: [], allow_skip: false });
-    expect(container.textContent).toContain("Étape 1/7");
     expect(container.querySelector("input[placeholder='Autre…']")).toBeNull();
     const input = container.querySelector<HTMLInputElement>("input[placeholder='Ta réponse…']")!;
     expect(input).not.toBeNull();
     expect(input.getAttribute("aria-label")).toBe("Ta réponse");
     expect(buttons().map((el) => el.textContent)).toEqual(["Envoyer"]);
+    expect(container.textContent).not.toContain("Étape");
     await typeInto(input, "Une vidéo sur les miniatures");
     await click(button("Envoyer"));
     expect(onAnswer).toHaveBeenCalledWith({ other: "Une vidéo sur les miniatures" });
@@ -350,7 +356,6 @@ describe("PendingUiAction — ask_user", () => {
       input: { question: "Quel angle ?", step: 2, options: [{ id: "a", label: "Choc" }] },
     } as unknown as PendingToolPart;
     await act(async () => root.render(<PendingUiAction part={part} onResolve={onResolve} />));
-    expect(container.textContent).toContain("Étape 2/7");
     await click(button("Choc"));
     expect(onResolve).toHaveBeenCalledWith("q1", { selected: ["a"] });
   });

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { emptyBrief } from "@/lib/brief/schema";
-import { briefStepBadge, briefStepLine } from "@/lib/brief/steps";
 import { resetBriefStore, useBriefStore } from "@/store/brief-store";
 import { applyBriefUpdatedPart } from "@/components/panels/chat/brief-updated-part";
 
@@ -14,15 +13,6 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => vi.unstubAllGlobals());
-
-describe("journey steps", () => {
-  it("names the badge and the step line", () => {
-    expect(briefStepBadge(3)).toBe("Étape 3/7");
-    expect(briefStepLine(3)).toBe("Étape 3/7 — Concurrents");
-    expect(briefStepLine(1)).toBe("Étape 1/7 — Vidéo et promesse");
-    expect(briefStepLine(7)).toBe("Étape 7/7 — Esquisses et workflow");
-  });
-});
 
 describe("brief store", () => {
   it("loads the brief of a conversation, and clears on a change of conversation", async () => {

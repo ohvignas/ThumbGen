@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { fetchBestThumbnail, saveThumbnailToLibrary } from "@/lib/youtube/thumbnails";
 import { copyVideoThumbnailToLibrary } from "@/lib/youtube/use-thumbnail";
+import { getCopiedSwipeFile, rememberCopy } from "@/lib/brief/youtube-thumbnail-copies";
 import { ToolDefinition, type ToolResult } from "./types";
 import { registerTool } from "./index";
 
@@ -28,7 +29,7 @@ function importedResult(swipeFileId: string, label: string, mime: string, bytes:
 export const importYoutubeThumbnailTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "import_youtube_thumbnail",
   description:
-    "Imports the published YouTube thumbnail of a video as a reference swipe-file in the user's library. Use this when the user wants to reuse one of THEIR OWN past video thumbnails (or any reference YT thumbnail) as visual inspiration in the workflow. Pass video_id (the 11-char ID, e.g. 'dQw4w9WgXcQ'). Returns a stored:sf_<id> reference you can immediately wire as a swipeFile (kind=\"reference\") in apply_workflow. A video of a followed channel (see list_followed_videos) is copied into the library only once, shared with « Utiliser comme référence ».",
+    "Copies a published YouTube thumbnail into the library as stored:sf_<id>. Use when they want that exact thumb as a canvas reference. Pass the 11-char video_id, not a URL. Followed-channel copies are deduplicated. Not a search — get the id first. Competitor composition JSON: analyze_thumbnails.",
   inputSchema: InputSchema,
   handler: async ({ video_id, label }) => {
     // A followed-channel video: same library copy as « Utiliser comme référence » (deduplicated).
@@ -52,6 +53,14 @@ export const importYoutubeThumbnailTool: ToolDefinition<z.infer<typeof InputSche
           },
         ],
       };
+    }
+
+    const copied = getCopiedSwipeFile(video_id);
+    if (copied) {
+      const row = getDb().prepare("SELECT mime_type, data, title FROM swipe_files WHERE id = ?").get(copied) as
+        | { mime_type: string; data: Buffer; title: string }
+        | undefined;
+      if (row) return importedResult(copied, label || row.title, row.mime_type, row.data);
     }
 
     const apiKey = getSetting("youtubeApiKey");
@@ -82,6 +91,7 @@ export const importYoutubeThumbnailTool: ToolDefinition<z.infer<typeof InputSche
     }
 
     const id = saveThumbnailToLibrary(derivedLabel, thumb);
+    rememberCopy(video_id, id);
     return importedResult(id, derivedLabel, thumb.mime, thumb.bytes);
   },
 };

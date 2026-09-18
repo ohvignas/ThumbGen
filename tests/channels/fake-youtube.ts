@@ -2,8 +2,8 @@ import { vi, type Mock } from "vitest";
 
 /**
  * In-memory YouTube for tests: www.googleapis.com/youtube/v3 (channels,
- * playlists, playlistItems, videos) and i.ytimg.com thumbnails. Every other
- * host answers 404, so no test can reach a real service through fetch.
+ * playlists, playlistItems, videos, search) and i.ytimg.com thumbnails. Every
+ * other host answers 404, so no test can reach a real service through fetch.
  */
 
 export function channelIdFor(letter: string): string {
@@ -171,6 +171,8 @@ export function createFakeYouTube(
             title: video.title ?? `Vidéo ${video.id}`,
             publishedAt: video.publishedAt,
             liveBroadcastContent: video.live ?? "none",
+            channelId: video.channelId,
+            channelTitle: channels.get(video.channelId)?.title ?? video.channelId,
             thumbnails: { medium: { url: `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg` } },
           },
           statistics: {
@@ -182,6 +184,28 @@ export function createFakeYouTube(
           },
         }));
       return json(200, { items });
+    }
+
+    if (resource === "search") {
+      const q = (params.get("q") ?? "").toLowerCase();
+      const maxResults = Number(params.get("maxResults") ?? "25");
+      const matches = videos.filter((video) => {
+        const title = (video.title ?? `Vidéo ${video.id}`).toLowerCase();
+        return !q || title.includes(q) || video.id.toLowerCase().includes(q);
+      });
+      const page = matches.slice(0, Number.isFinite(maxResults) && maxResults > 0 ? maxResults : 25);
+      return json(200, {
+        items: page.map((video) => ({
+          id: { kind: "youtube#video", videoId: video.id },
+          snippet: {
+            title: video.title ?? `Vidéo ${video.id}`,
+            channelId: video.channelId,
+            channelTitle: channels.get(video.channelId)?.title ?? video.channelId,
+            publishedAt: video.publishedAt,
+            liveBroadcastContent: video.live ?? "none",
+          },
+        })),
+      });
     }
 
     return apiError(404, "notFound");

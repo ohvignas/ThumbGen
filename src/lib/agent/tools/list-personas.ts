@@ -10,7 +10,7 @@ const ANGLES = ["front", "left", "right"] as const;
 export const listPersonasTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "list_personas",
   description:
-    "Lists the user's Personnages — multi-angle face reference sets (front + left/right profile, captured via webcam or imported one photo per angle). A Personnage is the ONLY way to put the user's face in a thumbnail: it gives Nano Banana Pro and Seedream up to 3 angles of the same identity, which measurably improves face consistency. Each entry includes a `stored:persona_<id>` ref usable as a faceReference node's image_source in apply_workflow and as generate_sketch's face_source.",
+    "Lists the user's Personnages (multi-angle face sets). Use when a face of the creator might go on the thumbnail. A Personnage is the ONLY way to put their face in a sketch or generator — never a one-off photo. Returns stored:persona_<id> for faceReference and generate_sketch.face_source. Empty library: suggest Bibliothèque → Personnages.",
   inputSchema: InputSchema,
   handler: async () => {
     const personas = getDb()

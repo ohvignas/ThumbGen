@@ -27,8 +27,9 @@ describe("<thumbnail_brief> block", () => {
     const block = buildThumbnailBriefBlock(brief());
     expect(block.startsWith("<thumbnail_brief>\n")).toBe(true);
     expect(block.endsWith("\n</thumbnail_brief>")).toBe(true);
-    expect(block).toContain("trust it over the chat history");
-    expect(block).toContain("resume at its step unless the request is about the existing workflow");
+    expect(block).toContain("Trust it over chat history for these fields");
+    expect(block).toContain("It is not a 7-step pipeline");
+    expect(block).not.toContain('"step":');
     expect(block).toContain(`${"s".repeat(BRIEF_CONTEXT_SCRIPT_CHARS)}…`);
     expect(block).not.toContain("s".repeat(BRIEF_CONTEXT_SCRIPT_CHARS + 1));
     expect(block).toContain('"scriptChars":2000');
@@ -49,7 +50,7 @@ describe("<thumbnail_brief> block", () => {
 
   it("summarizes the brief for the tool without the script, with the warnings", () => {
     const summary = briefToolSummary(brief(), ["Variante A : trop proche."]);
-    expect(summary.split("\n")[0]).toBe("Fiche enregistrée (étape 4/7).");
+    expect(summary.split("\n")[0]).toBe("Fiche enregistrée.");
     expect(summary).not.toContain("ssss");
     expect(summary).toContain('"scriptChars":2000');
     expect(summary).toContain("Avertissements (reformule une fois, puis continue) :\n- Variante A : trop proche.");

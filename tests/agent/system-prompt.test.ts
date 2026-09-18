@@ -35,9 +35,9 @@ describe("system prompt", () => {
     const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc", DEFAULT_AGENT_PROMPT_PREFS, { ...emptyBrief(), step: 3 });
     expect(blocks.at(-2)!.text).toContain("<canvas_state>");
     expect(blocks.at(-1)!.text.startsWith("<thumbnail_brief>")).toBe(true);
-    expect(blocks.at(-1)!.text).toContain('"step":3');
+    expect(blocks.at(-1)!.text).not.toContain('"step":');
     expect(blocks.at(-1)!.cache_control).toBeUndefined();
-    // The cached static prompt names <thumbnail_brief> (THUMBNAIL JOURNEY): only the per-turn blocks matter.
+    // The cached static prompt names <thumbnail_brief>; only the per-turn blocks matter.
     expect(buildSystemMessages({ nodes: [], edges: [] }, "proj-abc").slice(1).some((block) => block.text.includes("<thumbnail_brief>"))).toBe(false);
   });
 
@@ -80,7 +80,7 @@ describe("system prompt", () => {
 
   it("omits the project_id block when no projectId given", () => {
     const blocks = buildSystemMessages({ nodes: [], edges: [] });
-    expect(blocks.some((b) => b.text.includes("<project_id>"))).toBe(false);
+    expect(blocks.some((b) => b.text.startsWith("<project_id>"))).toBe(false);
   });
 
   it("defaults both languages to French", () => {
@@ -122,7 +122,7 @@ describe("<channel_profile>", () => {
   it("is absent when the profile is empty", () => {
     expect(buildChannelProfileBlock(DEFAULT_AGENT_PROMPT_PREFS)).toBeNull();
     const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc");
-    // The cached static prompt names <channel_profile> (THUMBNAIL JOURNEY); only the per-turn blocks matter here.
+    // The cached static prompt may name <channel_profile>; only the per-turn blocks matter here.
     expect(blocks.slice(1).some((b) => b.text.includes("<channel_profile>"))).toBe(false);
   });
 

@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Parent repo lockfile would otherwise make `next dev` compile F3a, not this worktree.
+  outputFileTracingRoot: path.join(__dirname),
   // @resvg/resvg-js (library logos, SVG → PNG) loads a platform-specific native
   // binary with a runtime require(): it must not be bundled. Next only knows
   // sharp, better-sqlite3, … by default.

@@ -33,7 +33,7 @@ const PENCIL_SUFFIX =
 export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "generate_sketch",
   description:
-    "Generates a fast, cheap draft thumbnail using Gemini Flash Image. Defaults to a HAND-DRAWN PENCIL SKETCH style (rough strokes, monochrome graphite on paper) — perfect for proposing layout/angle ideas without committing to a polished design. Pass style='polished' for a finished thumbnail render. ALWAYS pass `face_source: stored:persona_<id>` (the chosen Personnage) when the user's face is involved, so the sketched person actually resembles the user (otherwise you get a generic stranger). Optionally pass `reference_sources: [stored:lg_<id>, stored:sf_<id>]` to condition logo placement / composition. Returns a `generated:<id>` reference usable as a sketch node's image_source in apply_workflow. Aspect ratio defaults to 16x9.",
+    "Generates a cheap Gemini Flash Image draft (pencil sketch by default). Use to show composition ideas before the user clicks Générer. Costs money. ALWAYS pass face_source: stored:persona_<id> when their face is in the sketch. Optional reference_sources. Not the final thumbnail — that is the canvas generator. Don't loop retries. Aspect defaults to 16x9. Returns generated:sk_<id>.",
   inputSchema: InputSchema,
   handler: async ({ prompt, aspect_ratio, style, face_source, reference_sources }) => {
     const start = Date.now();
