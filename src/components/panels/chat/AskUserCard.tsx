@@ -5,9 +5,9 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/toggle";
+import { useChatStore } from "@/store/chat-store";
 import {
   ASK_USER_LIMITS,
-  ASK_USER_TOTAL_STEPS,
   askUserMaxSelected,
   askUserOptionImage,
   parseAskUserInput,
@@ -44,7 +44,8 @@ function OptionThumbnail({
   selected: boolean;
   onError: () => void;
 }) {
-  const image = askUserOptionImage(option.image);
+  const conversationId = useChatStore((s) => s.activeConversationId);
+  const image = askUserOptionImage(option.image, conversationId);
   return (
     <span
       className={cn(
@@ -70,11 +71,10 @@ function OptionThumbnail({
 }
 
 /**
- * One thumbnail-journey question (`ask_user`): options as a thumbnail grid or a
- * list, « Autre… » free text and « Passer »; with no option, only the free text
- * field (« Ta réponse… »). Answers exactly once — every control is disabled
- * after the first answer, and enabled again only when `onAnswer` throws or its
- * promise rejects (the answer was not sent).
+ * One `ask_user` card: options as a thumbnail grid or a list, « Autre… » free
+ * text and « Passer »; with no option, only the free text field (« Ta réponse… »).
+ * Answers exactly once — every control is disabled after the first answer, and
+ * enabled again only when `onAnswer` throws or its promise rejects.
  */
 export default function AskUserCard({
   input,
@@ -121,6 +121,7 @@ export default function AskUserCard({
   };
 
   const question = parseAskUserInput(input);
+  const conversationId = useChatStore((s) => s.activeConversationId);
 
   const skipButton = (
     <Button variant="ghost" size="sm" disabled={answered} onClick={() => answer({ skipped: true })}>
@@ -138,7 +139,7 @@ export default function AskUserCard({
   }
 
   const maxSelected = askUserMaxSelected(question);
-  const firstImage = question.options.map((option) => askUserOptionImage(option.image)).find((image) => image !== null);
+  const firstImage = question.options.map((option) => askUserOptionImage(option.image, conversationId)).find((image) => image !== null);
   const shape = firstImage?.shape ?? null;
   const freeQuestion = question.options.length === 0;
 
@@ -203,12 +204,7 @@ export default function AskUserCard({
 
   return (
     <div ref={groupRef} tabIndex={-1} role="group" aria-label={question.question} className="flex flex-col gap-2.5 outline-none">
-      <div className="flex flex-col gap-0.5">
-        <p className="text-xs text-muted-foreground">
-          Étape {question.step}/{ASK_USER_TOTAL_STEPS}
-        </p>
-        <p className="text-sm leading-snug font-medium text-foreground">{question.question}</p>
-      </div>
+      <p className="text-sm leading-snug font-medium text-foreground">{question.question}</p>
 
       {!freeQuestion && (
         <div

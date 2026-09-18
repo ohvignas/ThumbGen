@@ -17,3 +17,4 @@ import "./get-channel-videos";
 import "./import-youtube-thumbnail";
 import "./list-followed-videos";
 import "./finish-turn";
+import "./read-skill";

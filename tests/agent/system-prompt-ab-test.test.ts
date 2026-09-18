@@ -1,22 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { AGENT_SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
+import { readSkillBody } from "@/lib/agent/skills/catalog";
 
-describe("system prompt — A/B/C test", () => {
-  it("builds one generator with abTest when the user picks 2 or 3 angles", () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('abTest: { variants: ["A","B"] }');
-    expect(AGENT_SYSTEM_PROMPT).toContain('abTest: { variants: ["A","B","C"] }');
-    expect(AGENT_SYSTEM_PROMPT).not.toContain("SEPARATE prompt + generator pair");
-  });
-
-  it("wires shared inputs once and per-variant inputs on the -b / -c handles", () => {
-    for (const handle of ["face-in", "logo-in", "prompt-in-b", "prompt-in-c", "sketch-in-b", "ref-in-c"]) {
-      expect(AGENT_SYSTEM_PROMPT).toContain(`"${handle}"`);
-    }
-  });
-
-  it("caps a test at 3 variants, like YouTube Studio", () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain("YouTube Studio");
-    expect(AGENT_SYSTEM_PROMPT).toContain("up to 3 thumbnails");
-    expect(AGENT_SYSTEM_PROMPT).toContain("at most 3 variants");
+describe("A/B/C test wiring", () => {
+  it("lives on apply_workflow, not as a 7-step prompt section", () => {
+    expect(AGENT_SYSTEM_PROMPT).not.toContain("MULTI-SELECT FOR A/B TESTING");
+    const text = readSkillBody("apply_workflow") ?? "";
+    expect(text).toMatch(/abTest/);
+    expect(text).toContain("prompt-in-b");
+    expect(text).toMatch(/3 variants|at most 3/i);
   });
 });

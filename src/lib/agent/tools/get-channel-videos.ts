@@ -13,7 +13,7 @@ const InputSchema = z.object({
 export const getChannelVideosTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "get_channel_videos",
   description:
-    "Lists videos of a YouTube channel sorted by date (default) or view count. Useful to see what's working for the channel — top-performing thumbnails are inspiration material. QUOTA: 100 units per call.",
+    "Lists a channel's videos by date (default) or viewCount. Use to see what performs and which thumbs to import. Keyword inside the channel: search_youtube_channel. Already-synced followed videos: list_followed_videos. QUOTA: 100 units.",
   inputSchema: InputSchema,
   handler: async ({ channel, limit, sort }) => {
     const apiKey = getSetting("youtubeApiKey");

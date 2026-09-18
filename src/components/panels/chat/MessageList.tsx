@@ -11,7 +11,7 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import AssistantTurn from "./AssistantTurn";
-import ChatEmptyState, { INTERVIEW_START_MESSAGE } from "./ChatEmptyState";
+import ChatEmptyState from "./ChatEmptyState";
 import Message, { AssistantRow, type ChatTurnControls } from "./Message";
 import TurnProgress from "./TurnProgress";
 import { groupConsecutiveMessages, stoppedTurnPlacement, trailingAssistantRow } from "./chat-view-model";
@@ -27,7 +27,7 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
   // Empty state only when nothing is going on: a first send that failed or is
   // running before its message shows still gets its trailing row.
   if (messages.length === 0 && !trailing) {
-    return <ChatEmptyState onStart={() => controls.onAskAgent(INTERVIEW_START_MESSAGE)} />;
+    return <ChatEmptyState />;
   }
 
   const groups = groupConsecutiveMessages(messages);
@@ -59,7 +59,7 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
               <MessageScrollerItem key="trailing-assistant" messageId="trailing-assistant">
                 <AssistantRow showAvatar>
                   {trailing === "progress" ? (
-                    <TurnProgress message={undefined} status={controls.status} startedAt={controls.turnStartedAt} steps={[]} journeyStep={controls.journeyStep ?? null} />
+                    <TurnProgress message={undefined} status={controls.status} startedAt={controls.turnStartedAt} steps={[]} />
                   ) : (
                     <AssistantTurn
                       turn={emptyAssistantTurn()}

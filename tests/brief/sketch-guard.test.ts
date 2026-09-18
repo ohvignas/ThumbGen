@@ -20,7 +20,7 @@ describe("sketch guard", () => {
   it("computes the limit and the refusals", () => {
     expect(sketchLimit(emptyBrief())).toBe(5);
     expect(sketchLimit({ ...emptyBrief(), variants: [{ key: "A", ...pkg() }, { key: "B", ...pkg() }] })).toBe(7);
-    expect(sketchRefusal({ ...emptyBrief(), step: 4 })).toBe("Esquisse refusée : la fiche est à l'étape 4/7, les esquisses viennent à l'étape 7.");
+    expect(sketchRefusal({ ...emptyBrief(), step: 4 })).toBeNull();
     expect(sketchRefusal({ ...emptyBrief(), step: 7 })).toBeNull();
     expect(sketchRefusal({ ...emptyBrief(), step: 7, usage: { research: 0, competitorSearches: 0, analyses: 0, sketches: 5 } })).toBe(
       "Esquisse refusée : limite de 5 esquisses atteinte pour cette miniature.",
@@ -33,12 +33,12 @@ describe("sketch guard", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses before step 7 without calling the image model", async () => {
+  it("allows sketches before old journey step 7 and still counts the cap", async () => {
     const conversationId = briefAt(4);
     const handler = vi.fn(async () => ok);
     const result = await guardSketchHandler(conversationId, handler)({ prompt: "x" });
-    expect(result).toEqual({ isError: true, content: [{ type: "text", text: "Esquisse refusée : la fiche est à l'étape 4/7, les esquisses viennent à l'étape 7." }] });
-    expect(handler).not.toHaveBeenCalled();
+    expect(result).toBe(ok);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("counts sketches at step 7 and refuses past 2 × variants + 3", async () => {

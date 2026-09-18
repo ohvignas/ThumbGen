@@ -1,6 +1,6 @@
 import { tool as aiTool } from "ai";
 import { requestUserImageInputSchema } from "@/lib/agent/browser-tools/request-user-image";
-import { askUserInputSchema } from "@/lib/agent/browser-tools/ask-user";
+import { askUserToolInputSchema } from "@/lib/agent/browser-tools/ask-user";
 
 /**
  * AI SDK "client tool": no `execute`, so streamText pauses the step and the
@@ -20,7 +20,7 @@ import { askUserInputSchema } from "@/lib/agent/browser-tools/ask-user";
  */
 export const requestUserImageClientTool = aiTool({
   description:
-    "Asks the user to upload an image (face, logo, or reference). The browser opens a file picker or the library. The conversation suspends until the user uploads OR explicitly skips.",
+    "Asks the user to upload an image (logo or reference). The browser opens a file picker or the library. Never for the creator's face — that must be a Personnage (list_personas). The conversation suspends until they upload OR skip. Don't call finish_turn in the same step.",
   inputSchema: requestUserImageInputSchema,
 });
 
@@ -30,8 +30,8 @@ export const requestUserImageClientTool = aiTool({
  */
 export const askUserClientTool = aiTool({
   description:
-    "Asks the user ONE guided-interview question with 1 to 6 clickable options (thumbnails via `image` refs from the list tools: stored:persona_<id>, stored:sf_<id>, stored:lg_<id>, youtube:<videoId>). The chat always adds a free-text « Autre » field and, when allow_skip, « Passer ». The turn pauses until the user answers { selected: [option ids] }, { other: text } or { skipped: true }. Call it alone in its step (never with place_node or finish_turn).",
-  inputSchema: askUserInputSchema,
+    "Asks the user ONE clickable question (0–12 options, images via stored:persona_/sf_/lg_, youtube:, generated:sk_, logo-candidate:). The chat adds « Autre » and, when allow_skip, « Passer ». Pause until { selected }, { other } or { skipped }. Call it alone in its model step (never with place_node or finish_turn). Skip the question if you can deduce the answer.",
+  inputSchema: askUserToolInputSchema,
 });
 
 export const V2_CLIENT_TOOLS = {

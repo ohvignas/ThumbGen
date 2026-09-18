@@ -25,15 +25,13 @@ afterEach(async () => {
 });
 
 describe("BriefButton", () => {
-  it("shows « Fiche » with the step badge of the open conversation's brief, and follows the store", async () => {
+  it("shows « Fiche » without a pipeline step badge", async () => {
     useBriefStore.setState({ conversationId: "c1", brief: { ...emptyBrief(), step: 3 }, updatedAt: null });
     await act(async () => root.render(<BriefButton conversationId="c1" />));
     const button = container.querySelector("button")!;
     expect(button.textContent).toContain("Fiche");
-    expect(button.textContent).toContain("Étape 3/7");
-    expect(button.getAttribute("aria-label")).toBe("Fiche, Étape 3/7");
-    await act(async () => useBriefStore.setState({ brief: { ...emptyBrief(), step: 5 } }));
-    expect(container.querySelector("button")!.textContent).toContain("Étape 5/7");
+    expect(button.textContent).not.toContain("Étape");
+    expect(button.getAttribute("aria-label")).toBe("Fiche");
   });
 
   it("has no badge without a brief for this conversation, and nothing without a conversation", async () => {

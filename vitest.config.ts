@@ -6,9 +6,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
-    // Exclude worktrees to prevent vitest from running duplicate tests from
-    // any active git worktree under .worktrees/ (vitest doesn't respect .gitignore).
-    exclude: ["**/node_modules/**", "**/.worktrees/**", "**/dist/**", "**/.next/**"],
+    // This checkout lives under .worktrees/; do not exclude `**/.worktrees/**`
+    // or every test file here is skipped. Parent repo config still excludes worktrees.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**"],
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },

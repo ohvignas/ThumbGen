@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { z } from "zod";
 import {
   ASK_USER_TOOL_NAME,
   askUserAnswerText,
@@ -6,6 +7,7 @@ import {
   askUserMaxSelected,
   askUserOptionImage,
   askUserStepLabel,
+  askUserToolInputSchema,
   parseAskUserInput,
   parseStoredAskUserInput,
   readAskUserOutput,
@@ -29,6 +31,7 @@ describe("ask_user input schema", () => {
     expect(accepts({ ...base, question: "" })).toBe(false);
     expect(accepts({ ...base, question: "x".repeat(200) })).toBe(true);
     expect(accepts({ ...base, question: "x".repeat(201) })).toBe(false);
+    expect(accepts({ question: "Quel angle ?", options: [option("a"), option("b")] })).toBe(true);
     expect(accepts({ ...base, step: 0 })).toBe(false);
     expect(accepts({ ...base, step: 7 })).toBe(true);
     expect(accepts({ ...base, step: 8 })).toBe(false);
@@ -100,7 +103,7 @@ describe("ask_user output", () => {
     expect(askUserStepLabel({ nope: true }, { selected: ["a"] })).toBeNull();
   });
 
-  it("still folds an F2 interview question stored with step 8, while the model and the card keep 1 to 7", () => {
+  it("still folds an F2 question stored with step 8", () => {
     const f2 = { question: "Quel modèle ?", step: 8, options: [option("nb", { label: "Nano Banana · ~0,02 $ / image" })] };
     expect(askUserStepLabel(f2, { type: "json", value: { selected: ["nb"] } })).toBe("Quel modèle ? : Nano Banana · ~0,02 $ / image");
     expect(parseStoredAskUserInput(f2)).not.toBeNull();
@@ -120,6 +123,12 @@ describe("ask_user option images", () => {
       shape: "wide",
     });
     expect(askUserOptionImage("generated:sk_abc123")).toEqual({ src: "/api/generated-sketches/sk_abc123", shape: "wide" });
+    expect(askUserOptionImage("logo-candidate:lc_aaa", "conv-1")).toEqual({
+      src: "/api/briefs/conv-1/logo-candidates/lc_aaa",
+      shape: "square",
+    });
+    expect(askUserOptionImage("logo-candidate:lc_aaa")).toBeNull();
+    expect(askUserOptionImage("logo-candidate:../x", "conv-1")).toBeNull();
   });
 
   it("ignores anything else", () => {
@@ -171,5 +180,12 @@ describe("ask_user client tool", () => {
     expect(schema.safeParse({}).success).toBe(false);
     expect(schema.safeParse(base).success).toBe(true);
     expect(TOOL_LABELS.ask_user).toBe("Te pose une question");
+  });
+
+  it("omits leftover step from the JSON schema the model sees", () => {
+    const json = z.toJSONSchema(askUserToolInputSchema) as { properties?: Record<string, unknown> };
+    expect(json.properties?.step).toBeUndefined();
+    expect(JSON.stringify(json)).not.toContain("pipeline");
+    expect(V2_CLIENT_TOOLS.ask_user.description).not.toMatch(/Étape|numbered pipeline|Omit step/);
   });
 });

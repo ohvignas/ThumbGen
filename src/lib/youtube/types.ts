@@ -39,6 +39,7 @@ export type ChannelPreview = ChannelDetails & { alreadyFollowed: boolean };
 
 export type VideoDetails = {
   videoId: string;
+  channelId: string;
   title: string;
   publishedAt: string;
   durationSeconds: number;

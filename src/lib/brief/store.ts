@@ -113,3 +113,30 @@ export function releaseBriefUsage(conversationId: string, key: keyof BriefUsage)
     writeUsage(conversationId, { ...existing.brief, usage });
   })();
 }
+
+/** Replaces the stored brief (server tools). Touches `updated_at`. */
+export function replaceBrief(conversationId: string, brief: ThumbnailBrief): StoredBrief | null {
+  const parsed = thumbnailBriefSchema.safeParse(brief);
+  if (!parsed.success) return null;
+  return getDb().transaction((): StoredBrief | null => {
+    const existing = getBrief(conversationId);
+    if (!existing) return null;
+    const now = new Date().toISOString();
+    getDb()
+      .prepare("UPDATE thumbnail_briefs SET data = ?, updated_at = ? WHERE conversation_id = ?")
+      .run(JSON.stringify(parsed.data), now, conversationId);
+    return getBrief(conversationId);
+  })();
+}
+
+/** Creates an empty brief if this conversation has none (research/logo/competitor tools). */
+export function ensureBrief(conversationId: string): StoredBrief | null {
+  const existing = getBrief(conversationId);
+  if (existing) return existing;
+  const row = getDb()
+    .prepare("SELECT project_id FROM conversations WHERE id = ? AND deleted_at IS NULL")
+    .get(conversationId) as { project_id: string } | undefined;
+  if (!row) return null;
+  const result = updateBrief(conversationId, row.project_id, {});
+  return result.ok ? result.stored : null;
+}

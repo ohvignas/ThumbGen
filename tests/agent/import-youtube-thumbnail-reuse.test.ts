@@ -30,11 +30,12 @@ beforeEach(() => {
         likeCount: null,
         thumbnailUrl: "https://i.ytimg.com/vi/importvid01/mqdefault.jpg",
         liveBroadcastContent: "none",
+        channelId: `UC${"i".repeat(22)}`,
       },
     ],
     new Date().toISOString(),
   );
-  fake = createFakeYouTube({ thumbnails: { importvid01: ["hqdefault"], untracked01: ["hqdefault"] } });
+  fake = createFakeYouTube({ thumbnails: { importvid01: ["hqdefault"], untracked01: ["hqdefault"], untracked02: ["hqdefault"] } });
   vi.stubGlobal("fetch", fake.fetch);
 });
 
@@ -72,6 +73,17 @@ describe("import_youtube_thumbnail reuses « Utiliser comme référence »", () 
     expect(result.isError).toBeFalsy();
     expect(text(result)).toMatch(/stored:sf_[\w-]+/);
     expect(countCopies()).toBe(before + 1);
+  });
+
+  it("stores one library copy when the same untracked video is imported twice", async () => {
+    const before = countCopies();
+    const first = await importYoutubeThumbnailTool.handler({ video_id: "untracked02", label: "Réf" });
+    const downloads = fake.fetch.mock.calls.length;
+    const second = await importYoutubeThumbnailTool.handler({ video_id: "untracked02", label: "Réf" });
+    expect(countCopies()).toBe(before + 1);
+    const ref = (value: string) => value.match(/stored:sf_[\w-]+/)?.[0];
+    expect(ref(text(first))).toBe(ref(text(second)));
+    expect(fake.fetch.mock.calls.length).toBe(downloads);
   });
 
   it("reports a tracked video whose thumbnail is missing as an error", async () => {

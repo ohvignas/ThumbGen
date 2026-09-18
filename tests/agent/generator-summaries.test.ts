@@ -63,4 +63,16 @@ describe("generator summaries expose the A/B/C test", () => {
     ) as { edges: Array<{ targetHandle?: string | null }> };
     expect(snapshot.edges[0].targetHandle).toBe("prompt-in-b");
   });
+
+  it("the chat snapshot marks a selected prompt node", () => {
+    const snapshot = snapshotCanvas(
+      [
+        { id: "iv-prompt", type: "prompt", selected: true, data: { prompt: "hi" } },
+        { id: "prompt-1", type: "prompt", data: { prompt: "other" } },
+      ],
+      [],
+    ) as { nodes: Array<{ id: string; selected?: boolean }> };
+    expect(snapshot.nodes[0]).toEqual(expect.objectContaining({ id: "iv-prompt", selected: true }));
+    expect(snapshot.nodes[1].selected).toBeUndefined();
+  });
 });

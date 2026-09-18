@@ -16,6 +16,11 @@ import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
 import { PLACE_NODE_TOOL_NAME, buildPlaceNodeTool } from "./place-node-tool";
 import { UPDATE_BRIEF_TOOL_NAME, buildUpdateBriefTool } from "./update-brief-tool";
+import { RESEARCH_TOPIC_TOOL_NAME, buildResearchTopicTool } from "./research-topic-tool";
+import { FIND_LOGOS_TOOL_NAME, buildFindLogosTool } from "./find-logos-tool";
+import { ADD_LOGO_TOOL_NAME, buildAddLogoTool } from "./add-logo-tool";
+import { FIND_COMPETITOR_THUMBNAILS_TOOL_NAME, buildFindCompetitorThumbnailsTool } from "./find-competitor-thumbnails-tool";
+import { ANALYZE_THUMBNAILS_TOOL_NAME, buildAnalyzeThumbnailsTool } from "./analyze-thumbnails-tool";
 import { getBrief } from "@/lib/brief/store";
 import { guardSketchHandler } from "@/lib/brief/sketch-guard";
 import { BRIEF_UPDATED_PART } from "@/lib/brief/brief-updated";
@@ -25,6 +30,12 @@ import { CANVAS_PATCH_PART } from "@/lib/canvas/canvas-patch";
 import { discardRun, pumpRunStream, runStatusForOutcome, startRun, subscribe } from "./run-registry";
 import { AGENT_BUSY_MESSAGE, type EndedRunStatus } from "./run-types";
 import { FINISH_TURN_TOOL_NAME } from "@/lib/agent/finish-turn";
+import {
+  buildInvokedSkillBlock,
+  emptyInvokedUserMessage,
+  resolveInvokedSkill,
+} from "@/lib/agent/skills/invoked-skill";
+import { slashRemainderAfterInvoke } from "@/lib/agent/skills/slash-query";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
 import { appendMessage, getConversation, listMessages } from "@/lib/agent/conversation/store";
 import { generateAndPersistTitle } from "@/lib/agent/conversation/auto-title";
@@ -222,6 +233,30 @@ export function findRetriedUserRowIndex(rows: StoredRow[], text: string): number
   return -1;
 }
 
+/** Swap the current user turn's text in history (retry of a bare `/croquis`). */
+function replaceLastUserText(messages: unknown[], text: string): unknown[] {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (typeof message !== "object" || message === null) continue;
+    const row = message as { role?: unknown; content?: unknown };
+    if (row.role !== "user") continue;
+    if (!Array.isArray(row.content)) {
+      return [...messages.slice(0, index), { ...row, content: text }, ...messages.slice(index + 1)];
+    }
+    let replaced = false;
+    const content = row.content.map((part) => {
+      if (typeof part !== "object" || part === null) return part;
+      const item = part as { type?: unknown };
+      if (item.type !== "text") return part;
+      replaced = true;
+      return { ...item, text };
+    });
+    if (!replaced) content.unshift({ type: "text", text });
+    return [...messages.slice(0, index), { ...row, content }, ...messages.slice(index + 1)];
+  }
+  return messages;
+}
+
 /** Next's middleware/proxy client body limit (10 MB): a larger body arrives truncated. */
 const MAX_CHAT_BODY_BYTES = 10 * 1024 * 1024;
 
@@ -302,9 +337,13 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // to the model, and it switches the cost reductions below on.
   let brief: ThumbnailBrief | null = null;
   let systemText: string;
+  let invokedSkillBlock: string | null = null;
+  let ideaEmpty = false;
+  let emptyModelUserText: string | null = null;
   let userParts: Array<
     { type: "text"; text: string } | { type: "file"; mediaType: string; data: string }
   >;
+  let modelUserParts: typeof userParts;
 
   // `body.messages.at(-1)` is a fresh user turn for a normal send, but NOT for
   // the auto-continuation sendAutomaticallyWhen fires once PendingUiAction.tsx
@@ -319,11 +358,17 @@ export async function postV2(req: NextRequest): Promise<Response> {
   try {
     brief = getBrief(conversationId)?.brief ?? null;
     userParts = [];
+    modelUserParts = [];
     if (isNewUserTurn) {
       const lastMessageText = (lastMessage?.parts ?? [])
         .filter((p): p is { type: "text"; text: string } => p.type === "text" && typeof p.text === "string")
         .map((p) => p.text)
         .join("");
+
+      const invoked = resolveInvokedSkill(lastMessageText);
+      ideaEmpty = Boolean(invoked && slashRemainderAfterInvoke(lastMessageText).length === 0);
+      invokedSkillBlock = invoked ? buildInvokedSkillBlock(invoked, { ideaEmpty }) : null;
+      if (ideaEmpty && invoked) emptyModelUserText = emptyInvokedUserMessage(invoked);
 
       if (lastMessageText) userParts.push({ type: "text", text: lastMessageText });
       for (const a of body.attachments ?? []) {
@@ -331,6 +376,10 @@ export async function postV2(req: NextRequest): Promise<Response> {
         const img = await resolveImageSource(a.source);
         userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });
       }
+      modelUserParts =
+        emptyModelUserText
+          ? [{ type: "text", text: emptyModelUserText }, ...userParts.filter((part) => part.type !== "text")]
+          : userParts;
 
       // Checked BEFORE appending the new user row: an empty conversation gets
       // exactly one auto-title attempt, on its first turn.
@@ -477,7 +526,13 @@ export async function postV2(req: NextRequest): Promise<Response> {
       priorMessages.push(...(rowIndex < currentTurnStart ? trimToolResultImages(normalized) : normalized));
     }
 
-    const systemBlocks = buildSystemMessages(body.canvas_snapshot, projectId, loadAgentPromptPrefs(), brief);
+    const systemBlocks = buildSystemMessages(
+      body.canvas_snapshot,
+      projectId,
+      loadAgentPromptPrefs(),
+      brief,
+      invokedSkillBlock,
+    );
     systemText = systemBlocks.map((b) => b.text).join("\n\n");
   } catch (e) {
     discardRun(run);
@@ -514,20 +569,32 @@ export async function postV2(req: NextRequest): Promise<Response> {
         uiWriter.write({ type: BRIEF_UPDATED_PART, id: data.conversationId, transient: true, data });
       },
     });
+    const researchTopic = buildResearchTopicTool({ conversationId });
+    const findLogos = buildFindLogosTool({ conversationId });
+    const addLogo = buildAddLogoTool({ conversationId });
+    const findCompetitors = buildFindCompetitorThumbnailsTool({ conversationId });
+    const analyzeThumbnails = buildAnalyzeThumbnailsTool({ conversationId });
     const result = streamText({
       model: agentModel.model,
       system: systemText,
       messages: (isNewUserTurn && retriedUserRowIndex === -1
-        ? [...priorMessages, { role: "user", content: userParts }]
-        : [...priorMessages]) as ModelMessage[],
+        ? [...priorMessages, { role: "user", content: modelUserParts }]
+        : emptyModelUserText
+          ? replaceLastUserText(priorMessages, emptyModelUserText)
+          : [...priorMessages]) as ModelMessage[],
       tools: {
-        // generate_sketch is guarded by the thumbnail brief when there is one (step 7, sketch limit).
+        // generate_sketch is guarded by the thumbnail brief when there is one (usage cap).
         ...buildAiSdkTools({
           wrapHandler: (name, handler) => (name === "generate_sketch" ? guardSketchHandler(conversationId, handler) : handler),
         }),
         ...V2_CLIENT_TOOLS,
         [PLACE_NODE_TOOL_NAME]: placeNode,
         [UPDATE_BRIEF_TOOL_NAME]: updateBriefTool,
+        [RESEARCH_TOPIC_TOOL_NAME]: researchTopic,
+        [FIND_LOGOS_TOOL_NAME]: findLogos,
+        [ADD_LOGO_TOOL_NAME]: addLogo,
+        [FIND_COMPETITOR_THUMBNAILS_TOOL_NAME]: findCompetitors,
+        [ANALYZE_THUMBNAILS_TOOL_NAME]: analyzeThumbnails,
       },
       // finish_turn closes the turn: stop right after its step instead of
       // paying for one more model call that would only restate the answer.
@@ -539,7 +606,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
         openrouter: {
           ...(modelInfo?.supportsThinking ? { reasoning: { effort: settings.agentReasoningEffort } } : {}),
           // With a brief the journey does its own research (research_topic): no web search on every call.
-          ...(brief ? {} : webSearchProviderOptions()),
+          // A bare `/croquis` must brainstorm (ask_user), not open a web-search step then die silent.
+          ...(brief || ideaEmpty ? {} : webSearchProviderOptions()),
         },
       },
       // `responseMessages` is the aggregate across every step (not the deprecated

@@ -70,4 +70,33 @@ export const AGENT_TABLES_DDL = `
     updated_at      TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_thumbnail_briefs_project ON thumbnail_briefs(project_id);
+
+  -- One library copy per YouTube video (chantier F3b), including videos of
+  -- channels that are not followed.
+  CREATE TABLE IF NOT EXISTS youtube_thumbnail_copies (
+    video_id      TEXT PRIMARY KEY,
+    swipe_file_id TEXT NOT NULL
+  );
+
+  -- Vision analysis of a YouTube thumbnail, reused by the journey and chantier D.
+  CREATE TABLE IF NOT EXISTS thumbnail_analyses (
+    video_id     TEXT PRIMARY KEY,
+    data         TEXT NOT NULL,
+    analyzed_at  TEXT NOT NULL
+  );
+
+  -- Last competitor search of a conversation (not in the brief: no images for the model).
+  CREATE TABLE IF NOT EXISTS competitor_search_results (
+    conversation_id TEXT PRIMARY KEY,
+    data            TEXT NOT NULL,
+    searched_at     TEXT NOT NULL
+  );
+
+  -- 24 h cache of a channel's median views for competitor scoring.
+  CREATE TABLE IF NOT EXISTS channel_median_cache (
+    youtube_channel_id TEXT PRIMARY KEY,
+    median_views       REAL,
+    sample_count       INTEGER NOT NULL,
+    fetched_at         TEXT NOT NULL
+  );
 `;

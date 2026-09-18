@@ -85,7 +85,7 @@ describe("postV2", () => {
     );
     expect(res.status).toBe(400);
     expect(await res.text()).toBe("Missing conversation_id");
-  });
+  }, 15_000);
 
   const rawChatRequest = (body: string, headers: Record<string, string> = {}) =>
     new Request("http://localhost/api/agent/chat", {

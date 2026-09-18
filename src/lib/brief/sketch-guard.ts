@@ -1,5 +1,5 @@
 import type { ToolHandler, ToolResult } from "@/lib/agent/tools/types";
-import { BRIEF_TOTAL_STEPS, type ThumbnailBrief } from "./schema";
+import type { ThumbnailBrief } from "./schema";
 import { releaseBriefUsage, reserveBriefUsage } from "./store";
 
 /**
@@ -13,9 +13,6 @@ export function sketchLimit(brief: ThumbnailBrief): number {
 }
 
 export function sketchRefusal(brief: ThumbnailBrief): string | null {
-  if (brief.step < BRIEF_TOTAL_STEPS) {
-    return `Esquisse refusée : la fiche est à l'étape ${brief.step}/${BRIEF_TOTAL_STEPS}, les esquisses viennent à l'étape ${BRIEF_TOTAL_STEPS}.`;
-  }
   const limit = sketchLimit(brief);
   if (brief.usage.sketches >= limit) return `Esquisse refusée : limite de ${limit} esquisses atteinte pour cette miniature.`;
   return null;

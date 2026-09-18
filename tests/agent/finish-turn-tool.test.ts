@@ -95,7 +95,7 @@ describe("finish_turn tool", () => {
 
   it("is one of the chat-only tools", () => {
     expect(listTools().filter((tool) => tool.chatOnly).map((tool) => tool.name).sort()).toEqual(
-      [FINISH_TURN_TOOL_NAME, "list_followed_videos"].sort(),
+      [FINISH_TURN_TOOL_NAME, "list_followed_videos", "read_skill"].sort(),
     );
   });
 
@@ -109,6 +109,7 @@ describe("finish_turn tool", () => {
     expect(names).toContain("list_logos");
     expect(names).toContain("generate_sketch");
     expect(names).not.toContain(FINISH_TURN_TOOL_NAME);
+    expect(names).not.toContain("read_skill");
   });
 });
 

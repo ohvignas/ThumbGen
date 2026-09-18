@@ -79,14 +79,26 @@ describe("chat route — guided interview wiring", () => {
     streamTextMock.mockImplementation(() => fake);
   });
 
-  it("gives the model place_node and ask_user, built for the conversation's project", async () => {
+  it("gives the model place_node, ask_user, read_skill and F3b research tools, built for the conversation's project", async () => {
     await post({ conversation_id: "c-tools", messages: [{ role: "user", parts: [{ type: "text", text: "Aide-moi" }] }] });
-    expect(Object.keys(streamTools())).toEqual(expect.arrayContaining(["place_node", "ask_user", "finish_turn"]));
+    expect(Object.keys(streamTools())).toEqual(
+      expect.arrayContaining([
+        "place_node",
+        "ask_user",
+        "finish_turn",
+        "read_skill",
+        "research_topic",
+        "find_logos",
+        "add_logo",
+        "find_competitor_thumbnails",
+        "analyze_thumbnails",
+      ]),
+    );
     expect(placeNodeBuilds).toHaveLength(1);
     expect(placeNodeBuilds[0].projectId).toBe("proj_interview");
     await fake.end();
     await waitForRunEnd("c-tools");
-  });
+  }, 15_000);
 
   it("writes canvas patches as transient chunks into the run, replayed to a reconnection, without touching the start chunk", async () => {
     await post({ conversation_id: "c-patch", messages: [{ role: "user", parts: [{ type: "text", text: "Aide-moi" }] }] });

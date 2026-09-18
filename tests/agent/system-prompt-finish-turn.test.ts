@@ -26,8 +26,8 @@ describe("system prompt — finish_turn", () => {
     expect(AGENT_SYSTEM_PROMPT).not.toContain("Always announce what you're about to do");
   });
 
-  it("ends the journey on the generate action, never on a generation the agent starts", () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('next_actions [{ kind: "generate", node_id: "iv-generator" }]');
+  it("ends on the generate action, never on a generation the agent starts", () => {
+    expect(AGENT_SYSTEM_PROMPT).toContain('kind "generate" + node_id');
     expect(AGENT_SYSTEM_PROMPT).not.toContain("one ask_agent button per angle");
   });
 

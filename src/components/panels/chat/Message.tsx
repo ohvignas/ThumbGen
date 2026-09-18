@@ -23,8 +23,6 @@ export type ChatTurnControls = {
   liveTurnStart: LiveTurnStart | null;
   /** Reopened on a user message the server never answered, with no turn running (« Tour interrompu »). */
   orphanUserTurn?: boolean;
-  /** The open conversation's thumbnail journey step (« Étape n/7 — … » on the live line); null without a brief. */
-  journeyStep?: number | null;
   onAskAgent: (message: string) => void;
   /** Re-runs the last user message; null when there is nothing to retry. */
   onRetry: (() => void) | null;
@@ -88,7 +86,7 @@ function AssistantMessage({
   return (
     <AssistantRow showAvatar={showAvatar}>
       {display.mode === "progress" ? (
-        <TurnProgress message={message} status={controls.status} startedAt={controls.turnStartedAt} steps={turn.steps} journeyStep={controls.journeyStep ?? null} />
+        <TurnProgress message={message} status={controls.status} startedAt={controls.turnStartedAt} steps={turn.steps} />
       ) : (
         <AssistantTurn
           turn={turn}

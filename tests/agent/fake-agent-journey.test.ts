@@ -14,25 +14,22 @@ const SYSTEM = (canvas: unknown, brief = "") =>
   `<project_id>proj_fake</project_id>\n\n<canvas_state>\n${JSON.stringify(canvas, null, 2)}\n</canvas_state>${brief}`;
 
 type Call = { toolName: string; input: Record<string, unknown> };
-type Options = Array<{ id: string }>;
 
-/** Plays the journey like the chat does: each ask_user pauses the turn, the "user" answers, the turn resumes. */
-async function playJourney(
+async function play(
   answer: (input: Record<string, unknown>) => unknown,
-  { canvas = { nodes: [], edges: [] }, personas = [{ id: "p1", label: "Antoine" }], system }: { canvas?: unknown; personas?: Array<{ id: string; label: string }>; system?: string } = {},
+  { canvas = { nodes: [], edges: [] }, system }: { canvas?: unknown; system?: string } = {},
 ): Promise<Call[]> {
   const calls: Call[] = [];
   const messages: ModelMessage[] = [{ role: "user", content: "Aide-moi à construire la miniature de ma vidéo." }];
   const tools = {
+    read_skill: tool({ inputSchema: z.object({ name: z.string() }), execute: async () => "skill body" }),
     ask_user: tool({ inputSchema: askUserInputSchema }),
     update_brief: tool({ inputSchema: z.looseObject({}), execute: async () => "Fiche enregistrée." }),
-    place_node: tool({ inputSchema: z.looseObject({ node: z.looseObject({ id: z.string() }) }), execute: async ({ node }) => `node id: ${node.id}` }),
-    apply_workflow: tool({ inputSchema: z.looseObject({ project_id: z.string() }), execute: async () => "Applied" }),
     finish_turn: tool({ inputSchema: finishTurnInputSchema, execute: async () => ({ ok: true }) }),
   };
-  for (let turn = 0; turn < 12; turn++) {
+  for (let turn = 0; turn < 8; turn++) {
     const result = streamText({
-      model: createFakeAgentModel({ chunkDelayMs: 0, scenario: FAKE_JOURNEY_SCENARIO, personas: () => personas }),
+      model: createFakeAgentModel({ chunkDelayMs: 0, scenario: FAKE_JOURNEY_SCENARIO, personas: () => [] }),
       system: system ?? SYSTEM(canvas),
       messages,
       tools,
@@ -45,38 +42,26 @@ async function playJourney(
     messages.push(...(response.messages as ModelMessage[]));
     const last = calls.at(-1)!;
     if (last.toolName === "finish_turn") return calls;
-    expect(last.toolName).toBe("ask_user");
+    if (last.toolName === "ask_user") {
+      const toolCallId = (response.messages.at(-1)!.content as Array<{ type: string; toolCallId: string }>).find((c) => c.type === "tool-call")!.toolCallId;
+      messages.push({
+        role: "tool",
+        content: [{ type: "tool-result", toolCallId, toolName: "ask_user", output: { type: "json", value: answer(last.input) as never } }],
+      });
+      continue;
+    }
     const toolCallId = (response.messages.at(-1)!.content as Array<{ type: string; toolCallId: string }>).find((c) => c.type === "tool-call")!.toolCallId;
     messages.push({
       role: "tool",
-      content: [{ type: "tool-result", toolCallId, toolName: "ask_user", output: { type: "json", value: answer(last.input) as never } }],
+      content: [{ type: "tool-result", toolCallId, toolName: last.toolName, output: { type: "text", value: "ok" } }],
     });
   }
-  throw new Error("the journey never finished");
-}
-
-const answers = (packages: string[]) => (input: Record<string, unknown>) => {
-  const options = input.options as Options;
-  if (options.length === 0) return { other: "Une vidéo sur les miniatures YouTube" };
-  if (options.some((option) => option.id === "pkg-a")) return { selected: packages };
-  return { selected: [options[0].id] };
-};
-
-/** Every update_brief of the scenario, applied in order, must give a valid brief without warnings. */
-function foldBrief(calls: Call[]) {
-  let brief = emptyBrief();
-  for (const call of calls.filter((c) => c.toolName === "update_brief")) {
-    const result = applyBriefUpdate(brief, briefUpdateInputSchema.parse(call.input), "2026-09-17T10:00:00.000Z");
-    if (!result.ok) throw new Error(JSON.stringify(result.issues));
-    expect(result.warnings).toEqual([]);
-    brief = result.brief;
-  }
-  return brief;
+  throw new Error("the fake conversation never finished");
 }
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("fake agent — journey scenario", () => {
+describe("fake agent — free conversation", () => {
   it("is selected by THUMBGEN_FAKE_AGENT=journey only", () => {
     vi.stubEnv("THUMBGEN_FAKE_AGENT", "journey");
     expect(fakeAgentScenario()).toBe("journey");
@@ -95,93 +80,32 @@ describe("fake agent — journey scenario", () => {
     if (previousKey !== undefined) process.env.OPENROUTER_API_KEY = previousKey;
   });
 
-  it("plays steps 1, 4, 5, 6 then ships an A/B workflow, never sketching nor generating", async () => {
-    const calls = await playJourney(answers(["pkg-a", "pkg-b"]));
-    expect(calls.map((c) => c.toolName)).toEqual([
-      "ask_user",
-      "update_brief",
-      "ask_user",
-      "update_brief",
-      "ask_user",
-      "update_brief",
-      "update_brief",
-      "ask_user",
-      "update_brief",
-      "update_brief",
-      "ask_user",
-      "update_brief",
-      "ask_user",
-      "update_brief",
-      "apply_workflow",
-      "finish_turn",
-    ]);
-    const asks = calls.filter((c) => c.toolName === "ask_user").map((c) => c.input);
-    expect(asks.map((a) => a.step)).toEqual([1, 4, 4, 5, 6, 6]);
-    for (const ask of asks) expect(askUserInputSchema.safeParse(ask).success).toBe(true);
-    expect(asks[0]).toMatchObject({ options: [], allow_skip: false });
-    expect(asks[2]).toMatchObject({ multiple: true, max_selected: 3 });
-    expect(asks[3].options).toEqual([
-      { id: "p1", label: "Antoine", image: "stored:persona_p1" },
-      { id: "none", label: "Aucun" },
-    ]);
-
-    const brief = foldBrief(calls);
-    expect(brief.step).toBe(7);
-    expect(brief.video.subject).toBe("Une vidéo sur les miniatures YouTube");
-    expect(brief.abStrategy).toBe("concepts");
-    expect(brief.common.persona).toBe("stored:persona_p1");
-    expect(brief.variants.map((v) => v.key)).toEqual(["A", "B"]);
-    expect(brief.variants.every((v) => v.composition)).toBe(true);
-
-    const workflow = calls.find((c) => c.toolName === "apply_workflow")!.input as {
-      blueprint: { nodes: Array<{ id: string; data: Record<string, unknown> }>; edges: Array<{ targetHandle: string }> };
-    };
-    expect(workflow.blueprint.nodes.find((n) => n.id === "journey-generator")!.data.abTest).toEqual({ variants: ["A", "B"] });
-    expect(workflow.blueprint.edges.map((e) => e.targetHandle)).toEqual(["prompt-in", "prompt-in-b"]);
-    expect(calls.at(-1)!.input.next_actions).toEqual([{ kind: "generate", node_id: "journey-generator" }]);
+  it("loads a skill, asks once, writes the fiche, finishes — never sketches", async () => {
+    const calls = await play((input) => (input.options as unknown[]).length === 0 ? { other: "Une vidéo sur les miniatures YouTube" } : { skipped: true });
+    expect(calls.map((c) => c.toolName)).toEqual(["read_skill", "ask_user", "update_brief", "finish_turn"]);
+    expect(calls[0].input).toEqual({ name: "thumbnail-packaging" });
+    expect(calls[1].input.step).toBeUndefined();
+    expect(askUserInputSchema.safeParse(calls[1].input).success).toBe(true);
+    const brief = applyBriefUpdate(emptyBrief(), briefUpdateInputSchema.parse(calls[2].input), "2026-09-17T10:00:00.000Z");
+    expect(brief.ok).toBe(true);
+    if (brief.ok) expect(brief.brief.video.subject).toBe("Une vidéo sur les miniatures YouTube");
     expect(calls.some((c) => /generate_sketch|trigger|generation/.test(c.toolName))).toBe(false);
   });
 
-  it("places one prompt and the generator for a single package, and writes no emotion without a character", async () => {
-    const calls = await playJourney(answers(["pkg-c"]), { personas: [] });
-    expect(calls.filter((c) => c.toolName === "place_node").map((c) => (c.input.node as { id: string }).id)).toEqual(["iv-prompt", "iv-generator"]);
-    expect(calls.at(-1)!.input.next_actions).toEqual([{ kind: "generate", node_id: "iv-generator" }]);
-    const brief = foldBrief(calls);
-    expect(brief.common.persona).toBe("none");
-    expect(brief.variants).toHaveLength(1);
-    expect(brief.variants[0].composition?.emotion).toBeUndefined();
-  });
-
-  it("asks to resume or restart F2 interview nodes without a brief, and restarts on request", async () => {
-    const canvas = { nodes: [{ id: "iv-prompt", type: "prompt" }, { id: "user-1", type: "prompt" }], edges: [] };
-    const calls = await playJourney(
-      (input) =>
-        (input.options as Options).some((o) => o.id === "restart") ? { selected: ["restart"] } : { skipped: true },
-      { canvas },
-    );
-    // The skipped free question then ends the simulated journey.
-    const started = calls;
-    expect(started[0]).toMatchObject({ toolName: "ask_user", input: { step: 1, options: [{ id: "resume" }, { id: "restart" }] } });
-    expect(started[1]).toEqual({
-      toolName: "apply_workflow",
-      input: { project_id: "proj_fake", blueprint: { nodes: [], edges: [] }, remove_node_ids: ["iv-prompt"] },
-    });
-    expect(started[2]).toMatchObject({ toolName: "ask_user", input: { step: 1, options: [] } });
-  });
-
-  it("starts the journey under the real system prompt, whose static text names <thumbnail_brief>", async () => {
+  it("runs under the real system prompt", async () => {
     const system = buildSystemMessages({ nodes: [], edges: [] }, "proj_fake")
       .map((block) => block.text)
       .join("\n\n");
-    expect(system).toContain("<thumbnail_brief>");
-    const calls = await playJourney(() => ({ skipped: true }), { system });
-    expect(calls.map((c) => c.toolName)).toEqual(["ask_user", "finish_turn"]);
-    expect(calls[0].input).toMatchObject({ step: 1, options: [] });
+    expect(system).toContain("SKILLS");
+    const calls = await play(() => ({ skipped: true }), { system });
+    expect(calls[0].toolName).toBe("read_skill");
+    expect(calls.at(-1)!.toolName).toBe("finish_turn");
   });
 
-  it("does not offer the restart when the conversation already has a brief", async () => {
-    const canvas = { nodes: [{ id: "iv-prompt", type: "prompt" }], edges: [] };
-    const calls = await playJourney(() => ({ skipped: true }), { system: SYSTEM(canvas, '\n\n<thumbnail_brief>\n{"step":4}\n</thumbnail_brief>') });
+  it("does not restart a wizard when a brief already exists", async () => {
+    const calls = await play(() => ({ skipped: true }), {
+      system: SYSTEM({ nodes: [{ id: "iv-prompt", type: "prompt" }], edges: [] }, '\n\n<thumbnail_brief>\n{"video":{"promise":"Savoir cliquer"}}\n</thumbnail_brief>'),
+    });
     expect(calls.map((c) => c.toolName)).toEqual(["finish_turn"]);
   });
 });

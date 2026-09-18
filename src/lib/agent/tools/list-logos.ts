@@ -8,7 +8,7 @@ const InputSchema = z.object({});
 export const listLogosTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "list_logos",
   description:
-    "Lists logos stored in the user's library. Returns id, label, size, created_at, and a `stored:lg_<id>` reference usable in apply_workflow as a swipeFile node with kind='logo'.",
+    "Lists logos already in the user's library as stored:lg_<id>. Use when they named a brand that might already be saved. To search the web for new logos, find_logos then add_logo. Wire as swipeFile kind=logo.",
   inputSchema: InputSchema,
   handler: async () => {
     const rows = getDb()

@@ -9,7 +9,7 @@ const InputSchema = z.object({ project_id: z.string() });
 export const getCanvasStateTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "get_canvas_state",
   description:
-    "Reads the current workflow on the canvas for a given project. Returns a compact JSON blueprint with nodes (id, type, summary) and edges (source, target, targetHandle). Summaries include prompts, generator settings with generatedCount and selectedImage (a stored:gi_<id> ref), preview outputs, text overlays, and where each image comes from (library:<ref> or canvas-upload). Binary image data is stripped — call view_canvas_images to actually SEE the images of the canvas (sketches, imported images, logos, Personnage, generated images).",
+    "Reads compact JSON of the open canvas (ids, types, summaries — no image bytes). Use when <canvas_state> may be stale after a write, or you need ids you just created. Prefer the injected <canvas_state> on this turn. To SEE pixels, call view_canvas_images.",
   inputSchema: InputSchema,
   handler: async ({ project_id }) => {
     const row = getDb()

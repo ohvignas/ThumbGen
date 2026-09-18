@@ -8,7 +8,7 @@ const InputSchema = z.object({});
 export const listSwipeFilesTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "list_swipe_files",
   description:
-    "Lists visual reference inspirations stored in the user's library — usable as swipeFile nodes with kind='reference' via stored:sf_<id>.",
+    "Lists visual inspirations in the library as stored:sf_<id>. Use when they want an existing reference on the canvas. To import a YouTube thumb into the library, import_youtube_thumbnail first. Wire as swipeFile kind=reference. Not for logos (list_logos).",
   inputSchema: InputSchema,
   handler: async () => {
     const rows = getDb()
