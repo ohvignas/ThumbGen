@@ -6,6 +6,7 @@ node_modules
 data
 npm-debug.log*
 *.md
+!src/lib/agent/skills/**
 demo.gif
 docs
 tests
