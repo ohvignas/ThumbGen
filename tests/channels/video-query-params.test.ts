@@ -12,14 +12,32 @@ import {
 describe("parseVideoQuery", () => {
   it("falls back to score, every type, every channel, all time, first 60", () => {
     expect(parseVideoQuery(new URLSearchParams())).toEqual(DEFAULT_VIDEO_QUERY);
-    expect(DEFAULT_VIDEO_QUERY).toEqual({ sort: "score", types: [], channelId: null, period: "all", q: "", offset: 0, limit: 60 });
+    expect(DEFAULT_VIDEO_QUERY).toEqual({
+      sort: "score",
+      types: [],
+      channelId: null,
+      period: "all",
+      q: "",
+      format: "",
+      offset: 0,
+      limit: 60,
+    });
   });
 
   it("ignores unknown values and clamps the page window", () => {
     const query = parseVideoQuery(
       new URLSearchParams("sort=likes&period=week&types=versus,banana,none,versus&offset=-5&limit=5000&channel=%20&q=%20%20"),
     );
-    expect(query).toEqual({ sort: "score", types: ["versus", "none"], channelId: null, period: "all", q: "", offset: 0, limit: 1200 });
+    expect(query).toEqual({
+      sort: "score",
+      types: ["versus", "none"],
+      channelId: null,
+      period: "all",
+      q: "",
+      format: "",
+      offset: 0,
+      limit: 1200,
+    });
     expect(parseVideoQuery(new URLSearchParams("limit=0")).limit).toBe(1);
     expect(parseVideoQuery(new URLSearchParams("limit=abc")).limit).toBe(60);
   });
@@ -31,11 +49,29 @@ describe("parseVideoQuery", () => {
       channelId: "channel-1",
       period: "12m",
       q: "avant après",
+      format: "tutorial",
       offset: 60,
       limit: 120,
     };
     expect(parseVideoQuery(new URLSearchParams(videoQueryToSearch(query)))).toEqual(query);
     expect(videoQueryToSearch({})).toBe("");
+  });
+
+  it("round-trips a theme id list", () => {
+    const query: VideoQuery = {
+      ...DEFAULT_VIDEO_QUERY,
+      videoIds: ["abcde123456", "fghij789012"],
+    };
+    expect(parseVideoQuery(new URLSearchParams(videoQueryToSearch(query)))).toEqual(query);
+    expect(parseVideoQuery(new URLSearchParams("ids=abcde123456,nope!,fghij789012")).videoIds).toEqual([
+      "abcde123456",
+      "fghij789012",
+    ]);
+    expect(parseVideoQuery(new URLSearchParams("format=tutorial&period=7d")).format).toBe("tutorial");
+    expect(parseVideoQuery(new URLSearchParams("format=cursor-2-0&period=6m"))).toMatchObject({
+      format: "",
+      period: "6m",
+    });
   });
 });
 

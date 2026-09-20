@@ -1,11 +1,11 @@
 ---
 name: list_followed_videos
-description: Lists already-synced videos from followed YouTube channels in the local DB (no quota; scope mine=« Ma chaîne » or all; sort date or score; optional best_type; youtube:<videoId> for ask_user) when they want their own or followed thumbs; not a live open-web search (search_youtube, 100 units) and not the opening of a new-video brief they already described.
+description: Lists already-synced videos from followed YouTube channels in the local DB (no quota; scope mine=« Ma chaîne » or all; sort date or score; optional best_type=winning title/description theme; youtube:<videoId> for ask_user) when they want their own or followed thumbs; not a live open-web search (search_youtube, 100 units) and not the opening of a new-video brief they already described.
 ---
 
 # list_followed_videos
 
-Local SQLite catalog of videos **already imported** into `channel_videos` for `followed_channels`. Chat label: « Liste les vidéos suivies ». `chatOnly: true` — **not** on MCP. Text only: no image parts, no `result_id`, no YouTube Data API, no OpenRouter, no DB write. Tests stub `fetch`; this handler never calls it.
+Local SQLite catalog of videos **already imported** into `channel_videos` for `followed_channels`. Chat label: « Liste les vidéos suivies ». `chatOnly: true` — **not** on MCP. Text only: no image parts, no `result_id`, no YouTube Data API, no OpenRouter, no DB write. Tests stub `fetch`. The handler never calls YouTube. With `best_type: true` and a TypeSafe key it may call TypeSafe once (titles only); failure is ignored and the numeric swipe rank stays.
 
 Call `read_skill` with `list_followed_videos` before the first use in this conversation.
 
@@ -14,7 +14,7 @@ Call `read_skill` with `list_followed_videos` before the first use in this conve
 - They want **their** past thumbs / what already worked (« mes miniatures », « Ma chaîne », « ce qui surperforme chez moi »)
 - They want the **followed** catalog (own + competitors they added in Chaînes suivies), not the open web
 - You need `youtube:<videoId>` tiles for `ask_user`, or ids to `import_youtube_thumbnail`
-- `best_type: true` + `sort: "score"` to keep only the thumbnail type that wins in this scope (≥3 scored thumbs)
+- `best_type: true` + `sort: "score"` to keep only the **theme** (title + description topic) that wins in this scope (≥3 scored thumbs)
 
 Know what **this** video is about first. Then list as references, not as a substitute for the brief.
 
@@ -46,23 +46,23 @@ MCP clients never see this tool. There, list a named channel with `get_channel_v
 | | `list_followed_videos` | `search_youtube` |
 |---|---|---|
 | Source | Local `channel_videos` ⋈ `followed_channels` | Live `search.list` |
-| Quota | **0** (no key, no `fetch`) | **100 units** per call; sparse FR can add 2 extra `search.list` (200–300) |
-| Key | none | `youtubeApiKey` or `isError` |
+| Quota | **0 YouTube** (no key). Optional TypeSafe Jev on titles when `best_type` + `typesafeApiKey` | **100 units** per call; sparse FR can add 2 extra `search.list` (200–300) |
+| Key | none for YouTube; optional `typesafeApiKey` when `best_type` | `youtubeApiKey` or `isError` |
 | Scope | followed only (`mine` / `all`) | open web (`query` required) |
-| Sort | `"date"` (default) or `"score"` (views ÷ **that channel's** median) | `"relevance"` (default) / `"viewCount"` / `"date"` |
+| Sort | `"date"` (default) or `"score"` (swipe rank vs **that channel's** median; same key as search) | `"relevance"` (default) / `"viewCount"` / `"date"` |
 | Limit | default **5**, max **`LIST_FOLLOWED_VIDEOS_MAX` = 12** | default **8**, max 12; leave at 8 |
 | Images | none; `youtube:<id>` for `ask_user` tiles | up to 6 JPEGs; `result_id` |
 | Shorts | dropped **at sync** (UULF, or duration ≤ 180 s on UU) | excluded when `duration` default `"medium"` (4–20 min) |
 | Empty | header `0 vidéo(s)…` or the « Ma chaîne » skip line; **not** `isError` | `Aucun résultat pour "{query}"…` or `isError` on missing key / HTTP |
 
-`sort: "score"` ≠ YouTube `order=viewCount`. Score is **this channel's** views / `median_views`, not raw views and not a global ranking.
+`sort: "score"` ≠ YouTube `order=viewCount`. The list uses swipe rank (`log2` of capped ×N × recency × credibility), not raw views. Displayed `perf:` is still the human ×N.
 
 ## How
 
 ```
 scope?: "mine" | "all"     # default "mine"
 sort?: "date" | "score"    # default "date"
-best_type?: boolean        # omit or false = every type
+best_type?: boolean        # omit or false = every theme
 limit?: number             # int 1–12, default 5
 ```
 
@@ -78,7 +78,7 @@ Not a YouTube channel id. To list **one** unfollowed handle, use `get_channel_vi
 **`sort`**
 
 - `"date"` (default): `published_at DESC` (newest first, including videos <7 days old).
-- `"score"`: SQL `score DESC NULLS LAST, published_at DESC`. Score exists only when `median_views > 0` **and** the video is ≥7 days old (`recentCutoff`). Recent rows have `NULL` score and sort **last**. Displayed perf still comes from `videoPerformance` (not the raw SQL ratio).
+- `"score"`: swipe rank (same key as YouTube keyword search: capped ×N, recency, view credibility), then `published_at DESC`. Score exists only when `median_views > 0` **and** the video is ≥7 days old (`recentCutoff`). Recent rows have `NULL` score and sort **last**. Displayed perf still comes from `videoPerformance` (the human ×N). Jev is not applied to this grid list — only to `best_type` via `typesSummary` (theme ranks, not topic labels).
 
 There is no `"views"`, `"viewCount"`, `"relevance"`, or `"rating"`.
 
@@ -86,26 +86,14 @@ There is no `"views"`, `"viewCount"`, `"relevance"`, or `"rating"`.
 
 **`best_type`**
 
-When `true`, `typesSummary(scope)` loads classified thumbs (`thumb_type IS NOT NULL`) in that same mine/all scope. Each type with **≥3 scored** videos (`MIN_SCORED_FOR_RANKING`) is `enoughData`; those rows sort first by **median score**. The first `enoughData` type is kept.
+When `true`, `typesSummary(scope)` clusters **every** synced video in that mine/all scope by **title + description** topics (`clusterVideoThemes` — local, deterministic, no vision pass, not Jev). Jev is only a 0–1 title click noul that may nudge swipe ranks afterwards. Each theme with **≥3 scored** videos (`MIN_SCORED_FOR_RANKING`) is `enoughData`; those rows sort first by **median swipe rank**. The first `enoughData` theme is kept.
 
-- Hit → `listVideos` `types: [thatType]`; header adds `, type {French label}` (e.g. `, type Visage + texte`). Unclassified rows drop out of the list.
-- Miss → `types: []` (unfiltered, including unclassified); header adds `, pas assez de données pour un meilleur type`. Do not invent a winning type. Do not retry with `scope: "all"` unless they asked for every followed channel.
+If `typesafeApiKey` is set, TypeSafe Jev then judges the **titles** of the top 20 ranked candidates (text only, no pixels, same `jevClickNouls` / `evaluateNouls` path as search). Arithmetic stays in code. Failure or no key → numeric order. The displayed median stays the human ×N. Do not use Jev as a topic classifier.
 
-`false` / omitted: skip `typesSummary`.
+- Hit → `listVideos` `videoIds: theme.videoIds`; header adds `, thème {label}` (e.g. `, thème Cursor 2.0`). Each line uses `thème:` and a factual `pourquoi:` (×N vs médiane, recency, title hook). Visual `thumb_type` is not the filter.
+- Miss → unfiltered catalog; header adds `, pas assez de données pour une meilleure thématique`. Do not invent a winning theme. Do not retry with `scope: "all"` unless they asked for every followed channel.
 
-Type labels (`thumbTypeLabel`; unknown/null → `Non classée`):
-
-| id | label |
-|---|---|
-| `face_text` | Visage + texte |
-| `reaction` | Réaction sans texte |
-| `before_after` | Avant / Après |
-| `versus` | Versus / comparaison |
-| `screenshot` | Capture d'écran / interface |
-| `object` | Objet ou produit central |
-| `text_only` | Texte seul |
-| `scene` | Scène / illustration |
-| `other` | Autre |
+`false` / omitted: skip `typesSummary`. Lines keep `type:` (visual class, secondary).
 
 **What the catalog contains**
 
@@ -124,8 +112,8 @@ Header pieces, concatenated:
 
 - Scope phrase: `Ma chaîne` or `toutes les chaînes suivies`
 - Sort phrase: `tri date` or `tri performance` (`score` → the word **performance**)
-- Optional `, type {label}` when `best_type` found a winner
-- Optional `, pas assez de données pour un meilleur type` when `best_type` found none
+- Optional `, thème {label}` when `best_type` found a winner
+- Optional `, pas assez de données pour une meilleure thématique` when `best_type` found none
 - Always ends `) :`
 
 **`perf:`** from `performance.kind` only (no view counts, no dates, no thumbnail URLs, no band):
@@ -157,7 +145,7 @@ The handler **never** sets `isError`. Quote the real strings.
 |---|---|---|
 | `scope: "mine"` and no `is_mine = 1` row | `Aucune chaîne n'est marquée « Ma chaîne » dans les chaînes suivies : skip this question or ask the user for a YouTube link or a description.` | Skip this question. Ask for a link or a description, or use `scope: "all"` if they wanted followed competitors, or `search_youtube` / a pasted URL. Do **not** retry `mine`. |
 | Mine exists but catalog empty / `all` with nothing synced | `0 vidéo(s) (Ma chaîne, tri date) :` (or `toutes les chaînes suivies`) | Say the local catalog is empty. Do not invent ids. Sync happens in Chaînes suivies, not here. |
-| `best_type` without ≥3 scored thumbs of one type | header includes `pas assez de données pour un meilleur type`; list is **unfiltered** | Use the lines you got, or `sort: "score"` without `best_type`. |
+| `best_type` without ≥3 scored thumbs of one theme | header includes `pas assez de données pour une meilleure thématique`; list is **unfiltered** | Use the lines you got, or `sort: "score"` without `best_type`. |
 | Zod (`limit` 0/13/float, `sort: "viewCount"`, `scope: "UC…"`) | schema refusal **before** the handler | Fix args. Defaults are already valid. |
 | MCP | tool **not listed** (`chatOnly`) | Use `get_channel_videos` on that client. |
 
@@ -186,12 +174,12 @@ list_followed_videos
   best_type: true
 ```
 
-Typical text (winning type, or the not-enough-data header if « Ma chaîne » has <3 scored thumbs of one type):
+Typical text (winning theme, or the not-enough-data header if « Ma chaîne » has <3 scored thumbs of one theme):
 
 ```
-3 vidéo(s) (Ma chaîne, tri performance, type Visage + texte) :
-- youtube:mine0000002 — "Titre mine0000002" — Ma chaîne — type: Visage + texte — perf: ×4
-- youtube:mine0000003 — "Titre mine0000003" — Ma chaîne — type: Visage + texte — perf: ×2
+3 vidéo(s) (Ma chaîne, tri performance, thème Cursor 2.0) :
+- youtube:mine0000002 — "Cursor 2.0 A" — Ma chaîne — thème: Cursor 2.0 — perf: ×4 — pourquoi: ×4,0 vs médiane · 20 j · titre: Cursor 2.0
+- youtube:mine0000003 — "Cursor 2.0 B" — Ma chaîne — thème: Cursor 2.0 — perf: ×2 — pourquoi: ×2,0 vs médiane · 30 j · titre: Cursor 2.0
 ```
 
 Next step, **alone**:

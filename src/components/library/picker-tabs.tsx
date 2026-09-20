@@ -1,5 +1,7 @@
 import { LogoPickerGrid, LogoSearchPicker, PersonaPickerGrid, SwipePickerGrid } from "./picker-grids";
 import FollowedChannelsPickerTab from "./followed-channels/FollowedChannelsPickerTab";
+import YoutubeSearchPickerTab from "./YoutubeSearchPickerTab";
+import type { YoutubeSearchRegion } from "@/lib/youtube/search-regions";
 
 export type LibraryKind = "personnages" | "logos" | "inspirations";
 
@@ -8,7 +10,7 @@ export type LibraryPick = { imageUrl: string; label: string };
 export type PickerTab = {
   id: string;
   label: string;
-  render: (props: { query: string; onPick: (item: LibraryPick) => void }) => React.ReactNode;
+  render: (props: { query: string; onPick: (item: LibraryPick) => void; region?: YoutubeSearchRegion }) => React.ReactNode;
 };
 
 /** Tabs of LibraryPickerDialog per library kind. Chantier D appends « Chaînes suivies » to `inspirations`. */
@@ -37,6 +39,11 @@ export const PICKER_TABS: Record<LibraryKind, PickerTab[]> = {
       id: "mes-images",
       label: "Mes images",
       render: ({ query, onPick }) => <SwipePickerGrid query={query} onPick={onPick} />,
+    },
+    {
+      id: "youtube",
+      label: "YouTube",
+      render: ({ query, onPick, region }) => <YoutubeSearchPickerTab query={query} onPick={onPick} region={region} />,
     },
     {
       id: "chaines-suivies",

@@ -56,6 +56,8 @@ function seed(projectId: string) {
     saving: false,
     dirty: false,
     recentOwnSaveUpdatedAts: [],
+    deletedNodeIds: [],
+    deletedEdgeIds: [],
     currentProjectId: projectId,
     history: [{ nodes: [], edges: [] }],
     historyIndex: 0,
@@ -124,7 +126,7 @@ describe("useCanvasSync poller vs the app's own autosave", () => {
     server.bumpExternally("EXTERNAL-1");
     await poller.tick();
 
-    expect(loadProject).toHaveBeenCalledWith("sync-test");
+    expect(loadProject).toHaveBeenCalledWith("sync-test", { reason: "poll" });
   });
 
   it("reloads for a genuine external change that arrives after the app's own save has already landed", async () => {
@@ -150,7 +152,7 @@ describe("useCanvasSync poller vs the app's own autosave", () => {
     server.bumpExternally("EXTERNAL-1");
     await poller.tick();
 
-    expect(loadProject).toHaveBeenCalledWith("sync-test");
+    expect(loadProject).toHaveBeenCalledWith("sync-test", { reason: "poll" });
   });
 
   it("documents current behaviour: an external change that lands while a local edit is dirty is overwritten by the pending autosave, and is not itself surfaced as a reload", async () => {
@@ -250,5 +252,79 @@ describe("useCanvasSync poller vs the app's own autosave", () => {
     await tickPromise;
 
     expect(loadProject).not.toHaveBeenCalled();
+  });
+
+  it("does not reload while a generation is in flight, even if updated_at changed", async () => {
+    const server = createFakeServer("T0");
+    vi.stubGlobal("fetch", server.fetchMock);
+    seed("sync-test");
+    useCanvasStore.setState({
+      dirty: false,
+      saving: false,
+      nodes: [
+        {
+          id: "prev",
+          type: "preview",
+          position: { x: 0, y: 0 },
+          data: { genStatus: "loading", label: "Variante A" },
+        },
+      ],
+    });
+
+    const loadProject = vi.fn(async () => {});
+    const poller = createProjectSyncPoller("sync-test", loadProject);
+    await poller.tick();
+    server.bumpExternally("EXTERNAL-1");
+    await poller.tick();
+    expect(loadProject).not.toHaveBeenCalled();
+  });
+
+  it("does not reload while saving, even if updated_at changed", async () => {
+    const server = createFakeServer("T0");
+    vi.stubGlobal("fetch", server.fetchMock);
+    seed("sync-test");
+    useCanvasStore.setState({ saving: true, dirty: false });
+
+    const loadProject = vi.fn(async () => {});
+    const poller = createProjectSyncPoller("sync-test", loadProject);
+    await poller.tick();
+    server.bumpExternally("EXTERNAL-1");
+    await poller.tick();
+    expect(loadProject).not.toHaveBeenCalled();
+  });
+
+  it("does not dirty the store when a poll reload is the same persistable graph", async () => {
+    const node = { id: "n1", type: "prompt", position: { x: 0, y: 0 }, data: {} };
+    seed("sync-test");
+    useCanvasStore.setState({
+      nodes: [node],
+      edges: [],
+      knownUpdatedAt: "T0",
+      dirty: false,
+      history: [{ nodes: [node], edges: [] }],
+    });
+    let updatedAt = "T0";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith("/updated-at")) return { ok: true, json: async () => ({ updated_at: updatedAt }) };
+        if (String(url).startsWith("/api/project?id=")) {
+          return {
+            ok: true,
+            json: async () => ({ nodes: [node], edges: [], updatedAt: "T1", deletedNodeIds: [], deletedEdgeIds: [] }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      }),
+    );
+
+    const poller = createProjectSyncPoller("sync-test", useCanvasStore.getState().loadProject);
+    await poller.tick();
+    updatedAt = "T1";
+    await poller.tick();
+
+    expect(useCanvasStore.getState().dirty).toBe(false);
+    expect(useCanvasStore.getState().nodes).toHaveLength(1);
+    expect(useCanvasStore.getState().knownUpdatedAt).toBe("T1");
   });
 });

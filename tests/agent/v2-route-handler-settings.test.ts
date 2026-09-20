@@ -39,7 +39,14 @@ import { chatRequest, fakeStreamResult } from "./helpers/chat-route";
 
 type StreamArgs = {
   system: string;
-  providerOptions: { openrouter: { reasoning?: { effort: string } } };
+  messages: unknown[];
+  prepareStep?: (options: { messages: unknown[] }) => { messages?: unknown[] } | undefined;
+  providerOptions: {
+    openrouter: {
+      reasoning?: { effort: string };
+      provider?: { order: readonly string[]; allow_fallbacks: boolean };
+    };
+  };
 };
 
 async function send(text = "hi") {
@@ -83,6 +90,41 @@ describe("postV2 reads the agent settings", () => {
     updateSettings({ agentModel: "openai/gpt-5", agentReasoningEffort: "high" });
     await send();
     expect(streamArgs().providerOptions.openrouter.reasoning).toBeUndefined();
+  });
+
+  it("pins Gemini and strips thought signatures so a tool-call continuation does not 400", async () => {
+    updateSettings({ agentModel: "google/gemini-3.8-flash" });
+    await send();
+    const args = streamArgs();
+    expect(args.providerOptions.openrouter.provider).toEqual({
+      order: ["Google AI Studio"],
+      allow_fallbacks: false,
+    });
+    expect(args.prepareStep).toBeTypeOf("function");
+    const next = args.prepareStep!({
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "…" },
+            { type: "tool-call", toolCallId: "c1", toolName: "read_skill", input: {} },
+          ],
+        },
+      ],
+    });
+    expect(next?.messages).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "c1", toolName: "read_skill", input: {} }],
+      },
+    ]);
+  });
+
+  it("does not pin Claude or rewrite its messages", async () => {
+    updateSettings({ agentModel: "anthropic/claude-sonnet-4.6" });
+    await send();
+    expect(streamArgs().providerOptions.openrouter.provider).toBeUndefined();
+    expect(streamArgs().prepareStep).toBeUndefined();
   });
 
   it("uses agentMaxSteps as the step limit, 25 by default", async () => {

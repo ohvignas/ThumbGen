@@ -6,7 +6,8 @@ import { hasOpenOverlay, isEditableTarget, matchCanvasShortcut, resolveShortcutA
 
 /**
  * N → step picker (view centre) · ⇧⌥T → ranger · ⌘A → tout sélectionner ·
- * ⌘D → dupliquer la sélection · Échap → ferme le panneau, sinon désélectionne.
+ * ⌘D → dupliquer la sélection · ⌫/Delete → supprimer la sélection ·
+ * Échap → ferme le panneau, sinon désélectionne.
  * Ignored while typing, and (except Échap closing the picker) while a dialog,
  * menu, the picker or the sketch editor is open.
  */
@@ -59,6 +60,10 @@ export function useCanvasShortcuts({ onAutoLayout }: { onAutoLayout: () => void 
           if (newIds.length > 0) store.selectOnly(newIds);
           return;
         }
+        case "delete":
+          event.preventDefault();
+          store.deleteSelected();
+          return;
       }
     };
 

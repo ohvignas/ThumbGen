@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { listVideos, typesSummary } from "@/lib/youtube/video-queries";
-import { thumbTypeLabel, type ThumbType } from "@/lib/youtube/thumb-types";
+import { ageInDays } from "@/lib/youtube/performance";
+import { thumbTypeLabel } from "@/lib/youtube/thumb-types";
+import type { ThemeSummaryRow } from "@/lib/youtube/video-themes";
+import { isWinningTheme, themeWhy } from "@/lib/youtube/video-themes";
 import type { VideoListItem } from "@/lib/youtube/types";
 import { ToolDefinition } from "./types";
 import { registerTool } from "./index";
@@ -17,7 +20,9 @@ const InputSchema = z.object({
   best_type: z
     .boolean()
     .optional()
-    .describe("true keeps only the thumbnail type that performs best in this scope (needs at least 3 scored thumbnails)."),
+    .describe(
+      "true keeps only the title/description theme that performs best in this scope (needs at least 3 scored thumbnails).",
+    ),
   limit: z.number().int().min(1).max(LIST_FOLLOWED_VIDEOS_MAX).default(5),
 });
 
@@ -34,10 +39,19 @@ function hasMyChannel(): boolean {
   return Boolean(getDb().prepare("SELECT 1 FROM followed_channels WHERE is_mine = 1 LIMIT 1").get());
 }
 
+function whyText(video: VideoListItem, theme: ThemeSummaryRow, now: Date): string {
+  return themeWhy({
+    score: video.performance.kind === "scored" ? video.performance.score : null,
+    ageDays: ageInDays(video.publishedAt, now),
+    title: video.title,
+    keywords: theme.keywords,
+  });
+}
+
 export const listFollowedVideosTool: ToolDefinition<Input> = {
   name: "list_followed_videos",
   description:
-    "Lists videos already synced from followed YouTube channels (local, no API quota). Use for the user's own or followed thumbs. scope mine = Ma chaîne, all = every followed channel. Image refs youtube:<videoId> for ask_user. Not a live YouTube search (search_youtube). Don't stall a new-video brief on old videos if they already described this one.",
+    "Lists videos already synced from followed YouTube channels (local, no YouTube quota). Use for the user's own or followed thumbs. scope mine = Ma chaîne, all = every followed channel. Image refs youtube:<videoId> for ask_user. best_type keeps the winning title/description theme (swipe rank plus optional TypeSafe Jev on titles). Not a live YouTube search (search_youtube). Don't stall a new-video brief on old videos if they already described this one.",
   inputSchema: InputSchema,
   chatOnly: true,
   handler: async ({ scope, sort, best_type, limit }) => {
@@ -54,34 +68,40 @@ export const listFollowedVideosTool: ToolDefinition<Input> = {
       }
     }
 
-    let bestType: ThumbType | null = null;
-    let noBestType = false;
+    let bestTheme: ThemeSummaryRow | null = null;
+    let noBestTheme = false;
     if (best_type) {
-      bestType = typesSummary(scope).find((row) => row.enoughData)?.type ?? null;
-      noBestType = bestType === null;
+      bestTheme = (await typesSummary(scope)).rows.find(isWinningTheme) ?? null;
+      noBestTheme = bestTheme === null;
     }
 
     const { items } = listVideos({
       sort,
-      types: bestType ? [bestType] : [],
+      types: [],
       channelId: null,
       mine: scope === "mine",
       period: "all",
       q: "",
+      format: "",
       offset: 0,
       limit,
+      videoIds: bestTheme?.videoIds,
     });
 
     const header = [
       `${items.length} vidéo(s) (${scope === "mine" ? "Ma chaîne" : "toutes les chaînes suivies"}, tri ${sort === "date" ? "date" : "performance"}`,
-      bestType ? `, type ${thumbTypeLabel(bestType)}` : "",
-      noBestType ? ", pas assez de données pour un meilleur type" : "",
+      bestTheme ? `, thème ${bestTheme.label}` : "",
+      noBestTheme ? ", pas assez de données pour une meilleure thématique" : "",
       ") :",
     ].join("");
-    const lines = items.map(
-      (video) =>
-        `- youtube:${video.videoId} — "${video.title}" — ${video.channelTitle} — type: ${thumbTypeLabel(video.thumbType)} — perf: ${performanceText(video)}`,
-    );
+    const now = new Date();
+    const lines = items.map((video) => {
+      const base = `- youtube:${video.videoId} — "${video.title}" — ${video.channelTitle}`;
+      if (bestTheme) {
+        return `${base} — thème: ${bestTheme.label} — perf: ${performanceText(video)} — pourquoi: ${whyText(video, bestTheme, now)}`;
+      }
+      return `${base} — type: ${thumbTypeLabel(video.thumbType)} — perf: ${performanceText(video)}`;
+    });
     return { content: [{ type: "text", text: [header, ...lines].join("\n") }] };
   },
 };

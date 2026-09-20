@@ -95,6 +95,16 @@ describe("summarizeTypes", () => {
   it("returns nothing without classified thumbnails", () => {
     expect(summarizeTypes([])).toEqual([]);
   });
+
+  it("picks the best thumb by swipe rank, not raw ×N", () => {
+    const rows = summarizeTypes([
+      { ...row("old-viral", "face_text", 30), rank: 0.2 },
+      { ...row("current", "face_text", 3), rank: 1.4 },
+      { ...row("mid", "face_text", 4), rank: 0.8 },
+    ]);
+    expect(rows[0]?.best).toMatchObject({ videoId: "current", score: 3 });
+    expect(rows[0]?.medianScore).toBe(4);
+  });
 });
 
 describe("classification pricing", () => {

@@ -42,7 +42,8 @@
   --text-secondary: var(--bone-soft);
   --text-tertiary: var(--bone-muted);
   --text-muted: var(--bone-faint);
-  --handle-size: 18px;
+  --handle-size: 30px;
+  --handle-hit: 40px;
   --node-radius: 12px;
   --node-width: 320px;
   --background: oklch(1 0 0);
@@ -94,24 +95,66 @@ body {
   box-shadow: none !important;
 }
 
+/* xyflow sets user-select: none on every node. Prompt / Texte fields must
+   keep a real caret, selection, wrap and spaces. */
+.react-flow__node textarea,
+.react-flow__node input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.react-flow__node textarea {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
 .react-flow__edge-path {
   stroke-width: 2;
 }
 
-/* Handles - always visible, Weavy style */
+/* Handles: large hit box + centred visible dot. Default xyflow is 6px. */
+.react-flow__node,
+.node-card {
+  overflow: visible;
+}
+
 .react-flow__handle {
-  width: var(--handle-size) !important;
-  height: var(--handle-size) !important;
+  width: var(--handle-hit) !important;
+  height: var(--handle-hit) !important;
+  background: transparent !important;
+  border: none !important;
   border-radius: 100% !important;
-  background: var(--canvas-accent) !important;
-  border: 3px solid var(--node-bg) !important;
   opacity: 1 !important;
-  transition: all 0.2s ease-in-out !important;
+  z-index: 10 !important;
   cursor: crosshair !important;
 }
 
-.react-flow__handle:hover {
-  transform: scale(1.2);
+.react-flow__handle-left {
+  left: calc(var(--handle-hit) / -2) !important;
+}
+
+.react-flow__handle-right {
+  right: calc(var(--handle-hit) / -2) !important;
+}
+
+.react-flow__handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--handle-size);
+  height: var(--handle-size);
+  transform: translate(-50%, -50%);
+  border-radius: 100%;
+  background: var(--canvas-accent);
+  border: 3px solid var(--node-bg);
+  pointer-events: none;
+  transition: transform 0.15s ease-in-out;
+}
+
+.react-flow__handle:hover::after {
+  transform: translate(-50%, -50%) scale(1.12);
 }
 
 /* Handle labels */
@@ -124,11 +167,11 @@ body {
 }
 
 .handle-label-left {
-  right: calc(100% + 6px);
+  right: calc(100% + 24px);
 }
 
 .handle-label-right {
-  left: calc(100% + 6px);
+  left: calc(100% + 24px);
 }
 
 /* Custom edge styles */

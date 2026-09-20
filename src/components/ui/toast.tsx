@@ -14,7 +14,7 @@ type ToastOptions = {
   title: string
   description?: string
   action?: { label: string; onClick: () => void }
-  /** Milliseconds before it closes by itself (0: never). Default: never with an action (closed with its button), else 8 s. */
+  /** Milliseconds before it closes by itself (0: never). Default: 10 s with an action, else 8 s. */
   timeout?: number
 }
 
@@ -23,7 +23,7 @@ function toast({ id, title, description, action, timeout }: ToastOptions): strin
     id,
     title,
     description,
-    timeout: timeout ?? (action ? 0 : 8000),
+    timeout: timeout ?? (action ? 10_000 : 8000),
     actionProps: action ? { children: action.label, onClick: action.onClick } : undefined,
   })
 }

@@ -1,12 +1,12 @@
 "use client";
 
 import FollowedChannelsSection from "./FollowedChannelsSection";
-import MyImagesSection from "./MyImagesSection";
+import YoutubeSearchSection from "./YoutubeSearchSection";
 
 export default function InspirationsTab() {
   return (
     <div className="grid gap-10">
-      <MyImagesSection />
+      <YoutubeSearchSection />
       <FollowedChannelsSection />
     </div>
   );

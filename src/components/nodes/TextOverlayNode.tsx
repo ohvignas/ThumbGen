@@ -4,6 +4,9 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { useCallback, useState } from "react";
 import NodeShell from "./NodeShell";
+import { ThumbnailDownloadButtons, thumbnailDownloadMenuItems } from "./ThumbnailDownloadActions";
+import ImageIdBadge from "@/components/ImageIdBadge";
+import { visibleImageIdFromValue } from "@/lib/canvas/visible-image-id";
 
 // Matches the "3-5 words, top third, high contrast" pattern used by the
 // popular AI thumbnail tools researched for this feature (Hooksnap, Juma,
@@ -127,18 +130,11 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
     }
   }, [sourceImage, text, color, strokeColor, position, fontScale, id, updateNodeData]);
 
-  const handleDownload = () => {
-    if (!resultImage) return;
-    const link = document.createElement("a");
-    link.href = resultImage;
-    link.download = `thumbnail-${Date.now()}.png`;
-    link.click();
-  };
-
   return (
     <NodeShell
       title="Texte overlay"
       onDelete={() => removeNode(id)}
+      extraMenuItems={thumbnailDownloadMenuItems(resultImage)}
       width={320}
       icon={
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--canvas-accent-yellow)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -149,7 +145,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
       <Handle type="target" position={Position.Left} id="image-in" style={{ top: "20%" }} />
       <span
         className="absolute text-xs pointer-events-none"
-        style={{ left: -8, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--canvas-accent)" }}
+        style={{ left: -24, top: "20%", transform: "translateX(-100%) translateY(-50%)", color: "var(--canvas-accent)" }}
       >
         Image
       </span>
@@ -163,8 +159,9 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
       )}
 
       {(resultImage || sourceImage) && (
-        <div className="mb-3 rounded-xl overflow-hidden">
+        <div className="relative mb-3 rounded-xl overflow-hidden">
           <img src={resultImage || sourceImage || ""} alt="Miniature" className="w-full" />
+          <ImageIdBadge id={visibleImageIdFromValue(resultImage || sourceImage)} />
         </div>
       )}
 
@@ -258,15 +255,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
           {rendering ? "Application…" : "→ Appliquer le texte"}
         </button>
 
-        {resultImage && (
-          <button
-            onClick={handleDownload}
-            className="w-full py-2 rounded-xl text-xs font-medium transition-colors"
-            style={{ background: "var(--surface)", color: "var(--text-secondary)" }}
-          >
-            Télécharger
-          </button>
-        )}
+        <ThumbnailDownloadButtons src={resultImage} />
 
         {error && <p className="text-xs" style={{ color: "var(--ember)" }}>{error}</p>}
       </div>
@@ -274,7 +263,7 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
       <Handle type="source" position={Position.Right} id="result" />
       <span
         className="absolute text-xs pointer-events-none"
-        style={{ right: -8, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--canvas-accent)" }}
+        style={{ right: -24, top: "15%", transform: "translateX(100%) translateY(-50%)", color: "var(--canvas-accent)" }}
       >
         Résultat
       </span>

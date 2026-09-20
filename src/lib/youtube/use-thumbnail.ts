@@ -1,3 +1,4 @@
+import { getCopiedSwipeFile, rememberCopy } from "@/lib/brief/youtube-thumbnail-copies";
 import * as store from "./channel-store";
 import { channelRuntime } from "./runtime";
 import { fetchBestThumbnail, getSwipeFileTitle, saveThumbnailToLibrary } from "./thumbnails";
@@ -51,4 +52,26 @@ export async function copyVideoThumbnailToLibrary(videoId: string): Promise<UseT
   }
   if (!swipeFileId) return { status: "not-found" };
   return { status: "created", swipeFileId, imageUrl: libraryImageUrl(swipeFileId), label: video.title };
+}
+
+/** Followed-channel copy, else a one-off `youtube_thumbnail_copies` row (open-web search). */
+export async function importAnyYoutubeThumbnail(videoId: string, title: string): Promise<UseThumbnailOutcome> {
+  const followed = await copyVideoThumbnailToLibrary(videoId);
+  if (followed.status !== "unknown-video") return followed;
+
+  const existing = getCopiedSwipeFile(videoId);
+  if (existing) {
+    const label = getSwipeFileTitle(existing) ?? title;
+    return { status: "existing", swipeFileId: existing, imageUrl: libraryImageUrl(existing), label };
+  }
+
+  try {
+    const thumbnail = await fetchBestThumbnail(videoId);
+    if (!thumbnail) return { status: "not-found" };
+    const swipeFileId = saveThumbnailToLibrary(title, thumbnail);
+    rememberCopy(videoId, swipeFileId);
+    return { status: "created", swipeFileId, imageUrl: libraryImageUrl(swipeFileId), label: title };
+  } catch {
+    return { status: "unreachable" };
+  }
 }

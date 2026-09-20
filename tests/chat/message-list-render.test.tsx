@@ -58,4 +58,16 @@ describe("MessageList", () => {
     // The trailing row can't retry: that would replay the older message.
     expect(html).not.toContain("Réessayer");
   });
+
+  it("does not mark user turns as scroll anchors (those pin the last send to the top)", () => {
+    const html = render(
+      [
+        { id: "u0", role: "user", parts: [{ type: "text", text: "Salut" }] },
+        { id: "a0", role: "assistant", parts: [{ type: "text", text: "Réponse" }] },
+      ] as unknown as UIMessage[],
+      controls(),
+    );
+    expect(html).toContain('data-message-id="u0"');
+    expect(html).not.toContain('data-scroll-anchor="true"');
+  });
 });

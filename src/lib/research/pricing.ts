@@ -1,6 +1,6 @@
-export const RESEARCH_MODEL = "perplexity/sonar-pro";
+export const RESEARCH_MODEL = "sonar-pro";
 export const RESEARCH_REQUEST_OPTIONS = { timeout: 60_000, maxRetries: 0 } as const;
-/** OpenRouter Sonar Pro ballpark when `usage.cost` is missing. */
+/** Sonar Pro ballpark when `usage.cost` is missing. */
 export const RESEARCH_PRICING = { inputPerM: 3, outputPerM: 15 } as const;
 
 export function researchCostUsd(usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number }): number {

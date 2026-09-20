@@ -44,6 +44,35 @@ export type CanvasPatch = {
   edges: CanvasPatchEdge[];
 };
 
+/**
+ * One `apply_workflow` write, broadcast as a transient `data-canvas-workflow-patch`
+ * chunk. Several nodes share one `updatedAt`, so this cannot be split into
+ * successive `data-canvas-patch` parts (the second would look replayed).
+ */
+export const CANVAS_WORKFLOW_PATCH_PART = "data-canvas-workflow-patch" as const;
+
+export type CanvasWorkflowPatchUpdate = {
+  node: CanvasPatchNode;
+  removedDataKeys: string[];
+};
+
+export type CanvasWorkflowPatchEdgeRef = {
+  source: string;
+  target: string;
+  targetHandle: string;
+};
+
+export type CanvasWorkflowPatch = {
+  projectId: string;
+  updatedAt: string;
+  previousUpdatedAt: string;
+  created: CanvasPatchNode[];
+  updated: CanvasWorkflowPatchUpdate[];
+  removedIds: string[];
+  edges: CanvasPatchEdge[];
+  removedEdges: CanvasWorkflowPatchEdgeRef[];
+};
+
 /** An ISO string or a legacy SQLite `datetime('now')` value (UTC, no zone), in ms; null when unparsable. */
 function parseTimestamp(value: string): number | null {
   // Strict formats only: Date.parse is lenient with arbitrary strings ("SELF-SAVE-1" parses in V8).
@@ -99,34 +128,84 @@ export function laterUpdatedAt(a: string | null, b: string | null): string | nul
  * by a reconnection, or already contained in a reload from the database, is
  * ignored.
  */
+export function shouldApplyAgentWrite(
+  write: { projectId: string; updatedAt: string },
+  state: { openProjectId: string; loaded: boolean; loading?: boolean; knownUpdatedAt: string | null },
+): boolean {
+  if (write.projectId !== state.openProjectId || !(state.loaded || state.loading)) return false;
+  return state.knownUpdatedAt === null || compareUpdatedAt(write.updatedAt, state.knownUpdatedAt) > 0;
+}
+
 export function shouldApplyCanvasPatch(
   patch: CanvasPatch,
   state: { openProjectId: string; loaded: boolean; loading?: boolean; knownUpdatedAt: string | null },
 ): boolean {
-  if (patch.projectId !== state.openProjectId || !(state.loaded || state.loading)) return false;
-  return state.knownUpdatedAt === null || compareUpdatedAt(patch.updatedAt, state.knownUpdatedAt) > 0;
+  return shouldApplyAgentWrite(patch, state);
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+function isPatchNode(value: unknown): value is CanvasPatchNode {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.type !== "string" || !isRecord(value.data)) return false;
+  return isRecord(value.position) && typeof value.position.x === "number" && typeof value.position.y === "number";
+}
+
+function isPatchEdge(value: unknown): value is CanvasPatchEdge {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.source === "string" &&
+    typeof value.target === "string" &&
+    typeof value.targetHandle === "string" &&
+    (value.sourceHandle === null || typeof value.sourceHandle === "string")
+  );
+}
+
 export function isCanvasPatch(value: unknown): value is CanvasPatch {
   if (!isRecord(value) || typeof value.projectId !== "string" || typeof value.updatedAt !== "string") return false;
   if (typeof value.created !== "boolean" || typeof value.previousUpdatedAt !== "string") return false;
   if (!Array.isArray(value.removedDataKeys) || !value.removedDataKeys.every((key) => typeof key === "string")) return false;
-  const node = value.node;
-  if (!isRecord(node) || typeof node.id !== "string" || typeof node.type !== "string" || !isRecord(node.data)) return false;
-  if (!isRecord(node.position) || typeof node.position.x !== "number" || typeof node.position.y !== "number") return false;
+  if (!isPatchNode(value.node)) return false;
+  return Array.isArray(value.edges) && value.edges.every(isPatchEdge);
+}
+
+export function isCanvasWorkflowPatch(value: unknown): value is CanvasWorkflowPatch {
+  if (!isRecord(value) || typeof value.projectId !== "string" || typeof value.updatedAt !== "string") return false;
+  if (typeof value.previousUpdatedAt !== "string") return false;
+  if (!Array.isArray(value.created) || !value.created.every(isPatchNode)) return false;
+  if (
+    !Array.isArray(value.updated) ||
+    !value.updated.every(
+      (item) =>
+        isRecord(item) &&
+        isPatchNode(item.node) &&
+        Array.isArray(item.removedDataKeys) &&
+        item.removedDataKeys.every((key) => typeof key === "string"),
+    )
+  ) {
+    return false;
+  }
+  if (!Array.isArray(value.removedIds) || !value.removedIds.every((id) => typeof id === "string")) return false;
+  if (!Array.isArray(value.edges) || !value.edges.every(isPatchEdge)) return false;
   return (
-    Array.isArray(value.edges) &&
-    value.edges.every(
+    Array.isArray(value.removedEdges) &&
+    value.removedEdges.every(
       (edge) =>
         isRecord(edge) &&
-        typeof edge.id === "string" &&
         typeof edge.source === "string" &&
         typeof edge.target === "string" &&
-        typeof edge.targetHandle === "string" &&
-        (edge.sourceHandle === null || typeof edge.sourceHandle === "string"),
+        typeof edge.targetHandle === "string",
     )
+  );
+}
+
+export function workflowPatchHasChanges(patch: CanvasWorkflowPatch): boolean {
+  return (
+    patch.created.length > 0 ||
+    patch.updated.length > 0 ||
+    patch.removedIds.length > 0 ||
+    patch.edges.length > 0 ||
+    patch.removedEdges.length > 0
   );
 }

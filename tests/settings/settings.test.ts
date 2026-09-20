@@ -11,7 +11,16 @@ import {
 } from "@/lib/settings";
 import { EMPTY_CHANNEL_PROFILE } from "@/lib/settings-schema";
 
-const ENV_NAMES = ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "YOUTUBE_API_KEY", "MCP_API_KEY", "LANGUAGE", "GOOGLE_OAUTH_CLIENT_SECRET"];
+const ENV_NAMES = [
+  "OPENROUTER_API_KEY",
+  "OPENAI_API_KEY",
+  "YOUTUBE_API_KEY",
+  "MCP_API_KEY",
+  "PERPLEXITY_API_KEY",
+  "TYPESAFE_API_KEY",
+  "LANGUAGE",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+];
 const savedEnv: Record<string, string | undefined> = {};
 
 function storedRows(): Record<string, string | null> {
@@ -53,6 +62,8 @@ describe("getTypedSettings", () => {
       youtubeApiKey: undefined,
       mcpApiKey: undefined,
       brandfetchApiKey: undefined,
+      perplexityApiKey: undefined,
+      typesafeApiKey: undefined,
       googleOAuthClientId: "",
       googleOAuthClientSecret: undefined,
       agentModel: "anthropic/claude-sonnet-4.6",

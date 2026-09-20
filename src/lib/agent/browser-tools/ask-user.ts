@@ -34,7 +34,7 @@ const optionSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Optional thumbnail: stored:persona_<id>, stored:sf_<id>, stored:lg_<id>, youtube:<videoId>, generated:sk_<id> or logo-candidate:<id>.",
+      "Ignored by the chat card. Do not send. Options are text only (label + description). Never attach a persona, logo, canvas, YouTube, sketch, or URL image as the choice visual.",
     ),
 });
 

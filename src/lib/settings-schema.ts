@@ -39,6 +39,8 @@ export const SECRET_KEYS = [
   "youtubeApiKey",
   "mcpApiKey",
   "brandfetchApiKey",
+  "perplexityApiKey",
+  "typesafeApiKey",
   "googleOAuthClientSecret",
 ] as const;
 export type SecretKey = (typeof SECRET_KEYS)[number];
@@ -54,6 +56,8 @@ export const ENV_FALLBACK: Record<SecretKey, string> = {
   youtubeApiKey: "YOUTUBE_API_KEY",
   mcpApiKey: "MCP_API_KEY",
   brandfetchApiKey: "BRANDFETCH_API_KEY",
+  perplexityApiKey: "PERPLEXITY_API_KEY",
+  typesafeApiKey: "TYPESAFE_API_KEY",
   googleOAuthClientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
 };
 
@@ -112,6 +116,8 @@ export const SettingsSchema = z.object({
   mcpApiKey: secret(),
   // Brandfetch « Client ID » (sent as ?c=), optional: adds Brandfetch to the logo search.
   brandfetchApiKey: secret(),
+  perplexityApiKey: secret(),
+  typesafeApiKey: secret(),
   googleOAuthClientId: z.string().trim().max(200, "200 caractères maximum").default(""),
   googleOAuthClientSecret: secret(),
   agentModel: z.enum(AGENT_MODEL_IDS, { error: "Modèle d'agent inconnu" }).default(DEFAULT_AGENT_MODEL),

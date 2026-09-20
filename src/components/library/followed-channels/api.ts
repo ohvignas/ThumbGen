@@ -9,6 +9,8 @@ import {
   type UseVideoResponse,
   type VideoListResponse,
   type VideoQuery,
+  type WorkingSubjectResponse,
+  type WhyVideoResponse,
 } from "@/lib/youtube/types";
 
 export class ApiError extends Error {
@@ -55,6 +57,8 @@ export const channelsApi = {
     request<UseVideoResponse>(`/api/channels/videos/${encodeURIComponent(videoId)}/use`, json("POST", {})),
   typesSummary: (scope: string) =>
     request<TypesSummaryResponse>(`/api/channels/types-summary?scope=${encodeURIComponent(scope)}`),
+  workingSubject: () => request<WorkingSubjectResponse>("/api/channels/working-subject"),
+  why: (videoId: string) => request<WhyVideoResponse>(`/api/channels/videos/${encodeURIComponent(videoId)}/why`),
   approveClassification: () =>
     request<{ approved: number; classification: ClassificationStatus }>(
       "/api/channels/classification",

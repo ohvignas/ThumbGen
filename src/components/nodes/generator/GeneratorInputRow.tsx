@@ -32,7 +32,7 @@ export default function GeneratorInputRow({
   onAdd: () => void;
 }) {
   return (
-    <div className="relative -mx-3 flex h-9 items-center gap-2 px-3">
+    <div className="relative -mx-3 flex h-10 items-center gap-2 px-3">
       <Handle type="target" position={Position.Left} id={handleId} />
       <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       <span className="w-28 shrink-0 truncate text-xs text-foreground">{label}</span>

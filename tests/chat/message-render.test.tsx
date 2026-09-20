@@ -60,12 +60,12 @@ describe("Message", () => {
     expect(html).not.toContain("Je lis le canvas.");
   });
 
-  it("shows the answer and « Et maintenant » on the last finished turn only", () => {
+  it("shows the answer and no « Et maintenant » chips", () => {
     const last = render(finished, true, controls());
     expect(last).toContain("2 étapes");
     expect(last).toContain("Canvas vide, on commence ?");
-    expect(last).toContain("Et maintenant");
-    expect(last).toContain("Oui, on y va");
+    expect(last).not.toContain("Et maintenant");
+    expect(last).not.toContain("Oui, on y va");
 
     const older = render(finished, false, controls({ status: "streaming" }));
     expect(older).toContain("Canvas vide, on commence ?");

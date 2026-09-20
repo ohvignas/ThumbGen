@@ -2,18 +2,16 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { ToolContent, ToolDefinition } from "./types";
 import { registerTool } from "./index";
-import { resolveImageSource, type ResolvedImage } from "./_helpers/image-source";
+import {
+  MAX_IMAGE_SIDE,
+  MAX_IMAGES_PER_CALL,
+  MAX_IMAGES_PER_GENERATOR,
+  downscaleCanvasImage,
+  readCanvasImage,
+} from "./_helpers/canvas-image-pixels";
 import { generatorImages, selectedGeneratedImage, toImageSourceRef } from "@/lib/canvas/image-refs";
 
-/** Images sent to the model per call, all nodes together. */
-export const MAX_IMAGES_PER_CALL = 8;
-/** A generator contributes its selected image first, then its most recent ones. */
-export const MAX_IMAGES_PER_GENERATOR = 2;
-/** Longest side of every image sent to the model. */
-export const MAX_IMAGE_SIDE = 768;
-const JPEG_QUALITY = 80;
-/** Refuse to decode images larger than this (width × height), whatever their file size. */
-export const MAX_INPUT_PIXELS = 40_000_000;
+export { MAX_IMAGES_PER_CALL, MAX_IMAGES_PER_GENERATOR, MAX_IMAGE_SIDE };
 const NOT_SAVED_HINT =
   "Le canvas n'est peut-être pas encore enregistré (sauvegarde ~2 s après une modification) — réessaie dans un instant.";
 
@@ -67,45 +65,6 @@ function nodeImageValues(node: CanvasNode): string[] {
   }
 }
 
-/** Reads an image value's bytes locally (inline data or the DB) — never over HTTP. */
-async function readImage(value: string): Promise<ResolvedImage | null> {
-  const inline = value.match(/^data:([^;,]+);base64,(.+)$/);
-  if (inline) return { mimeType: inline[1], bytes: Buffer.from(inline[2], "base64") };
-
-  // A Personnage URL names its angle; resolveImageSource would pick the front one.
-  if (value.startsWith("/api/personas/image")) {
-    const params = new URL(value, "http://thumbgen.local").searchParams;
-    const row = getDb()
-      .prepare("SELECT mime_type, data FROM persona_photos WHERE persona_id = ? AND angle = ?")
-      .get(params.get("id"), params.get("angle")) as { mime_type: string; data: Buffer } | undefined;
-    return row ? { mimeType: row.mime_type, bytes: row.data } : null;
-  }
-
-  const ref = toImageSourceRef(value);
-  if (!ref) return null;
-  try {
-    return await resolveImageSource(ref);
-  } catch {
-    return null;
-  }
-}
-
-async function downscale(bytes: Buffer): Promise<string | null> {
-  try {
-    // Loaded on first use: the native module stays out of every tool-registry import.
-    const { default: sharp } = await import("sharp");
-    const out = await sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS })
-      .rotate()
-      .resize({ width: MAX_IMAGE_SIDE, height: MAX_IMAGE_SIDE, fit: "inside", withoutEnlargement: true })
-      .flatten({ background: "#ffffff" })
-      .jpeg({ quality: JPEG_QUALITY })
-      .toBuffer();
-    return out.toString("base64");
-  } catch {
-    return null;
-  }
-}
-
 function nodeTitle(node: CanvasNode): string {
   const data = node.data ?? {};
   const label = str(data.label) ?? (node.type === "generator" ? str(data.model) : undefined);
@@ -115,7 +74,7 @@ function nodeTitle(node: CanvasNode): string {
 export const viewCanvasImagesTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "view_canvas_images",
   description:
-    "Lets you SEE the images on the project's canvas: sketches, imported or library reference images, logos, the Personnage (front angle), a generator's generated images (at most 2 per generator, its selected image first) and preview outputs. Use before analysing or editing an existing workflow — not to list ids (get_canvas_state / <canvas_state>). Pass node_ids to look at specific nodes; without node_ids every node that carries an image is shown, in canvas order. At most 8 images per call, each downscaled to 768px. Each image is preceded by a line « node <id> (<type>, <label>) — image k/n » followed by its stored ref when it has one (e.g. stored:gi_<id>, reusable as an image_source).",
+    "Lets you SEE the images on the project's canvas: sketches, imported or library reference images, logos, the Personnage (front angle), a generator's generated images (at most 2 per generator, its selected image first) and preview outputs. @mentions and analyse / regarder / améliorer / iterate already attach those JPEGs on this user turn — call this only for other nodes. Not to list ids (get_canvas_state / <canvas_state>). Pass node_ids to look at specific nodes; without node_ids every node that carries an image is shown, in canvas order. At most 8 images per call, each downscaled to 768px. Each image is preceded by a line « node <id> (<type>, <label>) — image k/n » followed by its stored ref when it has one (e.g. stored:gi_<id>, reusable as an image_source).",
   inputSchema: InputSchema,
   handler: async ({ project_id, node_ids }) => {
     const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(project_id) as
@@ -169,8 +128,8 @@ export const viewCanvasImagesTool: ToolDefinition<z.infer<typeof InputSchema>> =
         if (ready.length >= remaining) break;
         tried++;
         try {
-          const image = await readImage(value);
-          const data = image ? await downscale(image.bytes) : null;
+          const image = await readCanvasImage(value);
+          const data = image ? await downscaleCanvasImage(image.bytes) : null;
           if (data) ready.push({ data, ref: toImageSourceRef(value) });
         } catch {
           // One unreadable image never fails the whole call.

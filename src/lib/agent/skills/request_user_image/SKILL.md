@@ -87,11 +87,11 @@ Persisted history may wrap the same object as `{ type: "json", value: { … } }`
 
 ### What to do with a ref
 
-| Prefix | Origin | Face (`face-in` / `face_source`) | Logo (`logo-in` / brief logos) | Ref (`ref-in` / sketch refs) |
+| Prefix | Origin | Face (`face-in` / `face_source`) | Logo (`logo-in`) | Ref (`ref-in` / sketch refs) |
 | --- | --- | --- | --- | --- |
-| `uploaded:up_…` | Uploader (`chat_uploads`) | **never** | Canvas `swipeFile` `kind=logo` yes; `update_brief` logos **no** (`stored:lg_` only) | Canvas `iv-ref-*` / `generate_sketch.reference_sources` yes; brief `references` **no** (`stored:sf_` + YouTube metadata only) |
-| `stored:lg_<id>` | Logos pick or in-picker add | never | yes, including `update_brief` `{ name, source }` (max 3) | use as logo, not as a swipe |
-| `stored:sf_<id>` | Inspirations pick or followed-channel copy | never | never (`kind=logo` is `stored:lg_`) | yes; brief `references` only if it came from a video |
+| `uploaded:up_…` | Uploader (`chat_uploads`) | **never** | Canvas `swipeFile` `kind=logo` yes | Canvas `iv-ref-*` / `generate_sketch.reference_sources` yes |
+| `stored:lg_<id>` | Logos pick or in-picker add | never | yes (max 3) | use as logo, not as a swipe |
+| `stored:sf_<id>` | Inspirations pick or followed-channel copy | never | never (`kind=logo` is `stored:lg_`) | yes |
 | `stored:persona_<id>` | Personnages pick | **yes** — treat as `list_personas` | never | never |
 
 `ask_user` tiles do **not** accept `uploaded:` (`stored:persona_` / `lg_` / `sf_`, `youtube:`, `generated:sk_`, `logo-candidate:` only). After this tool you already have the id — don't re-ask which file they just sent.
@@ -115,9 +115,6 @@ No server `execute`. Schema / UI / downstream only:
 
 - `generate_sketch` `face_source: "uploaded:…"` → `Cannot resolve` / identity rules: still not a Personnage. Pass `stored:persona_<id>` or omit.
 - Stale upload (`Upload not found: uploaded:up_…` / `Image source not found on node …: uploaded:…`) → GC or never attached. Call this tool again; do not invent an id.
-- `update_brief` logos with `uploaded:` → `Logo au format stored:lg_<id>`. Wire the canvas instead, or have them save it in Bibliothèque → Logos then `list_logos`.
-- `update_brief` references with `uploaded:` → `Référence au format stored:sf_<id>`. Wire `iv-ref-*`; don't fake a `videoId`.
-
 Do not retry a skip with the same card in a loop. Do not invent `uploaded:` / `stored:` ids.
 
 ## Chains
@@ -126,10 +123,10 @@ Typical: list/find in an **earlier** step → this tool **alone** → turn pause
 
 After the answer, in **later** steps of the resumed turn:
 
-1. `{ source_ids: ["stored:lg_…"] }` → `update_brief` logos (if under 3) → `place_node` `iv-logo-1..3` or `apply_workflow` swipeFile `kind=logo` on `logo-in` → optional `generate_sketch` `reference_sources`.
-2. `{ source_ids: ["stored:sf_…"] }` → `place_node` `iv-ref-1..3` (`kind=reference`) on `ref-in` → optional sketch refs. Brief `references` only for YouTube-backed rows.
-3. `{ source_ids: ["uploaded:up_…"] }` → same canvas sinks as (1) or (2) from `suggested_kind`. Not the fiche logo/reference arrays. Not `face-in`.
-4. `{ source_ids: ["stored:persona_…"] }` → `update_brief` `common.persona` → `face_source` / `iv-persona`. Do **not** treat this as having obtained a logo.
+1. `{ source_ids: ["stored:lg_…"] }` → `place_node` `iv-logo-1..3` or `apply_workflow` swipeFile `kind=logo` on `logo-in` → optional `generate_sketch` `reference_sources`.
+2. `{ source_ids: ["stored:sf_…"] }` → `place_node` `iv-ref-1..3` (`kind=reference`) on `ref-in` → optional sketch refs.
+3. `{ source_ids: ["uploaded:up_…"] }` → same canvas sinks as (1) or (2) from `suggested_kind`. Not `face-in`.
+4. `{ source_ids: ["stored:persona_…"] }` → `face_source` / `iv-persona`. Do **not** treat this as having obtained a logo.
 5. `{ skipped }` / abandoned → continue without that image. One `finish_turn` (need / next_actions). Don't reopen the picker unless they now say they have the file.
 
 End the resumed turn with `finish_turn` **once, alone**. Never `finish_turn` in the same step as this tool. Don't start a paid generation; « Générer » is their click on `finish_turn` kind `generate`.
@@ -152,9 +149,9 @@ User: « J'ai le logo Claude en PNG sur le bureau, pas encore dans la bibliothè
 ```
 
 4. They click Uploader → `{ "source_ids": ["uploaded:up_a1b2c3"] }`.
-5. Later steps: `place_node` `{ "id": "iv-logo-1", "type": "swipeFile", "data": { "image_source": "uploaded:up_a1b2c3", "label": "Claude" } }` (auto-wires `logo-in`). Optional `generate_sketch` `{ "reference_sources": ["uploaded:up_a1b2c3"] }`. Do **not** `update_brief` logos with that `uploaded:` token.
+5. Later steps: `place_node` `{ "id": "iv-logo-1", "type": "swipeFile", "data": { "image_source": "uploaded:up_a1b2c3", "label": "Claude" } }` (auto-wires `logo-in`). Optional `generate_sketch` `{ "reference_sources": ["uploaded:up_a1b2c3"] }`.
 6. `finish_turn` alone — summary in the reply language; `results` empty.
 
-If step 4 had been Skip: say you'll go on without the mark (or offer `find_logos` "Claude"), then `finish_turn`. If they had picked Mes logos instead: `{ "source_ids": ["stored:lg_…"] }` → that **can** go on the fiche.
+If step 4 had been Skip: say you'll go on without the mark (or offer `find_logos` "Claude"), then `finish_turn`. If they had picked Mes logos instead: `{ "source_ids": ["stored:lg_…"] }` → wire that on `logo-in`.
 
 If they had said « mets-moi sur la miniature »: do **not** call this tool. `list_personas` → `ask_user` / default Personnage.

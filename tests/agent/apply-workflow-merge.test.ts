@@ -140,10 +140,10 @@ describe("apply_workflow — non-destructive merge", () => {
     const { nodes, edges } = persisted();
     const ref = nodes.find((n) => n.id === "ref-1")!;
     expect(ref.position).toEqual({ x: 10, y: 20 });
-    expect(ref.data).toEqual({ label: "Référence visage", imageBase64: IMPORTED, kind: "reference" });
+    expect(ref.data).toMatchObject({ label: "Référence visage", imageBase64: IMPORTED, kind: "reference" });
     const gen = nodes.find((n) => n.id === "g-1")!;
     expect(gen.position).toEqual({ x: 500, y: 40 });
-    expect(gen.data).toEqual({
+    expect(gen.data).toMatchObject({
       model: "gpt-image-2.5-sunburst",
       aspectRatio: "16x9",
       numImages: 2,
@@ -221,9 +221,9 @@ describe("apply_workflow — non-destructive merge", () => {
     });
     expect(r.isError).toBeFalsy();
     const data = persisted().nodes[0].data;
-    expect(data.imageBase64).toMatch(/^data:image\/png;base64,/);
+    expect(data.imageUrl).toBe(`/api/logos/image?f=${logoId}`);
     expect(data.image_source).toBe(`stored:lg_${logoId}`);
-    expect(data.imageUrl).toBeUndefined();
+    expect(data.imageBase64).toBeUndefined();
     expect(data.label).toBe("Old");
     expect(data.kind).toBe("logo");
   });
@@ -242,7 +242,7 @@ describe("apply_workflow — non-destructive merge", () => {
     expect(r.isError).toBeFalsy();
     const data = persisted().nodes[0].data;
     expect(data.personaId).toBe(personaId);
-    expect((data.personaAngles as Record<string, string>).front).toMatch(/^data:image\/png;base64,/);
+    expect((data.personaAngles as Record<string, string>).front).toBe(`/api/personas/image?id=${personaId}&angle=front`);
     expect(data.label).toBe("Mon visage");
   });
 

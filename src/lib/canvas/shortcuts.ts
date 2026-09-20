@@ -1,4 +1,4 @@
-export type CanvasShortcut = "add-step" | "auto-layout" | "select-all" | "duplicate" | "escape";
+export type CanvasShortcut = "add-step" | "auto-layout" | "select-all" | "duplicate" | "delete" | "escape";
 
 type KeyInput = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;
 
@@ -6,12 +6,14 @@ type KeyInput = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "sh
  * Canvas keyboard shortcuts. Letters match `event.key` (layout-aware: the A
  * key of an AZERTY keyboard is still « a »). ⇧⌥T matches `event.code`
  * because Option rewrites `event.key` on macOS (⇧⌥T → « ˇ »).
- * ⌘Z / ⇧⌘Z (ZoomBar) and Backspace/Delete (React Flow) are handled elsewhere.
+ * ⌘Z / ⇧⌘Z (ZoomBar) are handled elsewhere. Backspace/Delete delete the
+ * selection here — React Flow remount `remove` must not tombstone nodes.
  */
 export function matchCanvasShortcut(event: KeyInput): CanvasShortcut | null {
   const mod = event.metaKey || event.ctrlKey;
   const key = event.key.toLowerCase();
   if (event.key === "Escape") return !mod && !event.shiftKey && !event.altKey ? "escape" : null;
+  if (!mod && !event.shiftKey && !event.altKey && (event.key === "Backspace" || event.key === "Delete")) return "delete";
   if (!mod && !event.shiftKey && !event.altKey && key === "n") return "add-step";
   if (!mod && event.shiftKey && event.altKey && event.code === "KeyT") return "auto-layout";
   if (mod && !event.shiftKey && !event.altKey && key === "a") return "select-all";

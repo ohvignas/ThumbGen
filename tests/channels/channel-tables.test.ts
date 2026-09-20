@@ -56,6 +56,9 @@ describe("channel tables", () => {
     expect(indexes).toEqual(
       expect.arrayContaining(["idx_channel_videos_channel_id", "idx_channel_videos_published_at", "idx_channel_videos_thumb_type"]),
     );
+    expect(columns(db, "video_stat_snapshots")).toEqual(
+      expect.arrayContaining(["video_id", "captured_at", "view_count", "like_count"]),
+    );
   });
 
   it("adds the resume and classification columns to tables created without them", () => {
@@ -99,5 +102,34 @@ describe("channel tables", () => {
     ).run();
     db.prepare("DELETE FROM followed_channels WHERE id = 'cascade-channel'").run();
     expect(db.prepare("SELECT COUNT(*) AS n FROM channel_videos WHERE video_id = 'cascadevid1'").get()).toEqual({ n: 0 });
+  });
+
+  it("creates video_stat_snapshots with a cascade FK and backfills the latest row", () => {
+    const db = getDb();
+    expect(columns(db, "video_stat_snapshots")).toEqual(
+      expect.arrayContaining(["video_id", "captured_at", "view_count", "like_count"]),
+    );
+    const indexes = (db.prepare("PRAGMA index_list(video_stat_snapshots)").all() as { name: string }[]).map(
+      (index) => index.name,
+    );
+    expect(indexes).toEqual(
+      expect.arrayContaining(["idx_video_stat_snapshots_video", "idx_video_stat_snapshots_captured"]),
+    );
+
+    db.prepare("DELETE FROM followed_channels").run();
+    db.prepare(
+      "INSERT INTO followed_channels (id, youtube_channel_id, title) VALUES ('snap-ch', 'UCsnap000000000000000001', 'Snap')",
+    ).run();
+    db.prepare(
+      `INSERT INTO channel_videos (video_id, channel_id, title, published_at, thumbnail_url, stats_updated_at, view_count, like_count)
+       VALUES ('snapvid0001', 'snap-ch', 'V', '2026-09-01T00:00:00.000Z', 'https://i.ytimg.com/vi/snapvid0001/mqdefault.jpg', '2026-09-10T00:00:00.000Z', 42, 7)`,
+    ).run();
+    migrateChannelTables(db);
+    expect(
+      db.prepare("SELECT video_id, captured_at, view_count, like_count FROM video_stat_snapshots WHERE video_id = 'snapvid0001'").all(),
+    ).toEqual([{ video_id: "snapvid0001", captured_at: "2026-09-10T00:00:00.000Z", view_count: 42, like_count: 7 }]);
+
+    db.prepare("DELETE FROM followed_channels WHERE id = 'snap-ch'").run();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM video_stat_snapshots WHERE video_id = 'snapvid0001'").get()).toEqual({ n: 0 });
   });
 });

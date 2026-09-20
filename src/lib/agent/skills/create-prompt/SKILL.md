@@ -20,9 +20,9 @@ The system block already has THUMBNAIL PROMPT ANATOMY — follow it. Full anti-p
 ## When not
 
 - **Croquis / esquisse** → skill `generate_sketch` (`/croquis`).
-- **New thumbnail from scratch** (titles, A/B packs, promise) → `thumbnail-packaging`.
-- **Vague edit of a full existing graph** ("améliore", "regarde") → `existing-workflow`.
-- **Click Générer / paid run** — never. No `next_actions` kind `generate`. No `generate_sketch` unless they ask for a croquis after.
+- **New thumbnail from scratch** (titles, first-gen A/B packs, promise) → `thumbnail-packaging` (full 7-sentence anatomy; A/B = two complete prompts).
+- **Iterate an already-generated thumb** (preview / `stored:gi_` on ref-in) → still this skill for the prompt text, but write a **short edit prompt** (see below), not a scene recreation. Vague look/improve of the graph → `existing-workflow`.
+- **Click Générer / paid run / croquis** — never this skill. No `next_actions` at all (`[]`). No `kind: "generate"`. No `generate_sketch`. A generator already on the canvas is not a reason to offer « Générer ».
 - Same model step as `ask_user` or `finish_turn`.
 
 ## Empty idea
@@ -33,9 +33,16 @@ Deduce the rest (framing, 0–4 word thumb text, dark ground). Do not run a ques
 
 ## Write the prompt
 
+**Mode** — two intents only. Look at the canvas before writing. A/B is variant slots (`prompt-in` / `prompt-in-b`), never the reason to shorten.
+
+- **SCRATCH / FIRST GEN** — no preview / generator output / `stored:gi_` on `ref-in`. Full 7-sentence anatomy below. First-gen A/B = two complete 7-sentence prompts.
+- **ITERATE / ADJUST THIS IMAGE** — a generated aperçu is (or will be) the edit source on `ref-in` / `ref-in-b` / `ref-in-c`. Same angle. **1–3 sentences only.** Change first (text, emotion, color, one object), then "Keep the rest of the thumbnail unchanged." Do **not** describe the person, curtains, logo, framing, or lighting again. Keep the chain: original prompt + this generation + the requested change. Wire that image as the ref (preview edge or swipeFile `stored:gi_<id>`). Short because you are iterating, not because A/B is on.
+
+### FROM SCRATCH — 7 sentences
+
 At most **7 sentences**, this order, **no labels**. Omit a line if irrelevant. Story in 3 planes (foreground action → midground context → background mood). Flat "person + logo on grey" is dead.
 
-1. **SUBJECT** — foreground who. Realistic pose. Face as features ("mouth closed, eyes slightly narrowed"), not "shocked". Outfit if it matters.
+1. **SUBJECT** — If a Personnage is connected or they are in the thumb: **"the person in the identity/avatar reference photos"** (pose + decomposed expression). Never a generic "Young man" / "Young woman". Outfit if it matters.
 2. **SCENE** — midground happening + background place/mood.
 3. **COMPOSITION** — one of: extreme close-up | close-up | medium close-up | medium shot | medium full shot | full shot | wide shot. Subject left / center / right third. Midground slightly out of focus; background bokeh if depth is wanted.
 4. **OBJECTS** — ≤3 elements including the hero. Each: % of frame, position, plane.
@@ -43,7 +50,11 @@ At most **7 sentences**, this order, **no labels**. Omit a line if irrelevant. S
 6. **LIGHTING** — one coherent story, direction per plane.
 7. **STYLE** — 2 descriptors max (`photorealistic, cinematic`).
 
-Do **not** put in the prompt: ALL-CAPS emphasis, CTR/viral speak, 8K/masterpiece piles, "preserve face fidelity", "professionally/stunning", invalid framings (`ultra close-up`). Medium shot cannot hold a giant logo beside a torso — use wide/full. Pose must be anatomically possible. Optional `negativePrompt`: `blurry, low resolution, watermark, signature, distorted hands, extra fingers, deformed face, garbled text, misspelled letters, low contrast, washed out, generic stock photo`.
+Do **not** put in the prompt: ALL-CAPS emphasis, CTR/viral speak, 8K/masterpiece piles, "preserve face fidelity" (the generate route appends the IDENTITY / AVATAR lock), "professionally/stunning", invalid framings (`ultra close-up`). Medium shot cannot hold a giant logo beside a torso — use wide/full. Pose must be anatomically possible. Optional `negativePrompt`: `blurry, low resolution, watermark, signature, distorted hands, extra fingers, deformed face, garbled text, misspelled letters, low contrast, washed out, generic stock photo`.
+
+### ITERATE / ADJUST — short edit
+
+Examples: `Change the overlay to "C'EST FINI ?" in bold yellow. Keep face, pose, curtains, mascot, lighting.` / `Same image, serious closed-mouth look instead of shock.` Optional negative stays the usual artifacts list.
 
 ## Place the node
 
@@ -57,19 +68,23 @@ Target, first match:
 
 | Target | Tool |
 |---|---|
-| `iv-prompt` (create or rewrite) | `place_node` `{ "node": { "id": "iv-prompt", "type": "prompt", "data": { "prompt": "<7 sentences>", "negativePrompt": "<optional>" } } }` |
+| `iv-prompt` (create or rewrite) | `place_node` `{ "node": { "id": "iv-prompt", "type": "prompt", "data": { "prompt": "<first gen: 7 sentences | iterate: short delta>", "negativePrompt": "<optional>" } } }` |
 | Other prompt id (`prompt-1`, `prompt-a`, …) | `apply_workflow` — only that node: `{ "nodes": [{ "id": "<id>", "type": "prompt", "data": { "prompt": "…" } }], "edges": [] }`. `project_id` from `<project_id>`. Omit = keep. |
 
 Do not add a generator. Do not delete nodes. Do not dump JSON to chat.
 
 ## Close
 
-`finish_turn` last, **alone**: 1–2 sentence `summary` (the prompt is on the canvas). Optional `focus_node` on that prompt id. Optional `ask_agent` ("Dessine un croquis", "Ajoute le générateur"). **Never** `kind: "generate"`. Never click **Générer**.
+`finish_turn` last, **alone**: 1–2 sentence `summary` (the prompt is on the canvas). **`results: []`. `next_actions: []`.**
+
+Do **not** ask what to do next. No `ask_user` after placing. No `ask_agent`. No `focus_node`. No `kind: "generate"`. No « Et maintenant ». Never `generate_sketch`. Never click **Générer**. Stop. The chat already shows the prompt from `place_node` / `apply_workflow`.
 
 ## Examples
 
 **Bare `/create-prompt`** — idea empty. `ask_user` free question about the video + focal subject. Stop.
 
-**`/create-prompt moi à droite, logo Claude, texte ADIEU ?`** — 7-sentence prompt (man right third, Claude left, medium shot with action, "ADIEU ?" top-left, orange key / navy ground, photorealistic cinematic). `place_node` `iv-prompt`. `finish_turn` with `focus_node: "iv-prompt"`.
+**`/create-prompt moi à droite, logo Claude, texte ADIEU ?`** — 7-sentence prompt (the person in the identity/avatar photos, right third, Claude left, medium shot with action, "ADIEU ?" top-left, orange key / navy ground, photorealistic cinematic). `place_node` `iv-prompt`. `finish_turn` `{ "summary": "…", "results": [], "next_actions": [] }`.
 
-**Canvas has `prompt-1`, they said "remplace le prompt, plus de contraste"** — `apply_workflow` that id only. `finish_turn`.
+**Canvas has a generated preview on `ref-in`, they said "améliore cette miniature / plus sérieux, texte C'EST FINI ?"** — iterate: short edit prompt only + that image as source. Narrate original prompt + this gen + the change. Do not rewrite "Young man in the left third…". `finish_turn` with empty `next_actions`.
+
+**Canvas has `prompt-1`, they said "remplace le prompt, plus de contraste"** — if no generated thumb is the work source, full anatomy (first gen, A/B = two full prompts); if a generated aperçu is the source, keep it a short delta. `apply_workflow` that id only. `finish_turn` with empty `next_actions`.

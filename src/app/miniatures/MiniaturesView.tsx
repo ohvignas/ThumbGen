@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, ImagePlus, Images, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Download, ImagePlus, Images, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { RunIndicator } from "@/components/agent-runs/RunIndicator";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import ConfirmDialog from "@/components/settings/ConfirmDialog";
+import { toast } from "@/components/ui/toast";
+import { useCanvasStore } from "@/store/canvas-store";
+import {
+  DOWNLOAD_EMPTY_FR,
+  DOWNLOAD_ERROR_FR,
+  HQ_DOWNLOAD_LABEL,
+  LQ_DOWNLOAD_LABEL,
+  downloadThumbnail,
+  type ThumbnailDownloadQuality,
+} from "@/lib/canvas/download-thumbnail";
+import ImageIdBadge from "@/components/ImageIdBadge";
+import { visibleImageIdFromValue } from "@/lib/canvas/visible-image-id";
 
 type VideoProject = {
   id: string;
@@ -34,6 +47,7 @@ type VideoProject = {
   createdAt: string;
   updatedAt: string;
   imageCount: number;
+  coverImageUrl?: string | null;
 };
 
 // Full class strings so Tailwind keeps them; picked per project from its id so
@@ -59,7 +73,28 @@ function formatDate(iso: string): string {
   return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function ProjectTile({ id, children }: { id: string; children?: ReactNode }) {
+function ProjectTile({ id, coverUrl, name, children }: { id: string; coverUrl?: string | null; name: string; children?: ReactNode }) {
+  const [broken, setBroken] = useState(false);
+
+  useEffect(() => {
+    setBroken(false);
+  }, [coverUrl]);
+
+  if (coverUrl && !broken) {
+    return (
+      <div className="relative aspect-video overflow-hidden bg-muted">
+        <img
+          src={coverUrl}
+          alt={name}
+          className="size-full object-cover"
+          onError={() => setBroken(true)}
+        />
+        <ImageIdBadge id={visibleImageIdFromValue(coverUrl)} />
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className={`relative flex aspect-video items-center justify-center overflow-hidden bg-linear-to-br ${gradientFor(id)}`}>
       <div className="absolute -top-1/2 -left-1/4 size-[120%] rounded-full bg-white/20 blur-3xl" />
@@ -155,8 +190,13 @@ function ProjectFormDialog({
 
 export default function MiniaturesView() {
   const router = useRouter();
+  const cancelPendingSave = useCanvasStore((s) => s.cancelPendingSave);
+  const currentProjectId = useCanvasStore((s) => s.currentProjectId);
   const [projects, setProjects] = useState<VideoProject[] | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<VideoProject | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -193,10 +233,32 @@ export default function MiniaturesView() {
     router.push(`/m/${project.id}`);
   };
 
-  const remove = async (project: VideoProject) => {
-    if (!confirm(`Supprimer « ${project.name} » et son canvas ?`)) return;
-    await fetch(`/api/projects?id=${encodeURIComponent(project.id)}`, { method: "DELETE" });
-    load();
+  const downloadCover = async (src: string | null | undefined, quality: ThumbnailDownloadQuality) => {
+    const result = await downloadThumbnail(src, quality);
+    if (result === "empty") toast({ title: DOWNLOAD_EMPTY_FR });
+    if (result === "error") toast({ title: DOWNLOAD_ERROR_FR });
+  };
+
+  const remove = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    if (currentProjectId === pendingDelete.id) cancelPendingSave();
+    try {
+      const res = await fetch(`/api/projects?id=${encodeURIComponent(pendingDelete.id)}`, { method: "DELETE" });
+      if (!res.ok) {
+        setDeleteError("La suppression a échoué. Réessaie.");
+        toast({ title: "Impossible de supprimer le projet" });
+        return;
+      }
+      setPendingDelete(null);
+      await load();
+    } catch {
+      setDeleteError("La suppression a échoué. Réessaie.");
+      toast({ title: "Impossible de supprimer le projet" });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -250,7 +312,7 @@ export default function MiniaturesView() {
               onKeyDown={(e) => { if (e.key === "Enter") router.push(`/m/${project.id}`); }}
               className="cursor-pointer gap-0 pt-0 transition-colors hover:border-ring focus-visible:border-ring focus-visible:outline-none"
             >
-              <ProjectTile id={project.id}>
+              <ProjectTile id={project.id} name={project.name} coverUrl={project.coverImageUrl}>
                 <RunIndicator projectId={project.id} className="absolute top-3 right-3 size-3" />
               </ProjectTile>
               <CardHeader className="pt-4">
@@ -266,19 +328,48 @@ export default function MiniaturesView() {
                           variant="ghost"
                           size="icon"
                           aria-label={`Actions pour ${project.name}`}
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <MoreHorizontal />
                         </Button>
                       }
                     />
-                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuContent
+                      align="end"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          disabled={!project.coverImageUrl}
+                          onClick={() => {
+                            void downloadCover(project.coverImageUrl, "lq");
+                          }}
+                        >
+                          <Download />
+                          {LQ_DOWNLOAD_LABEL}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={!project.coverImageUrl}
+                          onClick={() => {
+                            void downloadCover(project.coverImageUrl, "hq");
+                          }}
+                        >
+                          <Download />
+                          {HQ_DOWNLOAD_LABEL}
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setForm({ mode: "edit", project })}>
                           <Pencil />
                           Modifier
                         </DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive" onClick={() => remove(project)}>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setPendingDelete(project);
+                          }}
+                        >
                           <Trash2 />
                           Supprimer
                         </DropdownMenuItem>
@@ -303,6 +394,25 @@ export default function MiniaturesView() {
       )}
 
       <ProjectFormDialog state={form} onClose={() => setForm(null)} onSubmit={submitForm} />
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) {
+            setPendingDelete(null);
+            setDeleteError(null);
+          }
+        }}
+        title="Supprimer ce projet ?"
+        description={
+          pendingDelete
+            ? `« ${pendingDelete.name} » et son canvas seront supprimés. Les miniatures générées de ce projet partent avec.`
+            : ""
+        }
+        confirmLabel="Supprimer"
+        busy={deleting}
+        onConfirm={() => void remove()}
+        error={deleteError}
+      />
     </div>
   );
 }

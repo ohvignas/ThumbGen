@@ -1,6 +1,7 @@
-import type { VideoPerformance } from "@/lib/youtube/performance";
+import { ageInDays, type VideoPerformance } from "@/lib/youtube/performance";
 import { thumbTypeLabel, type ThumbTypeFilter } from "@/lib/youtube/thumb-types";
-import { QUOTA_SYNC_ERROR, type ChannelListItem, type ChannelsResponse } from "@/lib/youtube/types";
+import { QUOTA_SYNC_ERROR, type CaptionKind, type CaptionStatus, type ChannelListItem, type ChannelsResponse } from "@/lib/youtube/types";
+import type { WhyHoldBand } from "@/lib/youtube/why-categories";
 
 /** Pure display helpers for « Chaînes suivies » (French formats, labels, badge tones). */
 
@@ -23,6 +24,18 @@ export function formatViews(views: number): string {
 
 export function formatViewsPerDay(views: number): string {
   return `${formatCompact(views)} vues/j`;
+}
+
+export function formatViewsPerHour(views: number): string {
+  return `${formatCompact(views)} vues/h`;
+}
+
+export function climbHint(kind: "delta" | "average"): string {
+  return kind === "delta" ? "Ça grimpe : écart de vues entre deux relevés" : "Moyenne depuis la publication (un seul relevé)";
+}
+
+export function formatJevNote(note: number): string {
+  return `${note.toFixed(1).replace(".", ",")}/10`;
 }
 
 export function formatSubscribers(count: number | null): string {
@@ -54,6 +67,26 @@ export function formatPublishedDate(iso: string): string {
   return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 }
 
+export function formatVideoAge(publishedAt: string, now: Date = new Date()): string {
+  const days = ageInDays(publishedAt, now);
+  if (days < 1) return "moins d'un jour";
+  if (days < 1.5) return "1 jour";
+  if (days < 45) return `${Math.round(days)} jours`;
+  if (days < 365) {
+    const months = Math.max(1, Math.round(days / 30));
+    return months <= 1 ? "1 mois" : `${months} mois`;
+  }
+  const years = Math.max(1, Math.round(days / 365));
+  return years <= 1 ? "1 an" : `${years} ans`;
+}
+
+export function descriptionExcerpt(text: string, max = 220): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  if (compact.length <= max) return compact;
+  return `${compact.slice(0, max - 1).trimEnd()}…`;
+}
+
 export function channelStatusLabel(
   channel: Pick<ChannelListItem, "syncStatus" | "syncError" | "lastSyncedAt" | "videoCount">,
   now: Date,
@@ -80,6 +113,10 @@ const BAND_HINTS = {
   under: "Sous-performe : moins de la moitié de la médiane de la chaîne",
 } as const;
 
+export function performanceBandLabel(band: "over" | "neutral" | "under"): string {
+  return band === "over" ? "Surperforme" : band === "under" ? "Sous-performe" : "Dans la moyenne";
+}
+
 export function performanceBadge(performance: VideoPerformance): PerformanceBadge | null {
   if (performance.kind === "none") return null;
   if (performance.kind === "recent") {
@@ -104,6 +141,43 @@ export function toggleFilterValue<T extends string>(values: readonly T[], value:
 }
 
 /** Changes whenever a sync or the classification made progress: lists refetch on it. */
+export const WHY_DISCLAIMER =
+  "Sans YouTube Studio : pas de CTR, pas d'impressions, pas de rétention. ×N = vues ÷ médiane de la chaîne.";
+
+export function captionSourceLabel(input: { status: CaptionStatus; kind: CaptionKind | null; language: string | null }): string {
+  if (input.status === "missing") return "Pas de sous-titres publics — on ne peut pas juger l'accroche parlée";
+  if (input.status === "blocked") return "Sous-titres inaccessibles pour le moment";
+  const lang = input.language ? ` (${input.language})` : "";
+  if (input.kind === "official") return `Sous-titres officiels${lang}`;
+  if (input.kind === "asr") return `Sous-titres auto${lang}`;
+  return `Sous-titres publics${lang}`;
+}
+
+export function holdBandLabel(band: WhyHoldBand): string {
+  if (band === "holds") return "ouverture parlée plutôt retenante";
+  if (band === "drops") return "ouverture parlée peu retenante";
+  return "ouverture parlée incertaine (Jev ~50/50)";
+}
+
+export function whyFactsSentence(input: {
+  performance: VideoPerformance;
+  channelTitle: string;
+  publishedAt: string;
+  viewCount: number;
+  now?: Date;
+}): string {
+  const age = formatVideoAge(input.publishedAt, input.now);
+  const views = formatViews(input.viewCount);
+  const tail = `Âge : ${age}. ${views}.`;
+  if (input.performance.kind === "scored") {
+    return `Cette vidéo fait ${formatScore(input.performance.score)} vs la médiane de cette chaîne (${input.channelTitle}). ${tail}`;
+  }
+  if (input.performance.kind === "recent") {
+    return `Cette vidéo a moins de 7 jours : trop tôt pour un ×N vs la médiane de cette chaîne. ${tail}`;
+  }
+  return `Score ×N indisponible pour cette chaîne. ${tail}`;
+}
+
 export function channelsDataVersion(data: ChannelsResponse): string {
   const channels = data.channels
     .map((channel) => `${channel.id}:${channel.syncStatus}:${channel.lastSyncedAt ?? ""}:${channel.videoCount}`)

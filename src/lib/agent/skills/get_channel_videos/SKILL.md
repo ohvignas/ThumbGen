@@ -15,7 +15,7 @@ Live YouTube Data API catalog of **one** channel. Text only (ids, titles, dates,
 
 ## When not
 
-- **Followed / « Ma chaîne »** (chat) → `list_followed_videos`. Local `channel_videos`, **0 quota**, shorts already dropped, performance `×score` / « récente » / `n/a`, thumbnail types, lines `youtube:<videoId>`. `scope` `"mine"` (default) or `"all"`; `sort` `"date"` (default) or `"score"` (views ÷ channel median, **not** `viewCount`); `best_type: true` keeps the winning type when ≥3 scored thumbs exist; `limit` 1–12, default 5. No « Ma chaîne » → a **text** answer, not `isError`.
+- **Followed / « Ma chaîne »** (chat) → `list_followed_videos`. Local `channel_videos`, **0 quota**, shorts already dropped, performance `×score` / « récente » / `n/a`, lines `youtube:<videoId>`. `scope` `"mine"` (default) or `"all"`; `sort` `"date"` (default) or `"score"` (views ÷ channel median, **not** `viewCount`); `best_type: true` keeps the winning **title/description theme** when ≥3 scored thumbs exist; `limit` 1–12, default 5. No « Ma chaîne » → a **text** answer, not `isError`.
 - **Keyword inside a channel** ("trouve la vidéo Claude sur @x") → `search_youtube_channel`. Same 100-quota `search.list`, same `channel` resolver, optional `query`, **always** `order=date`, **no** `viewCount` sort. Empty + query → `No videos matching "<query>" in this channel.`
 - **Open-web / topic search** → `search_youtube` (region FR, duration medium / shorts excluded, optional thumbnail images, `result_id`). Scored FR/EN niche outliers → `find_competitor_thumbnails` (max 2 searches / conversation).
 - They already have a **video id or watch URL** and want that thumb or transcript → `import_youtube_thumbnail` / `extract_youtube_script`. Do not list the whole channel first.

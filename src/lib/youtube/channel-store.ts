@@ -1,6 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { getDb } from "@/lib/db";
 import type { ViewSample } from "./performance";
+import { insertStatSnapshots, pruneStatSnapshots } from "./stat-snapshots";
 import type { ThumbType } from "./thumb-types";
 import type { ChannelDetails, ChannelListItem, SyncStatus, VideoDetails } from "./types";
 
@@ -45,6 +46,7 @@ export type VideoRow = {
   classify_attempts: number;
   classify_approved: number;
   swipe_file_id: string | null;
+  description: string | null;
   created_at: string;
 };
 
@@ -199,6 +201,16 @@ export function allChannelIds(): string[] {
   ).map((row) => row.id);
 }
 
+export function listFollowedForPoll(): Array<{ id: string; youtubeChannelId: string; playlistId: string | null }> {
+  return getDb()
+    .prepare(
+      `SELECT id, youtube_channel_id AS youtubeChannelId, playlist_id AS playlistId
+       FROM followed_channels
+       ORDER BY is_mine DESC, created_at ASC`,
+    )
+    .all() as Array<{ id: string; youtubeChannelId: string; playlistId: string | null }>;
+}
+
 /** Never synced first, then the oldest sync; « Ma chaîne » before the others. */
 export function staleChannelIds(cutoffIso: string): string[] {
   return (
@@ -257,8 +269,12 @@ export function upsertVideos(channelId: string, videos: readonly VideoDetails[],
         description: video.description ?? "",
         stamp: stampIso,
       });
+      insertStatSnapshots([
+        { videoId: video.videoId, capturedAt: stampIso, viewCount: video.viewCount, likeCount: video.likeCount },
+      ]);
     }
   })();
+  pruneStatSnapshots(new Date(stampIso));
 }
 
 export function videoIdsToRefresh(channelId: string, stampIso: string): string[] {
@@ -291,8 +307,12 @@ export function updateVideoStats(videos: readonly VideoDetails[], stampIso: stri
         description: video.description ?? "",
         stamp: stampIso,
       });
+      insertStatSnapshots([
+        { videoId: video.videoId, capturedAt: stampIso, viewCount: video.viewCount, likeCount: video.likeCount },
+      ]);
     }
   })();
+  pruneStatSnapshots(new Date(stampIso));
 }
 
 export function deleteVideos(videoIds: readonly string[]): void {

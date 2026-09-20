@@ -11,7 +11,6 @@ const state = vi.hoisted(() => ({
   rows: [] as Row[],
   brief: null as ThumbnailBrief | null,
   reserve: null as null | ((...args: unknown[]) => unknown),
-  briefToolBuilds: [] as Array<{ conversationId: string; projectId: string; writeBriefUpdated: (data: unknown) => void }>,
 }));
 
 vi.mock("@/lib/agent/conversation/store", () => ({
@@ -32,13 +31,6 @@ vi.mock("@/lib/brief/store", () => ({
   releaseBriefUsage: vi.fn(),
   updateBrief: vi.fn(),
 }));
-vi.mock("@/lib/agent/v2/update-brief-tool", () => ({
-  UPDATE_BRIEF_TOOL_NAME: "update_brief",
-  buildUpdateBriefTool: (options: { conversationId: string; projectId: string; writeBriefUpdated: (data: unknown) => void }) => {
-    state.briefToolBuilds.push(options);
-    return { description: "update_brief (test)", inputSchema: {}, execute: async () => ({ content: [] }) };
-  },
-}));
 
 const streamTextMock = vi.fn();
 vi.mock("ai", async (importOriginal) => {
@@ -48,13 +40,11 @@ vi.mock("ai", async (importOriginal) => {
 
 import { setSetting } from "@/lib/settings";
 import { emptyBrief } from "@/lib/brief/schema";
-import { HISTORY_SKETCH_PLACEHOLDER } from "@/lib/agent/v2/history-images";
 import { postV2 } from "@/lib/agent/v2/route-handler";
-import { getRun, resetRunRegistry } from "@/lib/agent/v2/run-registry";
+import { resetRunRegistry } from "@/lib/agent/v2/run-registry";
 import { chatRequest, fakeStreamResult, waitForRunEnd } from "./helpers/chat-route";
 
 const FILE = { type: "file", mediaType: "image/png", data: { type: "data", data: "U0tFVENI" } };
-const T = "2026-09-17T10:00:00.000Z";
 const question = { question: "Quelle stratégie ?", step: 4, options: [{ id: "a", label: "Concepts" }] };
 
 const userRow = (text: string): Row => ({
@@ -101,7 +91,7 @@ const lastCall = () =>
 
 const newTurn = (conversationId: string) => ({ conversation_id: conversationId, messages: [{ role: "user", parts: [{ type: "text", text: "Continue" }] }] });
 
-describe("chat route — thumbnail brief", () => {
+describe("chat route — fiche miniature is gone", () => {
   let fake: ReturnType<typeof fakeStreamResult>;
   const fetchMock = vi.fn();
 
@@ -110,7 +100,6 @@ describe("chat route — thumbnail brief", () => {
     state.rows = [];
     state.brief = null;
     state.reserve = null;
-    state.briefToolBuilds.length = 0;
     setSetting("openrouterApiKey", "test-key");
     setSetting("agentWebSearch", "");
     fake = fakeStreamResult();
@@ -122,45 +111,27 @@ describe("chat route — thumbnail brief", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("without a brief: web search stays on and no brief block is sent", async () => {
-    await postV2(chatRequest(newTurn("c-none")));
-    expect(lastCall().providerOptions.openrouter.web_search_options).toEqual({});
-    // The static prompt names <thumbnail_brief>; the per-turn block is the only one that closes it.
-    expect(lastCall().system).not.toContain("</thumbnail_brief>");
-    await fake.end();
-    await waitForRunEnd("c-none");
-  });
-
-  it("with a brief: no web search, and the brief block after canvas_state", async () => {
+  it("never sends a thumbnail_brief block and keeps web search on even if a stored brief exists", async () => {
     state.brief = { ...emptyBrief(), step: 4 };
     await postV2(chatRequest({ ...newTurn("c-brief"), canvas_snapshot: { nodes: [], edges: [] } }));
     const { system, providerOptions } = lastCall();
-    expect(providerOptions.openrouter).not.toHaveProperty("web_search_options");
-    expect(system).toContain("</thumbnail_brief>");
-    expect(system.lastIndexOf("<thumbnail_brief>")).toBeGreaterThan(system.lastIndexOf("</canvas_state>"));
+    expect(providerOptions.openrouter.web_search_options).toEqual({});
+    expect(system).not.toContain("<thumbnail_brief>");
+    expect(system).not.toContain("</thumbnail_brief>");
     await fake.end();
     await waitForRunEnd("c-brief");
   });
 
-  it("gives the model update_brief for this conversation and streams brief updates as transient chunks", async () => {
+  it("does not give the model update_brief", async () => {
     await postV2(chatRequest(newTurn("c-chunk")));
-    expect(Object.keys(lastCall().tools)).toEqual(expect.arrayContaining(["update_brief", "ask_user", "place_node", "generate_sketch"]));
-    expect(state.briefToolBuilds).toHaveLength(1);
-    expect(state.briefToolBuilds[0]).toMatchObject({ conversationId: "c-chunk", projectId: "proj_brief" });
-    fake.push({ type: "tool-input-available", toolCallId: "u1", toolName: "update_brief", input: {} });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    state.briefToolBuilds[0].writeBriefUpdated({ conversationId: "c-chunk", step: 4, updatedAt: T });
+    expect(Object.keys(lastCall().tools)).toEqual(expect.arrayContaining(["ask_user", "place_node", "generate_sketch"]));
+    expect(Object.keys(lastCall().tools)).not.toContain("update_brief");
     await fake.end();
     await waitForRunEnd("c-chunk");
-    expect(getRun("c-chunk")!.chunks).toContainEqual({
-      type: "data-brief-updated",
-      id: "c-chunk",
-      transient: true,
-      data: { conversationId: "c-chunk", step: 4, updatedAt: T },
-    });
   });
 
-  it("guards generate_sketch through the brief: a refused sketch never reaches the image API", async () => {
+  it("guards generate_sketch: a refused sketch never reaches the image API", async () => {
+    state.brief = emptyBrief();
     state.reserve = () => ({ status: "refused", reason: "Esquisse refusée : test" });
     await postV2(chatRequest(newTurn("c-guard")));
     const output = (await lastCall().tools.generate_sketch.execute!({ prompt: "x" }, { toolCallId: "s1", messages: [] })) as {
@@ -174,7 +145,7 @@ describe("chat route — thumbnail brief", () => {
     await waitForRunEnd("c-guard");
   });
 
-  it("with a brief, trims images older than the last answered question, even within the turn", async () => {
+  it("does not trim older sketch images just because a stored brief exists", async () => {
     const continuation = (conversationId: string) => ({
       conversation_id: conversationId,
       messages: [
@@ -191,21 +162,10 @@ describe("chat route — thumbnail brief", () => {
       throw new Error("no sketch result");
     };
 
-    state.rows = [userRow("Aide-moi"), sketchRow(), askCallRow("q1"), askResultRow("q1"), askCallRow("q2")];
-    await postV2(chatRequest(continuation("c-trim-none")));
-    expect(sketchParts().map((part) => part.type)).toEqual(["text", "file"]);
-    await fake.end();
-    await waitForRunEnd("c-trim-none");
-
-    fake = fakeStreamResult();
-    streamTextMock.mockImplementation(() => fake);
     state.brief = { ...emptyBrief(), step: 7 };
     state.rows = [userRow("Aide-moi"), sketchRow(), askCallRow("q1"), askResultRow("q1"), askCallRow("q2")];
     await postV2(chatRequest(continuation("c-trim-brief")));
-    expect(sketchParts()).toEqual([
-      { type: "text", text: "Sketch" },
-      { type: "text", text: HISTORY_SKETCH_PLACEHOLDER },
-    ]);
+    expect(sketchParts().map((part) => part.type)).toEqual(["text", "file"]);
     await fake.end();
     await waitForRunEnd("c-trim-brief");
   });

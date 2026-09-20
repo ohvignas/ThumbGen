@@ -1,6 +1,6 @@
 ---
 name: ask_user
-description: Asks the user one clickable chat-card question (0-12 options, always Autre, optional Passer) and pauses until they pick, type, or skip. Use when a real choice or a free question is still needed. Omit leftover step — there is no numbered interview. Never the same model step as place_node or finish_turn; not for file uploads (request_user_image) or facts already known.
+description: Asks the user one clickable chat-card question (0-12 text options with a full label plus one-line description, always Autre, optional Passer) and pauses until they pick, type, or skip. Never photos or persona/logo tiles. Use when a real choice or a free question is still needed. Omit leftover step — there is no numbered interview. Never the same model step as place_node or finish_turn; not for file uploads (request_user_image) or facts already known.
 ---
 
 # ask_user
@@ -15,7 +15,7 @@ There is **no** numbered thumbnail pipeline. Do **not** mention « Étape n/7 »
 
 - A short **choice** is faster than typing: packages to keep, which Personnage, which logos, which refs, which sketch to keep.
 - A **free question** (`options: []`): they type in the card (« Ta réponse… »), not in the composer.
-- After `list_personas` / `list_logos` / `list_swipe_files` / `find_logos` / `search_youtube` / `list_followed_videos` / `generate_sketch`, when they must pick among those refs.
+- After `list_personas` / `list_logos` / `list_swipe_files` / `find_logos` / `search_youtube` / `list_followed_videos` / `generate_sketch`, when they must pick among those refs — name them in the label, do not attach their photo.
 
 ## When not
 
@@ -38,36 +38,28 @@ There is **no** numbered thumbnail pipeline. Do **not** mention « Étape n/7 »
 | `max_selected` | no | Only with `multiple: true`. Integer **1–5**. Omit to use `min(5, options.length)`. Sending it when `multiple` is false is refused. |
 | `allow_skip` | no | Default `true` → « Passer ». Set `false` when they really must answer (typical for a free question about the video). |
 
-Each option:
+Each option is a **short clear French sentence**, not an image chip:
 
 | Field | Required | Rules |
 | --- | --- | --- |
 | `id` | yes | Trimmed, 1–40 characters, **unique** in the list. This is what comes back in `selected`. Use the stable source id (persona id, `stored:lg_` id, `lc_…` candidate id, YouTube videoId) — not the label. |
-| `label` | yes | Trimmed, 1–60 characters. Shown on the tile/row. |
-| `description` | no | Trimmed, max 140 characters. One muted line under the label. |
-| `image` | no | One **ref prefix** below. Never a URL, never `stored:gi_`, never `preview:`. Suffix after the prefix must be `[A-Za-z0-9_-]+` or the card ignores it. |
+| `label` | yes | Trimmed, 1–60 characters. The full readable title — a complete phrase they can understand without a photo. Not a truncated chip (« Texte : 'C'EST FI… »). |
+| `description` | yes when the label needs context | Trimmed, max 140 characters. One full line under the label: what changes if they pick this. |
+| `image` / `image_url` | **OMIT** | The card is **text only**. Photos, `image`, `image_url`, persona, logo, canvas, YouTube and sketch refs are **ignored**. Never decorate a choice with a character photo, a logo, a broken tile, or a canvas thumbnail. |
 
-### Option images
+### Write the options (not the pictures)
 
-Copy refs **verbatim** from the list / find / sketch tools. The first **recognized** image sets the grid for **every** option (do not mix square and wide in one question).
+The card shows the **question**, then one row per option: **full label** + **one-line description**. No thumbnails. More than 6 options → two text columns.
 
-| `image` value | Tile | Renders |
-| --- | --- | --- |
-| `stored:persona_<id>` | square, 3 columns | `/api/personas/image?id=<id>&angle=front` |
-| `stored:lg_<id>` | square, 3 columns | `/api/logos/image?f=<id>` |
-| `stored:sf_<id>` | wide 16:9, 2 columns | `/api/swipe-files/image?f=<id>` |
-| `youtube:<videoId>` | wide 16:9, 2 columns | `https://i.ytimg.com/vi/<videoId>/mqdefault.jpg` |
-| `generated:sk_<id>` | wide 16:9, 2 columns | `/api/generated-sketches/sk_<id>` |
-| `logo-candidate:<id>` | **if present** from `find_logos` (`logo-candidate:<id> \| name \| source`) | Pass the full `logo-candidate:<id>` as `image`. Use `<id>` (e.g. `lc_…`) as `options[].id` so `selected` is ready for `add_logo`. The card mapper currently resolves only the five prefixes above — an unrecognized prefix is not a thumbnail (text row, or a placeholder tile if another option already opened image mode). Still pass it; the clickable id is what matters. |
-
-Broken images swap to a placeholder; that is not an error.
-
-No recognized `image` → text rows. More than 6 text options → two columns.
+- Conceptual choices (A/B variable, package, emotion, text vs visuel): name the variable in the label, say what would change in the description. Do **not** attach the current thumb, the Personnage, or a logo to “illustrate” it — those pictures make the question unreadable.
+- Picking a Personnage / logo / vidéo / esquisse: `label` = the human name, `description` = one cue (source, rôle). Still **no** `image`.
+- French, same language as the question. One idea per option.
 
 ### Card (what they see)
 
+- **Question** always visible at the top (never hide it).
 - **0 options:** only the text field, placeholder « Ta réponse… », plus « Envoyer ». No option buttons.
-- **1+ options:** tiles/rows, plus a field placeholder « Autre… » (always). « Envoyer » stays disabled until the field is non-blank (max 300 characters).
+- **1+ options:** text rows (full label + description), plus a field placeholder « Autre… » (always). « Envoyer » stays disabled until the field is non-blank (max 300 characters). No photos.
 - **Single** (`multiple` false): one click on an option answers immediately `{ selected: [that id] }`. No « Valider ».
 - **Multiple:** toggles, helper « Jusqu'à N choix ». Extra options disable once N are on. « Valider » stays disabled until at least one pick. Submit sends `{ selected }` in **options-array order**, not click order.
 - **« Passer »:** only if `allow_skip` is true (the default). Sends `{ skipped: true }`.
@@ -87,7 +79,7 @@ Exactly one of:
 ```
 
 - `{ selected }` — clicked option ids. Single click → one id. Multiple + « Valider » → 1–`max_selected` ids, in the order you listed the options. Unknown ids are still returned as-is (use your own ids).
-- `{ other }` — « Autre » / free field, trimmed. With **no** options this **is** the answer (folded without an « Autre : » prefix). With options it means they refused every tile and typed instead.
+- `{ other }` — « Autre » / free field, trimmed. With **no** options this **is** the answer (folded without an « Autre : » prefix). With options it means they refused every row and typed instead.
 - `{ skipped: true }` — they clicked « Passer ».
 - `{ skipped: true, reason: "abandoned" }` — they sent a **composer message** instead of answering. Treat as « sans réponse »: read that message; do not wait on the card. Do not re-ask the same question unless it is still needed.
 
@@ -103,7 +95,7 @@ No server `execute`. Failures are schema / card parse:
 - Limits: `question` 1–200; `options` ≤ 12; `id` 1–40; `label` 1–60; `description` ≤ 140; `max_selected` 1–5.
 - Sending leftover `step` 8 (old F2 last question) is refused for new calls. Do not send `step` at all.
 - If the card cannot parse the input → « Question illisible » and « Passer » (`{ skipped: true }`). Fix the input and ask again only if you still need the answer.
-- Unrecognized `image` is silent (no thumbnail), not a tool error.
+- `image` / `image_url` on an option is silent (the card never shows it), not a tool error.
 
 ## Chains
 
@@ -111,17 +103,29 @@ Typical: list/find/sketch in an **earlier** step of the turn → `ask_user` **al
 
 After the answer, in **later** steps of the resumed turn:
 
-1. `{ selected }` from `logo-candidate:` tiles → `add_logo` with each `candidate_id` (the option id) → you get `stored:lg_<id>`. One obvious `find_logos` hit: skip the question, `add_logo` directly.
-2. `{ selected }` Personnage → `stored:persona_<id>` on the brief / `face_source` / `iv-persona`. Include an « Aucun » option (`id: "none"`, no image) when a face is optional.
-3. `{ selected }` sketches → keep those `generated:sk_<id>`. `{ other }` / skip → listen and continue without forcing a pick.
-4. Record a stable decision with `update_brief` when it belongs on the Fiche.
-5. End the resumed turn with `finish_turn` **once, alone** (summary; `next_actions` if useful). Never `finish_turn` in the same step as this tool.
+1. `{ selected }` from logo-candidate **text** options → `add_logo` with each `candidate_id` (the option id) → you get `stored:lg_<id>`. One obvious `find_logos` hit: skip the question, `add_logo` directly.
+2. `{ selected }` Personnage → `stored:persona_<id>` on `face_source` / `iv-persona`. Include an « Aucun » option (`id: "none"`) when a face is optional.
+3. `{ selected }` sketches → keep those `generated:sk_<id>` (ids, not pictures on the card). `{ other }` / skip → listen and continue without forcing a pick.
+4. End the resumed turn with `finish_turn` **once, alone** (summary; `next_actions` if useful). Never `finish_turn` in the same step as this tool. Do not write a Fiche.
 
 Do not `place_node` / `apply_workflow` in the same step as `ask_user`. Do not start a paid generation; « Générer » is the user's click on `finish_turn` kind `generate`.
 
 ## Example
 
-User named Claude and Notion; `find_logos` returned two non-obvious hits each. Ask which to keep (skip allowed). **Omit `step`.**
+Conceptual A/B (never decorate with the current thumb, the Personnage, or a logo):
+
+```json
+{
+  "question": "La miniature actuelle a une superbe énergie. Quelle variable veux-tu tester en priorité pour ta variante B ?",
+  "options": [
+    { "id": "text", "label": "Le texte de la miniature", "description": "Remplacer « C'EST FINI » par un autre hook, garder le reste." },
+    { "id": "emotion", "label": "L'émotion du regard", "description": "Changer l'expression du personnage, garder texte et composition." },
+    { "id": "visual", "label": "Le sujet visuel", "description": "Remplacer le visuel (Pierre / mascotte), garder texte et émotion." }
+  ]
+}
+```
+
+User named Claude and Notion; `find_logos` returned two non-obvious hits each. Ask which to keep (skip allowed). **Omit `step`. No `image`.**
 
 ```json
 {
@@ -130,15 +134,15 @@ User named Claude and Notion; `find_logos` returned two non-obvious hits each. A
   "max_selected": 3,
   "allow_skip": true,
   "options": [
-    { "id": "lc_aaa111", "label": "Claude", "description": "Simple Icons", "image": "logo-candidate:lc_aaa111" },
-    { "id": "lc_bbb222", "label": "Anthropic", "description": "SVGL", "image": "logo-candidate:lc_bbb222" },
-    { "id": "lc_ccc333", "label": "Notion", "description": "Simple Icons", "image": "logo-candidate:lc_ccc333" },
-    { "id": "lc_ddd444", "label": "Notion calendar", "description": "Wikimedia", "image": "logo-candidate:lc_ddd444" }
+    { "id": "lc_aaa111", "label": "Logo Claude", "description": "Simple Icons — à garder sur la miniature." },
+    { "id": "lc_bbb222", "label": "Logo Anthropic", "description": "SVGL — variante du même outil." },
+    { "id": "lc_ccc333", "label": "Logo Notion", "description": "Simple Icons — à garder sur la miniature." },
+    { "id": "lc_ddd444", "label": "Logo Notion Calendar", "description": "Wikimedia — seulement si tu parles de l'agenda." }
   ]
 }
 ```
 
-They toggle Claude + Notion, then « Valider » → `{ "selected": ["lc_aaa111", "lc_ccc333"] }` (option order). Next steps: `add_logo` twice, then `update_brief`, then `finish_turn` alone.
+They toggle Claude + Notion, then « Valider » → `{ "selected": ["lc_aaa111", "lc_ccc333"] }` (option order). Next steps: `add_logo` twice, then `finish_turn` alone.
 
 Free question (must answer — no Passer):
 

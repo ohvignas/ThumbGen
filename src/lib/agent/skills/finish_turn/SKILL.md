@@ -1,11 +1,11 @@
 ---
 name: finish_turn
-description: Ends every Brainstorm turn as the last, alone tool call so the chat shows only summary, visual result_id cards, and 0–3 next_actions (ask_agent, focus_node, generate). Use after other tools return. Never ask_agent that starts a paid generation.
+description: Ends every Brainstorm turn as the last, alone tool call so the chat shows only summary and visual result_id cards. next_actions must be []. Use after other tools return. Never start a paid generation.
 ---
 
 # finish_turn
 
-Chat-only closer. No DB write, no paid API, no canvas patch. The handler returns `{ "ok": true }` and does nothing else. The panel reads **your input**: `summary` is the answer, `results` are the visual cards, `next_actions` are the « Et maintenant » buttons. Everything else from the turn (reasoning, free text, other tools) is folded into a collapsed step list. This call itself is never a step.
+Chat-only closer. No DB write, no paid API, no canvas patch. The handler returns `{ "ok": true }` and does nothing else. The panel reads **your input**: `summary` is the answer, `results` are the visual cards. **`next_actions` must be `[]`** — the chat has no generate / voir / focus chips. Everything else from the turn (reasoning, free text, other tools) is folded into a collapsed step list. This call itself is never a step.
 
 The tool loop **stops** as soon as a step contains `finish_turn`. MCP clients never see this tool.
 
@@ -16,18 +16,20 @@ Load this skill before the first `finish_turn` in a conversation. There is no 7-
 - **Every turn**, including a plain reply with no other tools.
 - After other tools in this turn have returned (you need their `result_id` lines and generator ids).
 - After a **resumed** turn: you called `ask_user` or `request_user_image` **alone**, the user answered, you acted, then you close.
-- After `place_node` / `apply_workflow` shipped a generator — offer `kind: "generate"` so **they** click « Générer ».
+- After `place_node` / `apply_workflow` shipped a generator **because they asked to generate or to build the full thumbnail** — tell them in `summary` that the workflow is on the canvas. They click « Générer » on the node. `next_actions: []`.
 - After `generate_sketch` / `import_youtube_thumbnail` / `search_youtube` when those images should stay visible.
-- A vague look at an existing canvas: 1–2 sentences + `ask_agent` buttons; change nothing.
+- A vague look at an existing canvas: 1–2 sentences; change nothing.
 
 ## When not
+
+- **Prompt-only work** (`create-prompt`, "écris le prompt", fill the prompt node): `next_actions` **must be `[]`**. A generator already on the canvas is not a reason to mention « Générer » as a chat button. They will ask if they want images later.
 
 - **Same model step as any other tool.** Wait until those results are back, then call this **alone**. Same-step `finish_turn` cannot read `result_id` (the adapter prints it only after the visual tool returns). Same-step `ask_user` / `request_user_image` pauses the turn **and** stops the loop — after they answer, the client auto-continues a turn you already closed.
 - **Before** the work of the turn is done (you still need a list, a sketch, a place, a question).
 - A second time in the same turn. Once. Last. Alone. Extra calls are waste; the UI keeps the last **valid** input.
 - Mid-streaming: an `input-streaming` call is ignored until the input is complete and valid.
 - MCP / external clients — not registered.
-- To **start** a paid canvas generation yourself. You never run Seedream / GPT Image / nano-banana. `generate_sketch` (~$0.02 draft) is a different tool; the finished thumb starts only on their click of `kind: "generate"`.
+- To **start** a paid canvas generation yourself. You never run Seedream / GPT Image / nano-banana. `generate_sketch` (~$0.02 draft) is a different tool; the finished thumb starts only on their click of « Générer » on the canvas generator.
 - Do **not** skip this call and dump a long markdown answer instead. Free text before the call is folded, not shown as the answer.
 
 ## How
@@ -62,48 +64,9 @@ Leave `results: []` when nothing visual is worth showing (`list_*`, `get_canvas_
 
 ### `next_actions` (optional, default `[]`)
 
-**0–3** buttons under « Et maintenant » (last turn only). Each item is one `kind`. Do not send unused fields.
+**Always `[]`.** The chat does not render generate / focus_node / ask_agent chips — they raced the canvas autosave and re-fired paid runs. Tell them in `summary` what you did. They click « Générer » on the canvas themselves.
 
-#### Shared
-
-| Field | Limit | Who needs it |
-| --- | --- | --- |
-| `kind` | `"ask_agent"` \| `"focus_node"` \| `"generate"` | Always |
-| `label` | trimmed, 1–**40** characters, reply language | **Required** for `ask_agent` and `focus_node`. **Omit** for `generate` — the app writes « Générer · … · ~x,xx $ » from the node. A label you send on `generate` is ignored. |
-| `message` | trimmed, 1–**300** characters | **Required** for `ask_agent` only |
-| `node_id` | trimmed, non-empty | **Required** for `focus_node` and `generate` |
-
-Unknown `kind` is refused. Extra `message` / `node_id` on the wrong kind is ignored by the UI.
-
-#### `kind: "ask_agent"`
-
-Needs `label` + `message`. Click sends `message` **as the user's next reply** (their voice, not yours).
-
-```json
-{ "kind": "ask_agent", "label": "Garder la compo", "message": "Garde la composition, change seulement le fond." }
-```
-
-Write `message` as they would type it. Label is the button (« Garder A », « Sans le texte »).
-
-**Never** an `ask_agent` that would start a **paid canvas generation** (« Génère la miniature », « Lance Seedream », « Clique sur Générer », « Génère pour de vrai »). That run is `kind: "generate"` + their click. Offering another cheap `generate_sketch` retouch is fine; offering the final image is not.
-
-#### `kind: "focus_node"`
-
-Needs `label` + `node_id`. Click selects and centers that canvas node (fit-view). Use when **they** should look at or edit something (the prompt, a ref). `node_id` comes from `<canvas_state>` or from `apply_workflow` / `place_node` this turn (`iv-generator`, `gen`, `prompt-a`, …).
-
-If the node is gone, the button is disabled (« Élément introuvable »). Prefer `kind: "generate"` when the point is to run the generator — that button already selects and centers it.
-
-#### `kind: "generate"`
-
-Needs `node_id` of a **generator** node. **No `label`.** The app computes the caption and USD estimate from the node as it is now (model, count, A/B). Click selects, centers, then dispatches the node's own « Générer » — the **only** code path that starts that paid run. Nothing here runs without the click; it is never replayed from history.
-
-```json
-{ "kind": "generate", "node_id": "iv-generator" }
-```
-
-Use the id you just placed (`iv-generator`) or the `Generator node id: …` line from `apply_workflow` (often `gen`, or whatever id is on the canvas).
-
-If the node is missing or not a generator: disabled « Générer » (« Élément introuvable »). While it runs: disabled « Génération en cours… ».
+The schema still accepts the old kinds so stored messages parse; the UI ignores them. Do not send `generate`, `focus_node`, or `ask_agent`.
 
 ### Output (you receive)
 
@@ -138,15 +101,15 @@ Quote schema text in one sentence if you must explain a failed call. Do not dump
 
 Typical order in **separate** steps of one turn:
 
-1. Work: lists, research, `generate_sketch`, imports, `update_brief`, `place_node` / `apply_workflow` (several `place_node` may share a step; never with this tool).
+1. Work: lists, research, `generate_sketch`, imports, `place_node` / `apply_workflow` (several `place_node` may share a step; never with this tool).
 2. Optional pause: `ask_user` or `request_user_image` **alone**. No `finish_turn` until they answer and you finish the resumed turn.
 3. `finish_turn` **once, alone**.
 
-After a croquis: `results` with that `result_id`, `ask_agent` to keep / retouch — **not** `generate`. When they validate, later turn: wire the canvas, then `kind: "generate"`.
+After a croquis: `results` with that `result_id`. When they validate, later turn: wire the canvas. They click « Générer » on the node.
 
-After a generator is on the canvas: `next_actions: [{ "kind": "generate", "node_id": "<that generator>" }]`. Optional extra `ask_agent` for a non-generation fork (« Changer le texte », « Variante sans visage »). Optional `focus_node` on a **different** node they should edit. Do not pair a redundant `focus_node` on the same generator.
+After a generator is on the canvas: `next_actions: []`. Tell them in `summary` the workflow is ready.
 
-Existing canvas, vague ask: `view_canvas_images` then this tool with `ask_agent` only — no `apply_workflow`.
+Existing canvas, vague ask: `view_canvas_images` then this tool — no `apply_workflow`.
 
 Do not put this call in `results`. Chat label while it streams: « Rédige la réponse ».
 
@@ -158,10 +121,7 @@ User already chose the package, Personnage, logo. You placed `iv-prompt`, `iv-pe
 {
   "summary": "Le workflow A est sur le canvas : toi à droite, logo Claude à gauche.",
   "results": [],
-  "next_actions": [
-    { "kind": "generate", "node_id": "iv-generator" },
-    { "kind": "ask_agent", "label": "Sans le texte", "message": "Enlève le texte overlay et mets à jour le prompt." }
-  ]
+  "next_actions": []
 }
 ```
 
@@ -171,7 +131,7 @@ User already chose the package, Personnage, logo. You placed `iv-prompt`, `iv-pe
 {
   "summary": "A choc et B duel sont câblés. Un clic lance les deux variantes.",
   "results": [],
-  "next_actions": [{ "kind": "generate", "node_id": "gen" }]
+  "next_actions": []
 }
 ```
 
@@ -181,10 +141,6 @@ After two successful sketches this turn (`result_id: call_7` and `result_id: cal
 {
   "summary": "Deux **croquis** : A visage serré, B duel avec le logo. On garde lequel ?",
   "results": ["call_7", "call_8"],
-  "next_actions": [
-    { "kind": "ask_agent", "label": "Garder A", "message": "Garde la composition A, on l'envoie sur le canvas." },
-    { "kind": "ask_agent", "label": "Garder B", "message": "Garde la composition B, on l'envoie sur le canvas." },
-    { "kind": "ask_agent", "label": "Retoucher le fond", "message": "Garde A mais refais un croquis avec un fond plus sombre." }
-  ]
+  "next_actions": []
 }
 ```

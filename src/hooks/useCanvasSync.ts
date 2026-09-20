@@ -2,6 +2,9 @@
 import { useEffect } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { isKnownUpdatedAt } from "@/lib/canvas/canvas-patch";
+import { isCanvasGenerating } from "@/lib/canvas/generation-state";
+import { debugLog } from "@/lib/debug-log";
+import type { LoadProjectOptions } from "@/lib/canvas/load-guard";
 
 const POLL_MS = 2000;
 
@@ -16,9 +19,9 @@ const POLL_MS = 2000;
  * nodes/edges in the local Zustand store.
  *
  * Caveats:
- * - Skips the reload while the store's `dirty` flag is set (a local edit is
- *   still waiting on its debounced save) so an in-flight drag/delete can't
- *   be overwritten by a reload of the not-yet-saved server state.
+ * - Skips the reload while the store's `dirty`, `saving`, or `loading` flag
+ *   is set so an in-flight add/drag/save/load can't be overwritten by a
+ *   snapshot taken before that edit landed.
  * - Skips the reload when the new `updated_at` is one of the store's
  *   `recentOwnSaveUpdatedAts` (populated by `saveProject` from the server's
  *   response): that's this app's OWN debounced autosave landing, not an
@@ -29,6 +32,9 @@ const POLL_MS = 2000;
  *   value) is checked because a poll's GET can be answered, after a second
  *   self-save has already landed, with an earlier self-save's timestamp —
  *   still legitimately our own.
+ * - `loadProject(..., { reason: "poll" })` then treats tomb/rehydrate echoes
+ *   as `same` and keeps local `position` (controlled React Flow: onNodesChange
+ *   already applied the drag; persist key includes x/y).
  * - Skips the reload when the new `updated_at` is not after the store's
  *   `knownUpdatedAt` (chantier F2): the canvas already holds that state — an
  *   agent patch applied live, or a save whose response set it. Server
@@ -42,7 +48,7 @@ const POLL_MS = 2000;
  */
 export function createProjectSyncPoller(
   projectId: string,
-  loadProject: (projectId: string) => Promise<void>,
+  loadProject: (projectId: string, options?: LoadProjectOptions) => Promise<void>,
 ) {
   let lastUpdatedAt: string | null = null;
   let stopped = false;
@@ -65,24 +71,34 @@ export function createProjectSyncPoller(
       }
       if (data.updated_at && data.updated_at !== lastUpdatedAt) {
         const state = useCanvasStore.getState();
-        if (state.dirty) {
-          // A local edit (drag, delete, etc.) hasn't been persisted yet —
-          // reloading now would overwrite it with the stale pre-edit server
-          // state, which is exactly what looked like "my change reverted
-          // itself". Don't update lastUpdatedAt either: re-check next tick
-          // until the debounced save lands and dirty clears, then reload.
+        if (state.dirty || state.saving || state.loading || isCanvasGenerating(state.nodes)) {
+          debugLog("canvas-load", "poll skip in-flight", {
+            projectId,
+            dirty: state.dirty,
+            saving: state.saving,
+            loading: state.loading,
+            generating: isCanvasGenerating(state.nodes),
+            serverUpdatedAt: data.updated_at,
+          });
           return;
         }
         if (isKnownUpdatedAt(data.updated_at, state.knownUpdatedAt) || state.recentOwnSaveUpdatedAts.includes(data.updated_at)) {
           // This tick is observing one of the app's own recent autosaves
           // landing (see the doc comment above) — not an external mutation.
           // Re-baseline so it isn't re-detected, but don't reload.
+          debugLog("canvas-load", "poll skip known", { projectId, updatedAt: data.updated_at });
           lastUpdatedAt = data.updated_at;
           return;
         }
         // External mutation detected — reload
+        debugLog("canvas-load", "poll reload", {
+          projectId,
+          from: lastUpdatedAt,
+          to: data.updated_at,
+          knownUpdatedAt: state.knownUpdatedAt,
+        });
         lastUpdatedAt = data.updated_at;
-        await loadProject(projectId);
+        await loadProject(projectId, { reason: "poll" });
       }
     } catch {
       // Silent: network blip, will retry next tick

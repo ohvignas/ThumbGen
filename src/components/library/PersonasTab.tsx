@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from "react";
-import { Camera, ImagePlus, Pencil, Plus, Trash2, Upload, Users } from "lucide-react";
+import { Camera, Eraser, ImagePlus, Pencil, Plus, Trash2, Upload, Users } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import ConfirmDialog from "@/components/settings/ConfirmDialog";
 import { PHOTO_IMPORT, fileToDataUrl } from "@/lib/library/image-file";
 import { filterBySearch } from "@/lib/library/library-items";
 import { PERSONA_ANGLES, PERSONA_ANGLE_LABELS, personaImageUrl, type PersonaAngle, type PersonaSummary } from "@/lib/personas";
+import { REMOVE_BG_LABEL, REMOVING_BG_LABEL } from "@/lib/remove-bg";
 import ItemActionsMenu from "./ItemActionsMenu";
 import { LibraryGrid, LibraryGridSkeleton } from "./LibraryGrid";
 import LibrarySearchInput from "./LibrarySearchInput";
@@ -35,6 +36,7 @@ export default function PersonasTab() {
   const [replacing, setReplacing] = useState<PersonaSummary | null>(null);
   const [deleting, setDeleting] = useState<PersonaSummary | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [strippingId, setStrippingId] = useState<string | null>(null);
   // Appended to image URLs: a replaced angle keeps the same URL (60 s browser cache).
   const [photoVersion, setPhotoVersion] = useState(0);
 
@@ -45,10 +47,18 @@ export default function PersonasTab() {
     setSaving(true);
     setError(null);
     try {
+      const { stripPhotoBackgrounds } = await import("@/lib/remove-bg");
+      let ready = photos;
+      try {
+        ready = await stripPhotoBackgrounds(photos, PERSONA_ANGLES);
+      } catch {
+        setError("Impossible de retirer le fond — réessaie.");
+        return;
+      }
       const res = await fetch("/api/personas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: name || `Personnage ${(items?.length ?? 0) + 1}`, photos }),
+        body: JSON.stringify({ label: name || `Personnage ${(items?.length ?? 0) + 1}`, photos: ready }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -91,6 +101,30 @@ export default function PersonasTab() {
       setDeleting(null);
     } finally {
       setDeleteBusy(false);
+    }
+  };
+
+  const stripExisting = async (persona: PersonaSummary) => {
+    if (strippingId) return;
+    setStrippingId(persona.id);
+    setError(null);
+    try {
+      const { removeBackgroundFromSrc } = await import("@/lib/remove-bg");
+      for (const angle of persona.angles) {
+        const cutout = await removeBackgroundFromSrc(`${personaImageUrl(persona.id, angle)}&v=${photoVersion}`);
+        const res = await fetch(`/api/personas/${encodeURIComponent(persona.id)}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ angle, dataUrl: cutout }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      }
+      setPhotoVersion((version) => version + 1);
+      await reload();
+    } catch {
+      setError("Impossible de retirer le fond — réessaie.");
+    } finally {
+      setStrippingId(null);
     }
   };
 
@@ -170,12 +204,17 @@ export default function PersonasTab() {
                   {persona.label}
                 </CardTitle>
                 <CardAction className="flex items-center gap-1">
-                  <Badge variant="secondary">{persona.angles.length}/3</Badge>
+                  <Badge variant="secondary">{strippingId === persona.id ? "Fond…" : `${persona.angles.length}/3`}</Badge>
                   <ItemActionsMenu
                     itemLabel={persona.label}
                     actions={[
                       { label: "Renommer", icon: Pencil, onClick: () => setRenaming(persona) },
                       { label: "Remplacer un angle", icon: ImagePlus, onClick: () => setReplacing(persona) },
+                      {
+                        label: strippingId === persona.id ? REMOVING_BG_LABEL : REMOVE_BG_LABEL,
+                        icon: Eraser,
+                        onClick: () => void stripExisting(persona),
+                      },
                       { label: "Supprimer", icon: Trash2, onClick: () => setDeleting(persona), destructive: true },
                     ]}
                   />

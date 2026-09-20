@@ -3,8 +3,8 @@ import { AGENT_MODELS, getModelById, DEFAULT_AGENT_MODEL } from "@/lib/agent/mod
 
 describe("AGENT_MODELS", () => {
   it("has claude sonnet 4.6 as the default", () => {
-    // Gemini models hit a "corrupted thought signature" failure on
-    // multi-image tool results — see the comment above DEFAULT_AGENT_MODEL.
+    // Claude stays the default so a wiped volume does not land on Gemini 3
+    // (thought signatures used to 400 the chat — see gemini-thought-signatures.ts).
     expect(DEFAULT_AGENT_MODEL).toBe("anthropic/claude-sonnet-4.6");
     expect(getModelById(DEFAULT_AGENT_MODEL)).toBeDefined();
   });

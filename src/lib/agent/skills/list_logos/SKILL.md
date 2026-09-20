@@ -15,7 +15,6 @@ Contrast: `find_logos` searches the web and returns **unwired** `logo-candidate:
 - Before `ask_user` "Quels logos garder ?" so option `image` can be `stored:lg_<id>` (square tile).
 - Before `apply_workflow` / `place_node` when a generator needs a logo on `logo-in`.
 - Before `generate_sketch` `reference_sources` when a library logo should condition the draft.
-- Before `update_brief` logos, to write `{ name, source: "stored:lg_<id>" }` (max 3).
 - Empty library: still call once so you can quote the empty text and offer import / search, rather than inventing an id.
 
 ## When not
@@ -41,7 +40,7 @@ N logo(s):
 
 **Success (empty):** `No logos in library.`
 
-Match the user's brand to `"<label>"` yourself (human, case-insensitive). Keep at most 3. One obvious hit: keep it and say so in one line. Several plausible hits: one `ask_user` multiple, `max_selected` 3, each option `id` stable, `image: stored:lg_<id>`. Then `update_brief` logos.
+Match the user's brand to `"<label>"` yourself (human, case-insensitive). Keep at most 3. One obvious hit: keep it and say so in one line. Several plausible hits: one `ask_user` multiple, `max_selected` 3, each option `id` stable, `image: stored:lg_<id>`. Then wire the kept refs on the canvas.
 
 Do **not** put a `logo-candidate:` string on a node, in `ask_user.image`, in `generate_sketch.reference_sources`, or in the brief. `ask_user` only tiles `stored:persona_`, `stored:sf_`, `stored:lg_`, `youtube:`, `generated:sk_`. `resolveImageSource` rejects `logo-candidate:`.
 
@@ -73,9 +72,7 @@ Edge: that id → the generator, `targetHandle: "logo-in"`. Up to three logo nod
 
 `generate_sketch`: pass logos in `reference_sources: ["stored:lg_<id>"]`, never as `face_source`.
 
-`update_brief` logos: `{ name: "<label>", source: "stored:lg_<id>" }`. Regex `^stored:lg_[\w-]+$`. Cap 3 (`"3 logos maximum"`). `add_logo` also appends; skip a second write if the brief already has that source.
-
-Missing file on disk: `request_user_image` with `suggested_kind: "logo"` (turn pauses). Prefer this list first.
+Missing file on disk: `request_user_image` with `suggested_kind: "logo"` (turn pauses). Prefer this list first. Cap 3 logos (`"3 logos maximum"`).
 
 Chat label: « Liste tes logos ». Not a visual tool — `finish_turn.results` stays empty. Tell the user the label, not the raw id. Do not dump JSON.
 
@@ -98,7 +95,7 @@ Unknown `stored:lg_` ids, `logo-candidate:` as `image_source`, and `kind: "refer
 
 ## Chains
 
-1. Named brand → `list_logos` → match label → `ask_user` (images `stored:lg_<id>`, max 3) or keep the obvious one → `update_brief` logos → `generate_sketch` `reference_sources` and/or `apply_workflow` / `place_node` swipeFile `kind=logo` on `logo-in` → `finish_turn` (`results` empty unless another visual tool ran).
+1. Named brand → `list_logos` → match label → `ask_user` (images `stored:lg_<id>`, max 3) or keep the obvious one → `generate_sketch` `reference_sources` and/or `apply_workflow` / `place_node` swipeFile `kind=logo` on `logo-in` → `finish_turn` (`results` empty unless another visual tool ran).
 2. No match / empty → `find_logos` `{ names: ["…"] }` → optional `ask_user` on names (not `logo-candidate:` images) → `add_logo` `{ candidate_id }` → use the returned `stored:lg_<id>` (same wiring as above). No need to list again.
 3. User has a PNG, nothing in library → `request_user_image` `{ suggested_kind: "logo" }` alone in its step (no `finish_turn` until they answer).
 4. Existing canvas already has a logo swipeFile (`image_source` / `/api/logos/image?f=`) → reuse that id from `<canvas_state>`; do not list unless they want a different mark.
@@ -120,7 +117,7 @@ Result:
 - stored:lg_e5f6g7h8 — "YouTube" (22016 bytes, added 2026-08-03T18:22:11.000Z)
 ```
 
-Keep Claude (one obvious hit). `update_brief` logos `[{ name: "Claude", source: "stored:lg_a1b2c3d4" }]`. Wire:
+Keep Claude (one obvious hit). Wire:
 
 ```json
 {

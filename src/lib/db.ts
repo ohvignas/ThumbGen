@@ -113,6 +113,14 @@ function init(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_generations_log_created_at ON generations_log(created_at);
     CREATE INDEX IF NOT EXISTS idx_generations_log_model      ON generations_log(model);
     CREATE INDEX IF NOT EXISTS idx_generations_log_provider   ON generations_log(provider);
+
+    CREATE TABLE IF NOT EXISTS canvas_tombstones (
+      project_id TEXT NOT NULL,
+      kind       TEXT NOT NULL CHECK (kind IN ('node', 'edge')),
+      item_id    TEXT NOT NULL,
+      deleted_at TEXT NOT NULL,
+      PRIMARY KEY (project_id, kind, item_id)
+    );
   `);
   database.exec(AGENT_TABLES_DDL);
   migrateChannelTables(database);
@@ -141,6 +149,10 @@ function init(database: Database.Database) {
   const projectMetaColumns = database.prepare("PRAGMA table_info(projects_meta)").all() as { name: string }[];
   if (!projectMetaColumns.some((c) => c.name === "description")) {
     database.exec("ALTER TABLE projects_meta ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+  }
+  // Gallery card cover (« miniature gagnante »): one generated image per project.
+  if (!projectMetaColumns.some((c) => c.name === "cover_image_id")) {
+    database.exec("ALTER TABLE projects_meta ADD COLUMN cover_image_id TEXT");
   }
 
   pruneRemovedSettingsKeys(database);

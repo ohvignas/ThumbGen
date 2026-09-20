@@ -15,6 +15,7 @@ import {
 } from "@/lib/agent/browser-tools/ask-user";
 import { V2_CLIENT_TOOLS, V2_CLIENT_TOOL_NAMES } from "@/lib/agent/v2/browser-client-tools";
 import { TOOL_LABELS } from "@/lib/agent/tool-labels";
+import { readSkillBody } from "@/lib/agent/skills/catalog";
 
 const option = (id: string, extra: Record<string, unknown> = {}) => ({ id, label: `Option ${id}`, ...extra });
 const base = { question: "Quel angle ?", step: 2, options: [option("a"), option("b")] };
@@ -140,6 +141,28 @@ describe("ask_user option images", () => {
     expect(askUserOptionImage("generated:sk_../x")).toBeNull();
     expect(askUserOptionImage("generated:gi_1")).toBeNull();
   });
+
+  it("keeps a leftover image on parse but drops image_url", () => {
+    const parsed = parseAskUserInput({
+      question: "Quelle variable ?",
+      options: [
+        {
+          id: "text",
+          label: "Le texte de la miniature",
+          description: "Remplacer le hook, garder le reste.",
+          image: "stored:persona_p1",
+          image_url: "https://example.com/face.png",
+        },
+      ],
+    });
+    expect(parsed?.options[0]).toEqual({
+      id: "text",
+      label: "Le texte de la miniature",
+      description: "Remplacer le hook, garder le reste.",
+      image: "stored:persona_p1",
+    });
+    expect(parsed?.options[0]).not.toHaveProperty("image_url");
+  });
 });
 
 describe("ask_user rejection paths", () => {
@@ -186,6 +209,18 @@ describe("ask_user client tool", () => {
     const json = z.toJSONSchema(askUserToolInputSchema) as { properties?: Record<string, unknown> };
     expect(json.properties?.step).toBeUndefined();
     expect(JSON.stringify(json)).not.toContain("pipeline");
+    expect(JSON.stringify(json)).toMatch(/text only|Ignored by the chat card/);
     expect(V2_CLIENT_TOOLS.ask_user.description).not.toMatch(/Étape|numbered pipeline|Omit step/);
+    expect(V2_CLIENT_TOOLS.ask_user.description).not.toMatch(/images via/);
+    expect(V2_CLIENT_TOOLS.ask_user.description).toMatch(/text options/);
+  });
+
+  it("tells the skill to write French sentences, not image-led chips", () => {
+    const body = readSkillBody("ask_user");
+    expect(body).toContain("text only");
+    expect(body).toContain("short clear French sentence");
+    expect(body).toContain("Never decorate a choice with a character photo");
+    expect(body).not.toContain("square, 3 columns");
+    expect(body).not.toMatch(/The first \*\*recognized\*\* image sets the grid/);
   });
 });

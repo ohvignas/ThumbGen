@@ -168,4 +168,211 @@ describe("runGenerator — normal mode with compared models", () => {
     expect(gen.data.generatedImages).toEqual(["/api/images/gemini.png", "/api/images/gpt.png"]);
     expect(gen.data.isGenerating).toBe(false);
   });
+
+  it("logs error, status and provider on a job failure and shows the real message", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      json: async () => ({
+        error: "Crédits OpenAI épuisés. Ajoute une clé OpenRouter dans Réglages, ou recharge tes crédits OpenAI.",
+        status: 429,
+        provider: "openai",
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const message = await runGenerator("gen", []);
+    expect(message).toBeNull();
+
+    const preview = previewNodes()[0];
+    expect(preview.data.genStatus).toBe("error");
+    expect(preview.data.genError).toMatch(/Crédits OpenAI/);
+    expect(preview.data.genError).not.toMatch(/Generation ?failed/i);
+    expect(log).toHaveBeenCalledWith(
+      "[generate] job error",
+      expect.objectContaining({
+        error: expect.stringContaining("Crédits OpenAI"),
+        status: 429,
+        provider: "openai",
+      }),
+    );
+    log.mockRestore();
+  });
+
+  it("shows a clear preview error when the generate request fails to fetch", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+
+    const message = await runGenerator("gen", []);
+    expect(message).toBeNull();
+    const preview = previewNodes()[0];
+    expect(preview.data.genStatus).toBe("error");
+    expect(preview.data.genError).toMatch(/Connexion interrompue/);
+    expect(preview.data.genError).not.toMatch(/Failed to fetch/i);
+  });
+
+  it("counts produced jobs, not variants, when two images of A both succeed", async () => {
+    seed(
+      [
+        { id: "gen", type: "generator", position: { x: 0, y: 0 }, data: { model: "gemini-3.1-flash-image", numImages: 2 } },
+        { id: "p", type: "prompt", position: { x: 0, y: 0 }, data: { prompt: "A prompt" } },
+      ],
+      [{ id: "e-p", source: "p", target: "gen", targetHandle: "prompt-in" }],
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ images: ["/api/images/x.png"] }) })),
+    );
+
+    const message = await runGenerator("gen", []);
+    expect(message).toBeNull();
+    expect(previewNodes()).toHaveLength(2);
+    expect(previewNodes().every((p) => p.data.genStatus === "done")).toBe(true);
+    expect(log).toHaveBeenCalledWith("[generate] done", expect.objectContaining({ jobs: 2, produced: 2 }));
+    log.mockRestore();
+  });
+
+  it("marks a 200 with no images as a preview error and logs job error", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ images: [] }) })),
+    );
+
+    const message = await runGenerator("gen", []);
+    expect(message).toBeNull();
+    const preview = previewNodes()[0];
+    expect(preview.data.genStatus).toBe("error");
+    expect(preview.data.genError).toMatch(/aucune image/i);
+    expect(preview.data.genError).not.toMatch(/interrompue/i);
+    expect(log).toHaveBeenCalledWith(
+      "[generate] job error",
+      expect.objectContaining({ error: expect.stringMatching(/aucune image/i) }),
+    );
+    log.mockRestore();
+  });
+
+  it("shows French moderation on the preview, not the raw OpenRouter string", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: "OpenRouter API error: 400 — Gemini blocked this request through content moderation.",
+          status: 400,
+          provider: "openrouter",
+        }),
+      })),
+    );
+
+    const message = await runGenerator("gen", []);
+    expect(message).toBeNull();
+    const preview = previewNodes()[0];
+    expect(preview.data.genStatus).toBe("error");
+    expect(preview.data.genError).toBe("Requête bloquée par la modération de contenu");
+    expect(preview.data.genError).not.toMatch(/Gemini blocked|OpenRouter API error/i);
+  });
+
+  it("on one empty image and one success, both previews update", async () => {
+    seed(
+      [
+        { id: "gen", type: "generator", position: { x: 0, y: 0 }, data: { model: "gemini-3.1-flash-image", numImages: 2 } },
+        { id: "p", type: "prompt", position: { x: 0, y: 0 }, data: { prompt: "A prompt" } },
+      ],
+      [{ id: "e-p", source: "p", target: "gen", targetHandle: "prompt-in" }],
+    );
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) return { ok: true, json: async () => ({ images: ["/api/images/a.png"] }) };
+        return { ok: true, json: async () => ({ images: [] }) };
+      }),
+    );
+
+    const message = await runGenerator("gen", []);
+    expect(message).toBeNull();
+    const statuses = previewNodes().map((p) => p.data.genStatus).sort();
+    expect(statuses).toEqual(["done", "error"]);
+    const failed = previewNodes().find((p) => p.data.genStatus === "error")!;
+    expect(failed.data.genError).toMatch(/aucune image/i);
+    const ok = previewNodes().find((p) => p.data.genStatus === "done")!;
+    expect(ok.data.generatedImages).toEqual(["/api/images/a.png"]);
+  });
+
+  it("creates loading Aperçu nodes before the request resolves", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await gate;
+        return { ok: true, json: async () => ({ images: ["/api/images/x.png"] }) };
+      }),
+    );
+
+    const pending = runGenerator("gen", []);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(previewNodes().length).toBeGreaterThan(0);
+    expect(previewNodes().every((p) => p.data.genStatus === "loading")).toBe(true);
+    release();
+    await pending;
+    expect(previewNodes().every((p) => p.data.genStatus === "done")).toBe(true);
+  });
+
+  it("posts compact image refs instead of fetching every connected image as base64", async () => {
+    seed(
+      [
+        { id: "gen", type: "generator", position: { x: 0, y: 0 }, data: { model: "gpt-image-2.5-sunburst" } },
+        { id: "p", type: "prompt", position: { x: 0, y: 0 }, data: { prompt: "A prompt" } },
+        {
+          id: "face",
+          type: "faceReference",
+          position: { x: 0, y: 0 },
+          data: {
+            personaId: "p1",
+            personaAngles: { front: "data:image/png;base64,HUGEFRONT" },
+          },
+        },
+        {
+          id: "prev",
+          type: "preview",
+          position: { x: 0, y: 0 },
+          data: { generatedImages: ["/api/generated-images/image?id=abc-1"], selectedImageIndex: 0 },
+        },
+      ],
+      [
+        { id: "e-p", source: "p", target: "gen", targetHandle: "prompt-in" },
+        { id: "e-f", source: "face", target: "gen", targetHandle: "face-in" },
+        { id: "e-r", source: "prev", target: "gen", targetHandle: "ref-in" },
+      ],
+    );
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/api/generate/openrouter")) {
+        return { ok: true, json: async () => ({ images: ["/api/images/x.png"] }) };
+      }
+      throw new Error(`should not fetch ${url} to inline pixels`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const message = await runGenerator("gen", []);
+    expect(message).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.model).toBe("gpt-image-2.5-sunburst");
+    expect(body.faceImages).toEqual(["/api/personas/image?id=p1&angle=front"]);
+    expect(body.editImages).toEqual(["stored:gi_abc-1"]);
+    expect(JSON.stringify(body)).not.toMatch(/HUGEFRONT/);
+  });
 });

@@ -1,4 +1,5 @@
 import { v4 as uuid } from "uuid";
+import { generatedImageUrl } from "./canvas/image-refs";
 import { getDb, parseDataUrl } from "./db";
 
 export type StoredImage = { id: string; mimeType: string; data: Buffer };
@@ -9,7 +10,7 @@ export function saveGeneratedImage(dataUrl: string, projectId?: string | null): 
   getDb()
     .prepare("INSERT INTO generated_images (id, mime_type, data, project_id) VALUES (?, ?, ?, ?)")
     .run(id, mimeType, buffer, projectId ?? null);
-  return { id, url: `/api/generated-images/image?id=${id}` };
+  return { id, url: generatedImageUrl(id) };
 }
 
 /** How many thumbnails each project has generated, keyed by project id. */

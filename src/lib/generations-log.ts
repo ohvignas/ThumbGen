@@ -157,6 +157,24 @@ export function getRecentLog(period: Period, limit = 100): LogRow[] {
     .all(limit) as LogRow[];
 }
 
+export type ProjectGenerationImageRow = {
+  prompt: string | null;
+  generatedImageIds: string | null;
+  createdAt: string;
+};
+
+/** Paid generate rows of one project that stored image ids (canvas rehydrate). */
+export function listProjectGenerationImages(projectId: string): ProjectGenerationImageRow[] {
+  return getDb()
+    .prepare(
+      `SELECT prompt, generated_image_ids AS generatedImageIds, created_at AS createdAt
+       FROM generations_log
+       WHERE project_id = ? AND generated_image_ids IS NOT NULL
+       ORDER BY created_at ASC`,
+    )
+    .all(projectId) as ProjectGenerationImageRow[];
+}
+
 export type DailyPoint = { day: string; cost: number; count: number };
 
 export function getDailySeries(period: Period): DailyPoint[] {

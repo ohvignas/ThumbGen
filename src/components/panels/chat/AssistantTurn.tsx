@@ -9,7 +9,7 @@ import { MessageFooter, MessageHeader } from "@/components/ui/message";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useChatStore } from "@/store/chat-store";
 import { TextMarkdown } from "./TextMarkdown";
-import TurnActions from "./TurnActions";
+import PromptResultCard from "./PromptResultCard";
 import TurnResults from "./TurnResults";
 import TurnSteps from "./TurnSteps";
 import { turnHeaderLabel, type AssistantTurn as AssistantTurnModel, type TurnError } from "./turn-model";
@@ -51,9 +51,9 @@ function CopyAnswerButton({ text }: { text: string }) {
 export default function AssistantTurn({
   turn,
   error,
-  showActions,
+  showActions: _showActions,
   onRetry,
-  onAskAgent,
+  onAskAgent: _onAskAgent,
 }: {
   turn: AssistantTurnModel;
   error: TurnError | null;
@@ -104,7 +104,9 @@ export default function AssistantTurn({
 
       <TurnResults results={turn.results} />
 
-      {showActions && <TurnActions actions={turn.nextActions} onAskAgent={onAskAgent} />}
+      {turn.promptCards.map((card) => (
+        <PromptResultCard key={card.nodeId || card.prompt} nodeId={card.nodeId} prompt={card.prompt} />
+      ))}
 
       {!error && turn.answer && (
         <MessageFooter className="px-0">

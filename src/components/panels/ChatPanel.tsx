@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { useReactFlow } from "@xyflow/react";
 import type { UIMessage } from "ai";
 import { createAutoContinueGuard } from "./chat/should-auto-continue";
 import { useChatStore, type ChatAttachment } from "@/store/chat-store";
@@ -20,6 +19,7 @@ import { useAgentRuns } from "@/components/agent-runs/AgentRunsProvider";
 import { AGENT_BUSY_MESSAGE } from "@/lib/agent/v2/run-types";
 import { rowsToUIMessages, type StoredMessageRow } from "./chat/history-to-ui-messages";
 import { snapshotCanvas } from "./chat/canvas-snapshot";
+import { catalogMentionableImages, resolveMentionedImages } from "@/lib/canvas/mentionable-images";
 import { createAgentChatTransport, stopAgentRun } from "./chat/chat-transport";
 import {
   isAgentBusyError,
@@ -39,9 +39,7 @@ import {
   type LiveTurnStart,
 } from "./chat/chat-view-model";
 import { isBusyStatus } from "./chat/turn-model";
-import { applyCanvasPatchPart } from "./chat/canvas-patch-part";
-import { applyBriefUpdatedPart } from "./chat/brief-updated-part";
-import { useBriefStore } from "@/store/brief-store";
+import { applyAgentCanvasStreamPart } from "./chat/canvas-patch-part";
 import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
@@ -94,6 +92,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
+  const coverImageUrl = useCanvasStore((s) => s.coverImageUrl);
 
   const { snapshot: runsSnapshot, refreshRuns } = useAgentRuns();
   const runsSnapshotRef = useRef(runsSnapshot);
@@ -151,8 +150,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     };
   });
 
-  const { fitView } = useReactFlow();
-
   const {
     messages: chatMessages,
     status,
@@ -172,21 +169,12 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     // addToolOutput — see the function's doc comment. A reconnection never
     // produces a resolved client request, so it never triggers a send.
     sendAutomaticallyWhen: autoContinueGuard.shouldSend,
-    // Guided journey: a node place_node wrote in the database, shown live and
-    // centered, and brief updates (transient parts: never in the messages, never sent back).
+    // place_node / apply_workflow write live canvas patches (transient: never in
+    // the messages, never sent back).
     onData: (dataPart) => {
-      applyCanvasPatchPart(dataPart, {
+      applyAgentCanvasStreamPart(dataPart, {
         openProjectId: projectId,
-        reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
-        // Next frame: React Flow measures the new node first.
-        fitNode: (nodeId, duration) => {
-          window.requestAnimationFrame(() => {
-            void fitView({ nodes: [{ id: nodeId }], padding: 0.4, maxZoom: 1, duration });
-          });
-        },
       });
-      // Thumbnail journey: the brief changed (badge, sheet, step line).
-      applyBriefUpdatedPart(dataPart);
     },
     onError: (turnError) => {
       turnFailedRef.current = true;
@@ -201,11 +189,6 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     useChatStore.getState().setActive(null);
   }, [projectId]);
-
-  // The open conversation's thumbnail brief (« Fiche »): a free local GET.
-  useEffect(() => {
-    void useBriefStore.getState().load(activeConversationId);
-  }, [activeConversationId]);
 
   // Reconnects to the turn the server may be running for this conversation.
   // Never starts one: a GET that answers 204 when nothing runs.
@@ -450,13 +433,17 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   // Attachments go as a sibling `attachments` field (stored:<id> references), not AI SDK file parts.
   const requestBody = useCallback(
-    (conversationId: string, attachmentsToSend: ChatAttachment[] = []) => ({
+    (conversationId: string, attachmentsToSend: ChatAttachment[] = [], mentionText = "") => ({
       conversation_id: conversationId,
       project_id: projectId,
       canvas_snapshot: snapshotCanvas(nodes, edges),
       attachments: attachmentsToSend.map((a) => ({ type: "image" as const, source: a.source })),
+      mentioned_images: resolveMentionedImages(
+        mentionText,
+        catalogMentionableImages(nodes, { coverImageUrl }),
+      ),
     }),
-    [projectId, nodes, edges],
+    [projectId, nodes, edges, coverImageUrl],
   );
 
   // Runs one turn (a send, an « Et maintenant » reply or a « Réessayer »), then
@@ -536,7 +523,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       clearAttachments();
       await runTurn(
         conversationId,
-        () => sendMessage({ text }, { body: requestBody(conversationId, attachmentsToSend) }),
+        () => sendMessage({ text }, { body: requestBody(conversationId, attachmentsToSend, text) }),
         () => {
           const store = useChatStore.getState();
           store.setDraft(text);
@@ -559,7 +546,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         try {
           const conversationId = await ensureConversation();
           if (!conversationId) return;
-          await runTurn(conversationId, () => sendMessage({ text: message }, { body: requestBody(conversationId) }));
+          await runTurn(conversationId, () => sendMessage({ text: message }, { body: requestBody(conversationId, [], message) }));
         } finally {
           sendInFlightRef.current = false;
         }
@@ -576,7 +563,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     return () => {
       if (sendInFlightRef.current) return;
       sendInFlightRef.current = true;
-      void runTurn(conversationId, () => regenerate({ body: requestBody(conversationId) })).finally(() => {
+      void runTurn(conversationId, () => regenerate({ body: requestBody(conversationId, [], retryText ?? "") })).finally(() => {
         sendInFlightRef.current = false;
       });
     };

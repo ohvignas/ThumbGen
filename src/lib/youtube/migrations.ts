@@ -39,12 +39,24 @@ export const CHANNEL_TABLES_DDL = `
     classify_attempts INTEGER NOT NULL DEFAULT 0,
     classify_approved INTEGER NOT NULL DEFAULT 0,
     swipe_file_id     TEXT,
+    description       TEXT,
     created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   );
 
   CREATE INDEX IF NOT EXISTS idx_channel_videos_channel_id   ON channel_videos(channel_id);
   CREATE INDEX IF NOT EXISTS idx_channel_videos_published_at ON channel_videos(published_at);
   CREATE INDEX IF NOT EXISTS idx_channel_videos_thumb_type   ON channel_videos(thumb_type);
+
+  CREATE TABLE IF NOT EXISTS video_stat_snapshots (
+    video_id     TEXT NOT NULL REFERENCES channel_videos(video_id) ON DELETE CASCADE,
+    captured_at  TEXT NOT NULL,
+    view_count   INTEGER NOT NULL DEFAULT 0,
+    like_count   INTEGER,
+    PRIMARY KEY (video_id, captured_at)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_video_stat_snapshots_video    ON video_stat_snapshots(video_id, captured_at);
+  CREATE INDEX IF NOT EXISTS idx_video_stat_snapshots_captured ON video_stat_snapshots(captured_at);
 
   CREATE TABLE IF NOT EXISTS youtube_oauth (
     id                       TEXT PRIMARY KEY,
@@ -151,6 +163,17 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; definition: 
   { table: "channel_videos", column: "description", definition: "TEXT" },
 ];
 
+export function backfillVideoStatSnapshots(database: Database.Database): void {
+  database.exec(`
+    INSERT OR IGNORE INTO video_stat_snapshots (video_id, captured_at, view_count, like_count)
+    SELECT video_id, stats_updated_at, view_count, like_count
+    FROM channel_videos
+    WHERE NOT EXISTS (
+      SELECT 1 FROM video_stat_snapshots s WHERE s.video_id = channel_videos.video_id
+    )
+  `);
+}
+
 export function migrateChannelTables(database: Database.Database): void {
   database.exec(CHANNEL_TABLES_DDL);
   try {
@@ -164,4 +187,5 @@ export function migrateChannelTables(database: Database.Database): void {
       database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
   }
+  backfillVideoStatSnapshots(database);
 }

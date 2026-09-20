@@ -102,11 +102,8 @@ describe("splitAssistantTurn with finish_turn", () => {
     expect(turn.steps.flatMap((step) => (step.kind === "tool" ? [step.shownInResults] : []))).toEqual([true, true, false]);
   });
 
-  it("maps next actions", () => {
-    expect(splitAssistantTurn(message).nextActions).toEqual([
-      { kind: "ask_agent", label: "Angle A", message: "Je choisis l'angle A." },
-      { kind: "focus_node", label: "Voir le générateur", nodeId: "gen-1" },
-    ]);
+  it("drops every next_action chip, including generate / focus / ask_agent", () => {
+    expect(splitAssistantTurn(message).nextActions).toEqual([]);
   });
 
   it("keeps every text as a step", () => {
@@ -129,6 +126,35 @@ describe("splitAssistantTurn with finish_turn", () => {
     expect(ids(turn.results)).toEqual(["c1"]);
     expect(turn.nextActions).toEqual([]);
     expect(stepNames(invalid)).toEqual(["text:Je cherche.", "tool:generate_sketch"]);
+  });
+
+  it("shows the apply_workflow prompt and drops generate / Et maintenant on a prompt-only turn", () => {
+    const prompt =
+      "Young man left third, OpenClaw mascot on fire to the right, dramatic red. Text OPENCLAW EST MORT.";
+    const turn = splitAssistantTurn(
+      assistant([
+        tool("apply_workflow", "c1", {
+          input: {
+            project_id: "proj_1",
+            blueprint: JSON.stringify({
+              nodes: [{ id: "prompt-1", type: "prompt", data: { prompt } }],
+              edges: [],
+            }),
+          },
+        }),
+        finish({
+          summary: "Prompt adapté sur le canvas.",
+          results: [],
+          next_actions: [
+            { label: "Voir le prompt", kind: "focus_node", node_id: "prompt-1" },
+            { kind: "generate", node_id: "aa88700b-8c69-42ab-9069-b28c296e4eed" },
+          ],
+        }),
+      ]),
+    );
+    expect(turn.promptCards).toEqual([{ nodeId: "prompt-1", prompt }]);
+    expect(turn.nextActions).toEqual([]);
+    expect(turn.steps[0]).toMatchObject({ kind: "tool", toolName: "apply_workflow", shownInResults: true });
   });
 });
 

@@ -24,8 +24,9 @@ describe("agent skills runtime", () => {
 
   it("lists every skill name+description and read_skill returns the body", () => {
     const catalog = listSkillCatalog();
-    expect(catalog.length).toBeGreaterThanOrEqual(27);
     const names = new Set(catalog.map((skill) => skill.name));
+    expect(catalog.length).toBeGreaterThanOrEqual(26);
+    expect(names.has("update_brief")).toBe(false);
     for (const name of ["get_canvas_state", "apply_workflow", "generate_sketch", "create-prompt", "ask_user", "finish_turn", "thumbnail-packaging", "existing-workflow"]) {
       expect(names.has(name), name).toBe(true);
     }
@@ -34,6 +35,10 @@ describe("agent skills runtime", () => {
     expect(body!).not.toMatch(/^---/);
     expect(readSkillBody("not-a-skill")).toBeNull();
     expect(buildSkillsCatalogBlock()).toContain("get_canvas_state");
+    const sketch = readSkillBody("generate_sketch") ?? "";
+    expect(sketch).toContain("liveSketchCount");
+    expect(sketch).not.toContain("limite de 5 esquisses atteinte pour cette miniature");
+    expect(sketch).toContain("Deleted / tombstoned nodes");
   });
 
   it("registers read_skill as a chat-only tool", () => {

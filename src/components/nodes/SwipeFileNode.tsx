@@ -49,11 +49,14 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
-        // Drop any library URL: saveProject strips imageBase64 while imageUrl is set.
+      reader.onload = async () => {
+        const imageBase64 = typeof reader.result === "string" ? reader.result : "";
+        const { persistUserCanvasImage } = await import("@/lib/canvas/persist-user-image");
+        const persisted = imageBase64 ? await persistUserCanvasImage(imageBase64, "swipe", file.name) : null;
         updateNodeData(id, {
-          imageBase64: reader.result as string,
-          imageUrl: undefined,
+          imageBase64: persisted ? undefined : imageBase64,
+          imageUrl: persisted?.imageUrl,
+          image_source: persisted?.image_source,
           label: file.name,
         });
       };
@@ -95,7 +98,12 @@ export default function SwipeFileNode({ id, data }: NodeProps<AppNode>) {
       }
       const { removeBackground } = await import("@/lib/remove-bg");
       const result = await removeBackground(dataUrl);
-      updateNodeData(id, { imageBase64: result });
+      const { persistUserCanvasImage } = await import("@/lib/canvas/persist-user-image");
+      const persisted = await persistUserCanvasImage(result, "swipe", data.label || "Reference");
+      updateNodeData(id, {
+        imageBase64: persisted ? undefined : result,
+        ...(persisted ?? {}),
+      });
     } catch (err) {
       console.error("Remove BG error:", err);
     } finally {

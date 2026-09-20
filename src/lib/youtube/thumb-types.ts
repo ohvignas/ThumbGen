@@ -55,7 +55,10 @@ export type TypeSummaryInput = {
   title: string;
   thumbnailUrl: string;
   thumbType: ThumbType;
+  /** Human ×N badge (views ÷ channel median). */
   score: number | null;
+  /** Swipe rank used to order types and pick the best thumb. Falls back to `score`. */
+  rank?: number | null;
 };
 
 export type TypeSummaryRow = {
@@ -68,12 +71,18 @@ export type TypeSummaryRow = {
   best: { videoId: string; title: string; thumbnailUrl: string; score: number } | null;
 };
 
-type ScoredInput = TypeSummaryInput & { score: number };
+function rankingValue(video: TypeSummaryInput): number | null {
+  if (video.rank !== undefined) return video.rank;
+  return video.score;
+}
+
+type RankedInput = TypeSummaryInput & { score: number };
 
 /**
  * « Les types qui marchent »: one row per type that has thumbnails. Types with
- * at least 3 scored thumbnails are ranked by median score; the others follow,
- * flagged as not having enough data.
+ * at least 3 ranked thumbnails are ordered by median swipe rank (same key as
+ * YouTube search; Jev may already have nudged those ranks). The displayed
+ * median stays the human ×N score.
  */
 export function summarizeTypes(videos: readonly TypeSummaryInput[]): TypeSummaryRow[] {
   const byType = new Map<ThumbType, TypeSummaryInput[]>();
@@ -83,28 +92,34 @@ export function summarizeTypes(videos: readonly TypeSummaryInput[]): TypeSummary
     byType.set(video.thumbType, list);
   }
 
-  const rows: TypeSummaryRow[] = [];
+  const rows: Array<TypeSummaryRow & { medianRank: number | null }> = [];
   for (const { id, label } of THUMB_TYPES) {
     const list = byType.get(id);
     if (!list || list.length === 0) continue;
-    const scored = list.filter((video): video is ScoredInput => video.score !== null);
-    const enoughData = scored.length >= MIN_SCORED_FOR_RANKING;
-    const best = enoughData ? scored.reduce((top, video) => (video.score > top.score ? video : top)) : null;
-    const middle = enoughData ? median(scored.map((video) => video.score)) : null;
+    const ranked = list.filter((video): video is RankedInput => rankingValue(video) !== null && video.score !== null);
+    const enoughData = ranked.length >= MIN_SCORED_FOR_RANKING;
+    const best = enoughData
+      ? ranked.reduce((top, video) => ((rankingValue(video) ?? 0) > (rankingValue(top) ?? 0) ? video : top))
+      : null;
+    const middle = enoughData ? median(ranked.map((video) => video.score)) : null;
+    const middleRank = enoughData ? median(ranked.map((video) => rankingValue(video) ?? 0)) : null;
     rows.push({
       type: id,
       label,
       totalCount: list.length,
-      scoredCount: scored.length,
+      scoredCount: ranked.length,
       enoughData,
       medianScore: middle === null ? null : Math.round(middle * 10) / 10,
+      medianRank: middleRank,
       best: best ? { videoId: best.videoId, title: best.title, thumbnailUrl: best.thumbnailUrl, score: best.score } : null,
     });
   }
 
-  return rows.sort((a, b) => {
-    if (a.enoughData !== b.enoughData) return a.enoughData ? -1 : 1;
-    if (a.enoughData) return (b.medianScore ?? 0) - (a.medianScore ?? 0) || b.scoredCount - a.scoredCount;
-    return b.totalCount - a.totalCount;
-  });
+  return rows
+    .sort((a, b) => {
+      if (a.enoughData !== b.enoughData) return a.enoughData ? -1 : 1;
+      if (a.enoughData) return (b.medianRank ?? 0) - (a.medianRank ?? 0) || b.scoredCount - a.scoredCount;
+      return b.totalCount - a.totalCount;
+    })
+    .map(({ medianRank: _medianRank, ...row }) => row);
 }

@@ -39,7 +39,7 @@ describe("dev chat stream stub", () => {
     expect(liveTurn.hasFinishTurn).toBe(true);
     expect(liveTurn.stepCount).toBe(4);
     expect(liveTurn.results).toHaveLength(1);
-    expect(liveTurn.nextActions.map((action) => action.kind)).toEqual(["focus_node", "ask_agent"]);
+    expect(liveTurn.nextActions).toEqual([]);
 
     const rows = await (await window.fetch("/api/agent/conversations/conv-1/messages")).json();
     const reopened = rowsToUIMessages(rows);

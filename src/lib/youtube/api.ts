@@ -162,14 +162,26 @@ export async function fetchChannelDetails(
   youtubeChannelId: string,
   accessToken?: string | null,
 ): Promise<ChannelDetails | null> {
+  const channels = await fetchChannels(apiKey, [youtubeChannelId], accessToken);
+  return channels[0] ?? null;
+}
+
+/** `channels.list` — at most 50 ids (1 quota unit). */
+export async function fetchChannels(
+  apiKey: string,
+  youtubeChannelIds: readonly string[],
+  accessToken?: string | null,
+): Promise<ChannelDetails[]> {
+  const ids = [...new Set(youtubeChannelIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+  if (ids.length > VIDEOS_BATCH_SIZE) throw new Error(`fetchChannels takes at most ${VIDEOS_BATCH_SIZE} ids`);
   const data = await youtubeGet<ChannelsResponse>(
     apiKey,
     "channels",
-    { part: CHANNEL_PARTS, id: youtubeChannelId },
+    { part: CHANNEL_PARTS, id: ids.join(",") },
     accessToken,
   );
-  const item = data.items?.[0];
-  return item ? toChannelDetails(item) : null;
+  return (data.items ?? []).map(toChannelDetails);
 }
 
 /** Owner's channel via OAuth (`mine=true`); includes the About text. */
@@ -297,6 +309,7 @@ export async function fetchVideos(
       videoId: item.id,
       channelId,
       title: item.snippet?.title?.trim() || item.id,
+      description: (item.snippet?.description ?? "").trim().slice(0, 4000),
       publishedAt: new Date(published).toISOString(),
       durationSeconds: parseIsoDuration(item.contentDetails?.duration),
       viewCount: toCount(item.statistics?.viewCount) ?? 0,

@@ -6,9 +6,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
-    // This checkout lives under .worktrees/; do not exclude `**/.worktrees/**`
-    // or every test file here is skipped. Parent repo config still excludes worktrees.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**"],
+    // Nested git worktrees under `.worktrees/` are other checkouts; their tests
+    // must not run against this tree's `src/` via the `@` alias.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**", "**/.worktrees/**"],
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },

@@ -2,6 +2,7 @@ import { tool as aiTool, type Tool } from "ai";
 import { placeInterviewNode, placeNodeInputSchema, type PlaceNodeInput } from "@/lib/agent/place-node";
 import type { ToolResult } from "@/lib/agent/tools/types";
 import type { CanvasPatch } from "@/lib/canvas/canvas-patch";
+import { debugLog } from "@/lib/debug-log";
 import { toolResultToModelOutput } from "./tool-adapter";
 
 export const PLACE_NODE_TOOL_NAME = "place_node";
@@ -11,14 +12,24 @@ export type WritePatch = (patch: CanvasPatch) => void;
 
 /** Places the node, broadcasts the patch, and answers the model in the app's ToolResult shape. */
 export async function executePlaceNode(projectId: string, input: PlaceNodeInput, writePatch: WritePatch): Promise<ToolResult> {
+  debugLog("agent", "place_node start", { projectId, nodeId: input.node?.id, type: input.node?.type });
   const outcome = await placeInterviewNode(projectId, input);
-  if (!outcome.ok) return { isError: true, content: [{ type: "text", text: outcome.error }] };
+  if (!outcome.ok) {
+    debugLog("agent", "place_node error", { projectId, error: outcome.error });
+    return { isError: true, content: [{ type: "text", text: outcome.error }] };
+  }
 
   try {
     writePatch(outcome.patch);
+    debugLog("agent", "place_node wrote", {
+      projectId,
+      nodeId: outcome.patch.node.id,
+      created: outcome.patch.created,
+      updatedAt: outcome.patch.updatedAt,
+    });
   } catch (error) {
     // The node is in the database already: an open canvas picks it up on its next reload.
-    console.error("[agent v2] place_node: could not broadcast the canvas patch:", error);
+    console.error("[agent] place_node: could not broadcast the canvas patch:", error);
   }
 
   const lines = [`node id: ${outcome.patch.node.id}`];

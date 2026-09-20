@@ -6,6 +6,19 @@ import "@excalidraw/excalidraw/index.css";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import { PenLine } from "lucide-react";
+import {
+  SKETCH_RATIOS,
+  buildSketchInitialData,
+  dataUrlToSketchImage,
+  isSketchChromeId,
+  parseSketchJson,
+  sketchFileMime,
+  sketchImageSrc,
+  sketchSceneNeedsImage,
+  type SketchImageBytes,
+  type SketchInitialData,
+  type SketchSceneElement,
+} from "@/lib/canvas/sketch-scene";
 
 type ExcalidrawAPI = {
   getSceneElements: () => unknown[];
@@ -13,6 +26,7 @@ type ExcalidrawAPI = {
   getFiles: () => Record<string, unknown>;
   updateScene: (scene: Record<string, unknown>) => void;
   addFiles: (files: { id: string; dataURL: string; mimeType: string; created: number }[]) => void;
+  setActiveTool: (tool: { type: string }) => void;
 };
 
 type ExcalidrawMod = {
@@ -22,51 +36,22 @@ type ExcalidrawMod = {
 
 type WorkflowAsset = { url: string; label: string; type: string };
 
-const RATIOS: Record<string, { w: number; h: number; label: string }> = {
-  "16x9": { w: 1280, h: 720, label: "16:9" },
-  "1x1": { w: 1024, h: 1024, label: "1:1" },
-  "4x3": { w: 1024, h: 768, label: "4:3" },
-  "9x16": { w: 720, h: 1280, label: "9:16" },
-};
-
-// Excalidraw's OWN element-rendering properties (strokeColor/opacity/etc,
-// consumed by its canvas renderer) — part of the drawing-surface exception,
-// not React DOM chrome. Untouched.
-function makeFrameElements(ratio: string) {
-  const dims = RATIOS[ratio] || RATIOS["16x9"];
-  return [
-    {
-      type: "rectangle" as const,
-      id: "thumbnail-frame",
-      x: -dims.w / 2,
-      y: -dims.h / 2,
-      width: dims.w,
-      height: dims.h,
-      strokeColor: "var(--bone)",
-      backgroundColor: "transparent",
-      fillStyle: "solid" as const,
-      strokeWidth: 2,
-      strokeStyle: "dashed" as const,
-      roughness: 0,
-      opacity: 40,
-      locked: true,
-      roundness: { type: 3 },
-    },
-    {
-      type: "text" as const,
-      id: "thumbnail-label",
-      x: -dims.w / 2,
-      y: -dims.h / 2 - 30,
-      width: 250,
-      height: 25,
-      text: `Zone miniature ${dims.label}`,
-      fontSize: 16,
-      fontFamily: 1,
-      strokeColor: "var(--bone)",
-      opacity: 40,
-      locked: true,
-    },
-  ];
+async function loadSketchImage(src: string): Promise<SketchImageBytes | null> {
+  const inline = dataUrlToSketchImage(src);
+  if (inline) return inline;
+  try {
+    const res = await fetch(src);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const mime = sketchFileMime(blob.type || "image/png");
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const dataURL = `data:${mime};base64,${btoa(binary)}`;
+    return { dataURL, mimeType: mime };
+  } catch {
+    return null;
+  }
 }
 
 function AssetPanel({ assets, onAddImage }: { assets: WorkflowAsset[]; onAddImage: (url: string) => void }) {
@@ -116,10 +101,13 @@ export default function SketchEditor() {
   const [saving, setSaving] = useState(false);
   const [key, setKey] = useState(0);
   const [workflowAssets, setWorkflowAssets] = useState<WorkflowAsset[]>([]);
+  const [sceneReady, setSceneReady] = useState(false);
   const modRef = useRef<ExcalidrawMod | null>(null);
   const apiRef = useRef<ExcalidrawAPI | null>(null);
   const savedElementsRef = useRef<unknown[] | null>(null);
   const savedFilesRef = useRef<Record<string, unknown> | null>(null);
+  const pendingImageSrcRef = useRef<string | null>(null);
+  const initialSceneRef = useRef<SketchInitialData | null>(null);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
 
   useEffect(() => {
@@ -138,21 +126,12 @@ export default function SketchEditor() {
       const detail = (e as CustomEvent).detail;
       setNodeId(detail.nodeId);
       setRatio(detail.aspectRatio || "16x9");
-
-      if (detail.sketchElements) {
-        try { savedElementsRef.current = JSON.parse(detail.sketchElements); }
-        catch { savedElementsRef.current = null; }
-      } else {
-        savedElementsRef.current = null;
-      }
-      if (detail.sketchFiles) {
-        try { savedFilesRef.current = JSON.parse(detail.sketchFiles); }
-        catch { savedFilesRef.current = null; }
-      } else {
-        savedFilesRef.current = null;
-      }
-
+      savedElementsRef.current = parseSketchJson<unknown[] | null>(detail.sketchElements, null);
+      savedFilesRef.current = parseSketchJson<Record<string, unknown> | null>(detail.sketchFiles, null);
+      pendingImageSrcRef.current = sketchImageSrc(detail);
       setWorkflowAssets(detail.workflowAssets || []);
+      initialSceneRef.current = null;
+      setSceneReady(false);
       setKey((k) => k + 1);
       setOpen(true);
     };
@@ -160,23 +139,40 @@ export default function SketchEditor() {
     return () => window.removeEventListener("open-sketch-editor", handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const src = pendingImageSrcRef.current;
+      const needsImage = sketchSceneNeedsImage(savedElementsRef.current, savedFilesRef.current);
+      const background = src && needsImage ? await loadSketchImage(src) : null;
+      if (cancelled) return;
+      initialSceneRef.current = buildSketchInitialData({
+        ratio,
+        userElements: savedElementsRef.current,
+        userFiles: savedFilesRef.current,
+        background,
+      });
+      setSceneReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, key, ratio]);
+
   const changeRatio = useCallback((newRatio: string) => {
     if (apiRef.current) {
-      const currentElements = apiRef.current.getSceneElements() as Array<{ id: string }>;
-      savedElementsRef.current = currentElements.filter((el) => el.id !== "thumbnail-frame" && el.id !== "thumbnail-label");
+      const currentElements = apiRef.current.getSceneElements() as SketchSceneElement[];
+      savedElementsRef.current = currentElements.filter((el) => !isSketchChromeId(el.id));
       savedFilesRef.current = apiRef.current.getFiles() as Record<string, unknown>;
     }
+    setSceneReady(false);
     setRatio(newRatio);
     setKey((k) => k + 1);
   }, []);
 
   const getInitialData = useCallback(() => {
-    const frameElements = makeFrameElements(ratio);
-    if (savedElementsRef.current && savedElementsRef.current.length > 0) {
-      const userElements = (savedElementsRef.current as Array<{ id: string }>).filter((el) => el.id !== "thumbnail-frame" && el.id !== "thumbnail-label");
-      return { elements: [...frameElements, ...userElements], files: savedFilesRef.current || undefined, scrollToContent: true };
-    }
-    return { elements: frameElements, scrollToContent: true };
+    return initialSceneRef.current ?? buildSketchInitialData({ ratio });
   }, [ratio]);
 
   const addImageToCanvas = useCallback(async (imageUrl: string) => {
@@ -209,7 +205,7 @@ export default function SketchEditor() {
       const allElements = apiRef.current.getSceneElements() as Array<{ id: string }>;
       const appState = apiRef.current.getAppState();
       const files = apiRef.current.getFiles();
-      const dims = RATIOS[ratio] || RATIOS["16x9"];
+      const dims = SKETCH_RATIOS[ratio] || SKETCH_RATIOS["16x9"];
 
       const blob = await modRef.current.exportToBlob({
         elements: allElements,
@@ -220,9 +216,13 @@ export default function SketchEditor() {
       });
 
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
+        const imageBase64 = typeof reader.result === "string" ? reader.result : "";
+        const { persistUserCanvasImage } = await import("@/lib/canvas/persist-user-image");
+        const persisted = imageBase64 ? await persistUserCanvasImage(imageBase64, "sketch") : null;
         updateNodeData(nodeId, {
-          imageBase64: reader.result as string,
+          imageBase64,
+          ...(persisted ?? {}),
           aspectRatio: ratio,
           sketchElements: JSON.stringify(allElements),
           sketchFiles: JSON.stringify(files),
@@ -268,7 +268,7 @@ export default function SketchEditor() {
             }}
             className="ml-4"
           >
-            {Object.entries(RATIOS).map(([k, val]) => (
+            {Object.entries(SKETCH_RATIOS).map(([k, val]) => (
               <ToggleGroupItem key={k} value={k} className="text-[11px] px-2 h-6">
                 {val.label}
               </ToggleGroupItem>
@@ -282,16 +282,25 @@ export default function SketchEditor() {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1">
-          {Comp ? (
-            <Comp
-              key={key}
-              excalidrawAPI={(api: unknown) => { apiRef.current = api as ExcalidrawAPI; }}
-              theme="dark"
-              initialData={getInitialData()}
-              UIOptions={{ canvasActions: { saveToActiveFile: false, loadScene: false, export: false, toggleTheme: false } }}
-            />
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        <div className="relative min-h-0 min-w-0 flex-1">
+          {Comp && sceneReady ? (
+            <div className="absolute inset-0 [&_.excalidraw]:h-full [&_.excalidraw]:w-full">
+              <Comp
+                key={key}
+                excalidrawAPI={(api: unknown) => {
+                  const next = api as ExcalidrawAPI;
+                  apiRef.current = next;
+                  next.setActiveTool({ type: "freedraw" });
+                }}
+                theme="dark"
+                viewModeEnabled={false}
+                zenModeEnabled={false}
+                detectScroll={false}
+                initialData={getInitialData()}
+                UIOptions={{ canvasActions: { saveToActiveFile: false, loadScene: false, export: false, toggleTheme: false } }}
+              />
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full">
               <span className="text-sm text-muted-foreground">Chargement...</span>

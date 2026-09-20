@@ -1,6 +1,6 @@
 ---
 name: get_canvas_state
-description: Reads the persisted canvas as compact JSON (node id, type, summary; edges source/target/targetHandle) with image bytes stripped. Use after apply_workflow or place_node in this turn, or when apply_workflow says the canvas changed, to refresh ids and wiring from SQLite. Prefer the injected <canvas_state> on the current turn when it looks complete — same summarizeNode shape from the live client at request time. Do not call to SEE pixels (view_canvas_images) or to list other miniatures (list_projects).
+description: Reads the persisted canvas as compact JSON (node id, type, summary; edges; liveSketchCount of visible sketch nodes only — deleted/tombstoned croquis are omitted). Use after apply_workflow or place_node in this turn, or when apply_workflow says the canvas changed, to refresh ids and wiring from SQLite. Prefer the injected <canvas_state> on the current turn when it looks complete — same summarizeNode shape from the live client at request time. Do not call to SEE pixels (view_canvas_images) or to list other miniatures (list_projects).
 ---
 
 # get_canvas_state
@@ -39,7 +39,7 @@ Input (only field):
 
 The block also says to pass that id to any tool that takes `project_id` (`apply_workflow`, `get_canvas_state`, `list_past_generations`, …). There is no `node_ids` filter (unlike `view_canvas_images`): the whole canvas is returned.
 
-Handler: `SELECT nodes, edges FROM projects WHERE id = ?`. Each node becomes `{ id, type, summary }` via `summarizeNode(type, data ?? {})`. Each edge becomes `{ source, target, targetHandle }`. Positions, raw `data`, `sourceHandle`, and image bytes are dropped.
+Handler: live canvas for `project_id` (`getProject` + `canvas_tombstones` filter). Tombstoned / deleted nodes are **not** listed. Each live node becomes `{ id, type, summary }` via `summarizeNode(type, data ?? {})`. Each edge becomes `{ source, target, targetHandle }`. Positions, raw `data`, `sourceHandle`, and image bytes are dropped. `liveSketchCount` is the number of live `type: "sketch"` nodes — that is the only sketch total; never add deleted ids or earlier `generate_sketch` calls.
 
 Return: one text part, pretty-printed JSON (`JSON.stringify(..., null, 2)`). `undefined` fields are omitted. Shape:
 
@@ -50,11 +50,22 @@ Return: one text part, pretty-printed JSON (`JSON.stringify(..., null, 2)`). `un
   ],
   "edges": [
     { "source": "<id>", "target": "<id>", "targetHandle": "<handle or omitted>" }
+  ],
+  "liveSketchCount": 0,
+  "currentThumbnails": [
+    {
+      "role": "This is the current thumbnail; improvements apply to THIS image (same angle). …",
+      "image": "stored:gi_<id>",
+      "imageNode": "<preview or generator id>",
+      "visibleId": "#<last 6 of stored id>",
+      "parentPromptNode": "<prompt id>",
+      "parentPrompt": "<original prompt text>"
+    }
   ]
 }
 ```
 
-Unknown project: **not** `{ isError: true }`. Same JSON with `"nodes": []` and `"edges": []`.
+Unknown project: **not** `{ isError: true }`. Same JSON with `"nodes": []`, `"edges": []`, `"liveSketchCount": 0`. `currentThumbnails` is omitted when no generated aperçu exists.
 
 ### vs injected `<canvas_state>`
 
@@ -62,15 +73,15 @@ Built by `snapshotCanvas` on the client and injected every turn as:
 
 ```
 <canvas_state>
-{ "nodes": […], "edges": […] }
+{ "nodes": […], "edges": […], "liveSketchCount": 0 }
 </canvas_state>
 ```
 
-Same node/edge keys and the **same** `summarizeNode` implementation (`src/lib/canvas/node-summary.ts`). Differences:
+Same node/edge keys, the **same** `summarizeNode` implementation (`src/lib/canvas/node-summary.ts`), and the same `liveSketchCount`. Differences:
 
 | | `<canvas_state>` | `get_canvas_state` |
 |---|---|---|
-| Source | Live canvas in the chat request (`nodes`/`edges` in memory) | SQLite `projects.nodes` / `projects.edges` |
+| Source | Live canvas in the chat request (`nodes`/`edges` in memory) | SQLite live nodes after tombstone filter |
 | Freshness | Start of this turn (and of each `ask_user` / `request_user_image` continuation) | Now, including writes this turn already committed |
 | Missing project | Still whatever the client sent (often empty nodes) | Empty `{ nodes: [], edges: [] }` |
 | `targetHandle` | May be `null` | Omitted when undefined |
@@ -102,6 +113,8 @@ Typical existing-workflow pass: read prompts/ids from `<canvas_state>` (or this 
 - `abTest` — `{ "variants": ["A","B"] }` or `["A","B","C"]` only when an A/B test is active (≥ 2 variants). Absent in normal mode.
 - `generatedCount` — distinct strings in `generatedImages` plus `generatedImagesByVariant` A/B/C
 - `selectedImage` — `stored:gi_<id>` (or another `toImageSourceRef` value) of `generatedImages[selectedImageIndex]`. Omitted when no index / no image. This is the chosen frame to iterate from.
+- `selectedVisibleId` — `#` + last 6 alphanumerics of that stored id (same badge / `@#id` the user sees)
+- `images` — every generated frame as `{ visibleId, image }` when any exist
 
 **`faceReference`** (Personnage)
 
@@ -123,6 +136,7 @@ Typical existing-workflow pass: read prompts/ids from `<canvas_state>` (or this 
 - `hasOutput` — `generatedImages.length > 0` or inline `imageBase64`/`imageUrl`
 - `imageCount` — `generatedImages.length` only
 - `selectedImage` — ref of the selected (or first) generated image, if any
+- `selectedVisibleId` / `images` — same `#ID` + `stored:gi_` pairing as the generator, so `@#ID` in chat matches this node
 
 **`textOverlay`**
 
@@ -144,6 +158,10 @@ Typical existing-workflow pass: read prompts/ids from `<canvas_state>` (or this 
 
 Reuse these as `image_source` on `apply_workflow` / `place_node`. A generator or preview `selectedImage` of `stored:gi_<id>` is the start point for an iterate: swipeFile `kind: "reference"` on `ref-in`.
 
+### `currentThumbnails`
+
+Present only when a generated aperçu exists (preview output, generator `selectedImage`, or `stored:gi_` already on `ref-in`). Each row means: **this is the current thumbnail; improvements apply to THIS image** (same angle). `visibleId` is the `#XXXXXX` badge on the image (same token as `@#XXXXXX` in chat). `parentPrompt` / `parentPromptNode` are the original prompt that produced it — keep that chain (original prompt + this gen + the requested change). Do not rewrite a first-gen scene. Absent `currentThumbnails` = first gen (full 7-sentence prompts; A/B = two complete alternatives).
+
 ### Edges / handles
 
 `targetHandle` is the input on the **target** node. Generator inputs:
@@ -161,7 +179,7 @@ This tool **never** sets `isError`. There is no French error string and no « pr
 
 | Situation | What you get |
 |---|---|
-| Unknown `project_id` | `{"nodes": [], "edges": []}` — looks like an empty canvas. If `<canvas_state>` has nodes, the DB row is missing or not saved yet; do not wipe the workflow. Prefer the injected snapshot; for pixels, `view_canvas_images` will say the project is missing and mention the ~2 s save. |
+| Unknown `project_id` | `{"nodes": [], "edges": [], "liveSketchCount": 0}` — looks like an empty canvas. If `<canvas_state>` has nodes, the DB row is missing or not saved yet; do not wipe the workflow. Prefer the injected snapshot; for pixels, `view_canvas_images` will say the project is missing and mention the ~2 s save. |
 | Missing / non-string `project_id` | Schema reject before the handler (`project_id` required). |
 | Corrupt `nodes`/`edges` JSON | Uncaught `JSON.parse` — no dedicated message. |
 | Empty but valid canvas | Same empty arrays; `<canvas_state>` will match if the client also has no nodes. |

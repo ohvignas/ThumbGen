@@ -27,6 +27,7 @@ import ContextMenu from "./panels/ContextMenu";
 import NodePicker from "./panels/NodePicker";
 import CanvasEmptyState from "./panels/CanvasEmptyState";
 import ProjectBar from "./panels/ProjectBar";
+import CanvasHeaderActions from "./panels/CanvasHeaderActions";
 import SketchEditor from "./panels/SketchEditor";
 import { useCallback, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -76,7 +77,6 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     openNodePicker,
     loadProject,
     selectOnly,
-    saving,
     currentProjectId,
   } = useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
@@ -117,7 +117,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (projectId) {
       let cancelled = false;
-      fetch("/api/projects")
+      fetch("/api/projects", { cache: "no-store" })
         .then((r) => r.json() as Promise<Array<{ id: string }>>)
         .then((projects) => {
           if (cancelled) return;
@@ -215,6 +215,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
 
   return (
     <div className="relative w-full h-screen" style={{ background: "var(--canvas-bg)" }}>
+      {/* Controlled flow: onNodesChange + applyNodeChanges owns drag positions. */}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -233,7 +234,14 @@ function CanvasInner({ projectId }: { projectId?: string }) {
         snapGrid={[20, 20]}
         minZoom={0.02}
         maxZoom={2}
-        deleteKeyCode={["Backspace", "Delete"]}
+        // Keyboard delete is handled in useCanvasShortcuts → deleteSelected.
+        // React Flow remount `remove` used to tombstone live prompt nodes.
+        deleteKeyCode={null}
+        // Default is Space: holding it pans, and the window listener
+        // preventDefault's Space unless the event target is an input. A
+        // Prompt click that selected the node (not the textarea) then made
+        // spaces impossible to type. Pane drag still pans.
+        panActivationKeyCode={null}
         proOptions={{ hideAttribution: true }}
         style={{ background: "var(--canvas-bg)" }}
       >
@@ -246,14 +254,11 @@ function CanvasInner({ projectId }: { projectId?: string }) {
 
         {/* Project selector + save indicator */}
         <Panel position="top-left" className="!ml-16">
-          <div className="flex items-center gap-3">
-            <ProjectBar />
-            {saving && (
-              <span className="text-xs px-2 py-1 rounded-lg" style={{ color: "var(--text-muted)", background: "var(--node-bg)" }}>
-                Enregistrement…
-              </span>
-            )}
-          </div>
+          <ProjectBar />
+        </Panel>
+
+        <Panel position="top-right">
+          <CanvasHeaderActions />
         </Panel>
 
         <ZoomBar />

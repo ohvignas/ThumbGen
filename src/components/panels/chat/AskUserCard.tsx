@@ -1,80 +1,39 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { CheckIcon, ImageOffIcon } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/toggle";
-import { useChatStore } from "@/store/chat-store";
 import {
   ASK_USER_LIMITS,
   askUserMaxSelected,
-  askUserOptionImage,
   parseAskUserInput,
   type AskUserOption,
   type AskUserOutput,
 } from "@/lib/agent/browser-tools/ask-user";
 
-const TILE_CLASS =
-  "h-auto w-full min-w-0 flex-col items-stretch gap-1 p-1 text-left whitespace-normal transition-colors motion-reduce:transition-none aria-pressed:border-primary aria-pressed:bg-primary/5";
 const ROW_CLASS =
-  "h-auto w-full min-w-0 flex-col items-start gap-0.5 px-2.5 py-1.5 text-left whitespace-normal transition-colors motion-reduce:transition-none aria-pressed:border-primary aria-pressed:bg-primary/5";
+  "h-auto w-full min-w-0 flex-col items-start justify-start gap-0.5 px-2.5 py-1.5 text-left whitespace-normal transition-colors motion-reduce:transition-none aria-pressed:border-primary aria-pressed:bg-primary/5";
 
 function OptionText({ option }: { option: AskUserOption }) {
   return (
     <>
-      <span className="w-full truncate text-xs font-medium">{option.label}</span>
+      <span className="w-full text-xs font-medium whitespace-normal">{option.label}</span>
       {option.description && (
-        <span className="line-clamp-1 w-full text-[11px] font-normal text-muted-foreground">{option.description}</span>
+        <span className="w-full text-[11px] font-normal text-muted-foreground whitespace-normal">
+          {option.description}
+        </span>
       )}
     </>
   );
 }
 
-function OptionThumbnail({
-  option,
-  shape,
-  failed,
-  selected,
-  onError,
-}: {
-  option: AskUserOption;
-  shape: "wide" | "square";
-  failed: boolean;
-  selected: boolean;
-  onError: () => void;
-}) {
-  const conversationId = useChatStore((s) => s.activeConversationId);
-  const image = askUserOptionImage(option.image, conversationId);
-  return (
-    <span
-      className={cn(
-        "relative block w-full overflow-hidden rounded-md bg-muted",
-        shape === "square" ? "aspect-square" : "aspect-video",
-      )}
-    >
-      {image && !failed ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={image.src} alt="" loading="lazy" className="size-full object-cover" onError={onError} />
-      ) : (
-        <span data-slot="ask-user-placeholder" className="flex size-full items-center justify-center text-muted-foreground">
-          <ImageOffIcon className="size-4" aria-hidden="true" />
-        </span>
-      )}
-      {selected && (
-        <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <CheckIcon className="size-3" aria-hidden="true" />
-        </span>
-      )}
-    </span>
-  );
-}
-
 /**
- * One `ask_user` card: options as a thumbnail grid or a list, « Autre… » free
- * text and « Passer »; with no option, only the free text field (« Ta réponse… »).
- * Answers exactly once — every control is disabled after the first answer, and
- * enabled again only when `onAnswer` throws or its promise rejects.
+ * One `ask_user` card: options as a text list (full label + description),
+ * « Autre… » free text and « Passer »; with no option, only the free text
+ * field (« Ta réponse… »). Photos on options are ignored. Answers exactly
+ * once — every control is disabled after the first answer, and enabled
+ * again only when `onAnswer` throws or its promise rejects.
  */
 export default function AskUserCard({
   input,
@@ -87,7 +46,6 @@ export default function AskUserCard({
   const answeredRef = useRef(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [other, setOther] = useState("");
-  const [failedImages, setFailedImages] = useState<string[]>([]);
   const groupRef = useRef<HTMLDivElement>(null);
 
   // A new question takes the focus (keyboard and screen reader users land on it),
@@ -121,7 +79,6 @@ export default function AskUserCard({
   };
 
   const question = parseAskUserInput(input);
-  const conversationId = useChatStore((s) => s.activeConversationId);
 
   const skipButton = (
     <Button variant="ghost" size="sm" disabled={answered} onClick={() => answer({ skipped: true })}>
@@ -139,8 +96,6 @@ export default function AskUserCard({
   }
 
   const maxSelected = askUserMaxSelected(question);
-  const firstImage = question.options.map((option) => askUserOptionImage(option.image, conversationId)).find((image) => image !== null);
-  const shape = firstImage?.shape ?? null;
   const freeQuestion = question.options.length === 0;
 
   const toggle = (id: string, pressed: boolean) =>
@@ -148,20 +103,7 @@ export default function AskUserCard({
 
   const renderOption = (option: AskUserOption): ReactNode => {
     const isSelected = selected.includes(option.id);
-    const content = shape ? (
-      <>
-        <OptionThumbnail
-          option={option}
-          shape={shape}
-          failed={failedImages.includes(option.id)}
-          selected={isSelected}
-          onError={() => setFailedImages((current) => (current.includes(option.id) ? current : [...current, option.id]))}
-        />
-        <OptionText option={option} />
-      </>
-    ) : (
-      <OptionText option={option} />
-    );
+    const content = <OptionText option={option} />;
 
     if (question.multiple) {
       return (
@@ -169,7 +111,7 @@ export default function AskUserCard({
           key={option.id}
           variant="outline"
           size="sm"
-          className={shape ? TILE_CLASS : ROW_CLASS}
+          className={ROW_CLASS}
           pressed={isSelected}
           disabled={answered || (!isSelected && selected.length >= maxSelected)}
           onPressedChange={(pressed) => toggle(option.id, pressed)}
@@ -183,7 +125,7 @@ export default function AskUserCard({
         key={option.id}
         variant="outline"
         size="sm"
-        className={shape ? TILE_CLASS : ROW_CLASS}
+        className={ROW_CLASS}
         disabled={answered}
         onClick={() => answer({ selected: [option.id] })}
       >
@@ -207,13 +149,7 @@ export default function AskUserCard({
       <p className="text-sm leading-snug font-medium text-foreground">{question.question}</p>
 
       {!freeQuestion && (
-        <div
-          className={cn(
-            shape ? "grid gap-1.5" : question.options.length > 6 ? "grid grid-cols-2 gap-1.5" : "flex flex-col gap-1.5",
-            shape === "wide" && "grid-cols-2",
-            shape === "square" && "grid-cols-3",
-          )}
-        >
+        <div className={cn(question.options.length > 6 ? "grid grid-cols-2 gap-1.5" : "flex flex-col gap-1.5")}>
           {question.options.map(renderOption)}
         </div>
       )}

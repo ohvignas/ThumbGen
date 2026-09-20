@@ -60,8 +60,9 @@ describe("generator summaries expose the A/B/C test", () => {
     const snapshot = snapshotCanvas(
       [{ id: "g", type: "generator", data: { abTest: { variants: ["A", "B"] } } }],
       [{ source: "p", target: "g", targetHandle: "prompt-in-b" }],
-    ) as { edges: Array<{ targetHandle?: string | null }> };
+    ) as { edges: Array<{ targetHandle?: string | null }>; liveSketchCount: number };
     expect(snapshot.edges[0].targetHandle).toBe("prompt-in-b");
+    expect(snapshot.liveSketchCount).toBe(0);
   });
 
   it("the chat snapshot marks a selected prompt node", () => {

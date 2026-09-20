@@ -142,7 +142,9 @@ describe("place_node — merge into the project", () => {
     await placed({ id: "iv-logo-1", type: "swipeFile", data: { image_source: `stored:lg_${logoId}` } });
     const left = 100 + 320 + 200;
     expect(node("iv-persona")!.position).toEqual({ x: left, y: 50 });
-    expect((node("iv-persona")!.data.personaAngles as Record<string, string>).front).toMatch(/^data:image\/png;base64,/);
+    expect((node("iv-persona")!.data.personaAngles as Record<string, string>).front).toBe(
+      `/api/personas/image?id=${personaId}&angle=front`,
+    );
     expect(node("iv-ref-1")!.position).toEqual({ x: left, y: 50 + 240 });
     expect(node("iv-ref-1")!.data).toMatchObject({ imageUrl: `/api/swipe-files/image?f=${swipeId}`, kind: "reference" });
     expect(node("iv-ref-1")!.data.imageBase64).toBeUndefined();

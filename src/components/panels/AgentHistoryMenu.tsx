@@ -67,7 +67,7 @@ export default function AgentHistoryMenu() {
       await restoreAgentSnapshot(projectId, pending.id);
       // No autosave scheduled during the restore may write the old canvas back.
       cancelPendingSave();
-      await loadProject(projectId);
+      await loadProject(projectId, { reason: "replace", force: true });
       setPending(null);
     } catch (err) {
       setRestoreError(err instanceof Error ? err.message : "Restauration impossible.");

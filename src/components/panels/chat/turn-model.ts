@@ -9,6 +9,12 @@ import {
   parseFinishTurnInput,
   type FinishTurnInput,
 } from "@/lib/agent/finish-turn";
+import {
+  mergePromptCards,
+  promptCardsFromTool,
+  type PromptCardModel,
+} from "./prompt-cards";
+import { debugLog } from "@/lib/debug-log";
 
 /**
  * Pure model of one assistant message for the chat panel (chantier E): what
@@ -53,6 +59,8 @@ export type AssistantTurn = {
   steps: TurnStep[];
   answer: string;
   results: ToolPart[];
+  /** Full image prompt from place_node / apply_workflow — stays on older turns. */
+  promptCards: PromptCardModel[];
   nextActions: NextAction[];
   pending: ToolPart[];
   durationMs: number | null;
@@ -81,6 +89,7 @@ export function emptyAssistantTurn(): AssistantTurn {
     steps: [],
     answer: "",
     results: [],
+    promptCards: [],
     nextActions: [],
     pending: [],
     durationMs: null,
@@ -167,14 +176,6 @@ function normalizeResultId(id: string): string {
   const trimmed = id.trim();
   const prefix = RESULT_ID_PREFIX.trim(); // "result_id:"
   return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length).trim() : trimmed;
-}
-
-function toNextAction(action: FinishTurnInput["next_actions"][number]): NextAction | null {
-  if (action.kind === "generate" && action.node_id) return { kind: "generate", nodeId: action.node_id };
-  if (!action.label) return null;
-  if (action.kind === "ask_agent" && action.message) return { kind: "ask_agent", label: action.label, message: action.message };
-  if (action.kind === "focus_node" && action.node_id) return { kind: "focus_node", label: action.label, nodeId: action.node_id };
-  return null;
 }
 
 /** Answer of a turn that has steps but ended without text, finish_turn or failed tool. */
@@ -292,15 +293,29 @@ export function splitAssistantTurn(message: UIMessage): AssistantTurn {
     }
   }
 
-  const nextActions = finish
-    ? finish.next_actions.map(toNextAction).filter((action): action is NextAction => action !== null)
-    : [];
+  const promptCards = mergePromptCards(stepTools.flatMap((part) => promptCardsFromTool(toolNameOf(part), part.input)));
+  const promptToolIds = new Set(
+    stepTools.filter((part) => promptCardsFromTool(toolNameOf(part), part.input).length > 0).map((part) => part.toolCallId),
+  );
+  for (const step of steps) {
+    if (step.kind === "tool" && promptToolIds.has(step.part.toolCallId)) step.shownInResults = true;
+  }
+
+  if (finish && finish.next_actions.length > 0) {
+    debugLog("chat", "finish_turn next_actions ignored", {
+      count: finish.next_actions.length,
+      kinds: finish.next_actions.map((action) => action.kind),
+    });
+  }
 
   return {
     steps,
     answer,
     results,
-    nextActions,
+    promptCards,
+    // Chat is text + real canvas tool effects. Generate / focus_node / ask_agent
+    // chips re-fired paid runs and raced the autosave; they are never shown.
+    nextActions: [],
     pending,
     durationMs: metadata.durationMs ?? null,
     stepCount: steps.length,

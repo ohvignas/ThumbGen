@@ -8,7 +8,18 @@ import { briefUpdateInputSchema } from "@/lib/brief/merge";
 import { getBrief, updateBrief } from "@/lib/brief/store";
 import { executeResearchTopic, type ResearchClient } from "@/lib/agent/v2/research-topic-tool";
 import { RESEARCH_MODEL } from "@/lib/research/pricing";
+import {
+  OPENROUTER_CHAT_URL,
+  OPENROUTER_RESEARCH_MODEL,
+  PERPLEXITY_SONAR_URL,
+  RESEARCH_INVALID_KEY,
+  RESEARCH_NO_KEY,
+  RESEARCH_RATE_LIMIT,
+  RESEARCH_RESPONSE_FORMAT,
+} from "@/lib/research/perplexity-client";
 import { getDb } from "@/lib/db";
+import { setSetting } from "@/lib/settings";
+import { readDebugLogs, resetDebugLogs } from "@/lib/debug-log";
 import * as generationsLog from "@/lib/generations-log";
 import { isFakeAgentEnabled } from "@/lib/agent/v2/fake-agent-model";
 
@@ -51,14 +62,27 @@ const logs = () =>
     .prepare("SELECT endpoint, status, cost_estimate, model FROM generations_log ORDER BY created_at")
     .all() as Array<{ endpoint: string; status: string; cost_estimate: number; model: string }>;
 
+const savedPerplexity = process.env.PERPLEXITY_API_KEY;
+const savedOpenRouter = process.env.OPENROUTER_API_KEY;
+
 beforeEach(() => {
   vi.mocked(isFakeAgentEnabled).mockReturnValue(false);
+  fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   getDb().exec("DELETE FROM generations_log");
+  getDb().prepare("DELETE FROM settings WHERE key = ?").run("perplexityApiKey");
+  getDb().prepare("DELETE FROM settings WHERE key = ?").run("openrouterApiKey");
+  delete process.env.PERPLEXITY_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  resetDebugLogs();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  if (savedPerplexity === undefined) delete process.env.PERPLEXITY_API_KEY;
+  else process.env.PERPLEXITY_API_KEY = savedPerplexity;
+  if (savedOpenRouter === undefined) delete process.env.OPENROUTER_API_KEY;
+  else process.env.OPENROUTER_API_KEY = savedOpenRouter;
 });
 
 describe("research_topic", () => {
@@ -154,5 +178,118 @@ describe("research_topic", () => {
     expect(spy).not.toHaveBeenCalled();
     expect(getBrief(conversationId)!.brief.research?.summary).toBeTruthy();
     spy.mockRestore();
+  });
+
+  it("refuses without Perplexity or OpenRouter and logs the French error in the workflow buffer", async () => {
+    const conversationId = conversationWithBrief();
+    const result = await executeResearchTopic({ conversationId }, { query: "Grok Bot xAI", language: "fr" });
+    expect(result.isError).toBe(true);
+    expect(result.requestNotSent).toBe(true);
+    expect(text(result)).toBe(RESEARCH_NO_KEY);
+    expect(text(result)).toMatch(/Réglages → Connexions/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(logs()).toEqual([]);
+    const failed = readDebugLogs().filter((entry) => entry.message === "research_topic failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ scope: "agent", data: { isError: true, error: RESEARCH_NO_KEY } });
+  });
+
+  it("calls native /v1/sonar with json_schema, not OpenRouter chat/completions", async () => {
+    setSetting("perplexityApiKey", "pplx-test-key");
+    setSetting("openrouterApiKey", "or-should-not-be-used");
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"summary":"Grok est l’agent xAI.","keyPoints":[],"entities":[]}' } }],
+          citations: ["https://x.ai/"],
+          usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.012 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const conversationId = conversationWithBrief();
+    const result = await executeResearchTopic({ conversationId }, { query: "Grok Bot xAI", language: "fr" });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toContain("Grok est l’agent xAI.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(PERPLEXITY_SONAR_URL);
+    expect(String(url)).not.toContain("openrouter");
+    expect((init as RequestInit).headers).toMatchObject({ Authorization: "Bearer pplx-test-key" });
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.model).toBe("sonar-pro");
+    expect(body.response_format).toEqual(RESEARCH_RESPONSE_FORMAT);
+    expect(body.response_format.type).not.toBe("json_object");
+    const started = readDebugLogs().find((entry) => entry.message === "research_topic start");
+    const ended = readDebugLogs().find((entry) => entry.message === "tool end");
+    expect(started?.data).toMatchObject({ provider: "perplexity" });
+    expect(ended?.data).toMatchObject({ provider: "perplexity", isError: false });
+  });
+
+  it("falls back to OpenRouter chat/completions when only the OpenRouter key is set", async () => {
+    setSetting("openrouterApiKey", "or-test-key");
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"summary":"Grok est l’agent xAI.","keyPoints":[],"entities":[]}' } }],
+          citations: ["https://x.ai/"],
+          usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.012 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const conversationId = conversationWithBrief();
+    const result = await executeResearchTopic({ conversationId }, { query: "Grok Bot xAI", language: "fr" });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toContain("Grok est l’agent xAI.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(OPENROUTER_CHAT_URL);
+    expect((init as RequestInit).headers).toMatchObject({ Authorization: "Bearer or-test-key" });
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.model).toBe(OPENROUTER_RESEARCH_MODEL);
+    expect(body.response_format).toEqual(RESEARCH_RESPONSE_FORMAT);
+    expect(body.response_format.type).not.toBe("json_object");
+    expect(logs()[0]).toMatchObject({ endpoint: "research", status: "success", model: OPENROUTER_RESEARCH_MODEL });
+    const started = readDebugLogs().find((entry) => entry.message === "research_topic start");
+    const ended = readDebugLogs().find((entry) => entry.message === "tool end");
+    expect(started?.data).toMatchObject({ provider: "openrouter" });
+    expect(ended?.data).toMatchObject({ provider: "openrouter", isError: false });
+  });
+
+  it("returns the real 401 and writes status/body into workflow logs", async () => {
+    setSetting("perplexityApiKey", "pplx-bad");
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: { message: "Invalid API key" } }), { status: 401 }));
+    const conversationId = conversationWithBrief();
+    const result = await executeResearchTopic({ conversationId }, { query: "Grok", language: "fr" });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(RESEARCH_INVALID_KEY);
+    const failed = readDebugLogs().find((entry) => entry.message === "research_topic failed");
+    expect(failed?.data).toMatchObject({ isError: true, status: 401, error: RESEARCH_INVALID_KEY, provider: "perplexity" });
+    expect(String(failed?.data?.body)).toMatch(/Invalid API key/i);
+  });
+
+  it("returns the real 429 instead of the generic fallback", async () => {
+    setSetting("perplexityApiKey", "pplx-ok");
+    fetchMock.mockResolvedValue(new Response("rate limited", { status: 429 }));
+    const conversationId = conversationWithBrief();
+    const result = await executeResearchTopic({ conversationId }, { query: "Grok", language: "fr" });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(RESEARCH_RATE_LIMIT);
+    const failed = readDebugLogs().find((entry) => entry.message === "research_topic failed");
+    expect(failed?.data).toMatchObject({ status: 429, error: RESEARCH_RATE_LIMIT, provider: "perplexity" });
+  });
+
+  it("logs provider openrouter on an OpenRouter 401", async () => {
+    setSetting("openrouterApiKey", "or-bad");
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: { message: "Invalid API key" } }), { status: 401 }));
+    const conversationId = conversationWithBrief();
+    const result = await executeResearchTopic({ conversationId }, { query: "Grok", language: "fr" });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe("Clé API OpenRouter invalide. Vérifie-la dans Réglages.");
+    const started = readDebugLogs().find((entry) => entry.message === "research_topic start");
+    const failed = readDebugLogs().find((entry) => entry.message === "research_topic failed");
+    expect(started?.data).toMatchObject({ provider: "openrouter" });
+    expect(failed?.data).toMatchObject({ provider: "openrouter", status: 401 });
   });
 });

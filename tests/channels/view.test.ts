@@ -3,16 +3,25 @@ import {
   channelStatusLabel,
   channelsDataVersion,
   formatCount,
+  descriptionExcerpt,
   formatPublishedDate,
   formatRelativeTime,
+  formatVideoAge,
   formatScore,
   formatSubscribers,
   formatUsd,
+  climbHint,
+  formatJevNote,
+  performanceBandLabel,
   formatViews,
   formatViewsPerDay,
   performanceBadge,
   toggleFilterValue,
   typesFilterLabel,
+  captionSourceLabel,
+  holdBandLabel,
+  WHY_DISCLAIMER,
+  whyFactsSentence,
 } from "@/components/library/followed-channels/view";
 import { QUOTA_SYNC_ERROR, type ChannelsResponse } from "@/lib/youtube/types";
 
@@ -27,6 +36,12 @@ describe("numbers", () => {
     expect(formatViews(12_000)).toBe("12 k vues");
     expect(formatViews(1_200_000)).toBe("1,2 M vues");
     expect(formatViewsPerDay(850)).toBe("850 vues/j");
+    expect(formatJevNote(7.2)).toBe("7,2/10");
+    expect(climbHint("average")).toBe("Moyenne depuis la publication (un seul relevé)");
+    expect(climbHint("delta")).toBe("Ça grimpe : écart de vues entre deux relevés");
+    expect(performanceBandLabel("over")).toBe("Surperforme");
+    expect(performanceBandLabel("neutral")).toBe("Dans la moyenne");
+    expect(performanceBandLabel("under")).toBe("Sous-performe");
     expect(formatSubscribers(12_500)).toBe("12,5 k abonnés");
     expect(formatSubscribers(1)).toBe("1 abonné");
     expect(formatSubscribers(null)).toBe("abonnés masqués");
@@ -53,6 +68,13 @@ describe("dates", () => {
   it("prints a short French date", () => {
     expect(formatPublishedDate("2026-09-12T10:00:00.000Z")).toBe("12 sept. 2026");
     expect(formatPublishedDate("not a date")).toBe("");
+  });
+
+  it("states age and clips a description", () => {
+    expect(formatVideoAge("2026-09-16T12:00:00.000Z", NOW)).toBe("moins d'un jour");
+    expect(formatVideoAge("2026-08-20T12:00:00.000Z", NOW)).toBe("27 jours");
+    expect(descriptionExcerpt("  Un   texte.  ")).toBe("Un texte.");
+    expect(descriptionExcerpt("x".repeat(230)).endsWith("…")).toBe(true);
   });
 });
 
@@ -124,5 +146,32 @@ describe("channelsDataVersion", () => {
     expect(channelsDataVersion({ ...data, classification: { ...data.classification, running: false } })).toBe(version);
     expect(channelsDataVersion({ ...data, channels: [{ ...data.channels[0], videoCount: 60 }] })).not.toBe(version);
     expect(channelsDataVersion({ ...data, classification: { ...data.classification, pending: 4 } })).not.toBe(version);
+  });
+});
+
+describe("why copy", () => {
+  it("never claims Studio metrics and labels caption source + hold honestly", () => {
+    expect(WHY_DISCLAIMER).toMatch(/pas de CTR/i);
+    expect(WHY_DISCLAIMER).toMatch(/médiane/i);
+    expect(captionSourceLabel({ status: "ok", kind: "official", language: "fr" })).toBe("Sous-titres officiels (fr)");
+    expect(captionSourceLabel({ status: "ok", kind: "asr", language: "en" })).toBe("Sous-titres auto (en)");
+    expect(captionSourceLabel({ status: "missing", kind: null, language: null })).toBe(
+      "Pas de sous-titres publics — on ne peut pas juger l'accroche parlée",
+    );
+    expect(captionSourceLabel({ status: "blocked", kind: null, language: null })).toBe(
+      "Sous-titres inaccessibles pour le moment",
+    );
+    expect(holdBandLabel("holds")).toBe("ouverture parlée plutôt retenante");
+    expect(holdBandLabel("drops")).toBe("ouverture parlée peu retenante");
+    expect(holdBandLabel("unsure")).toBe("ouverture parlée incertaine (Jev ~50/50)");
+    expect(
+      whyFactsSentence({
+        performance: { kind: "scored", score: 3.3, band: "over" },
+        channelTitle: "Nate Herk",
+        publishedAt: "2026-08-20T12:00:00.000Z",
+        viewCount: 12_000,
+        now: NOW,
+      }),
+    ).toBe("Cette vidéo fait ×3,3 vs la médiane de cette chaîne (Nate Herk). Âge : 27 jours. 12 k vues.");
   });
 });

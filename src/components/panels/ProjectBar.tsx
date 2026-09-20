@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FolderOpen, ChevronDown, Pencil, Trash2, Plus } from "lucide-react";
+import { formatSavedAt, saveStatusKind, saveStatusLabel } from "@/lib/canvas/save-status";
 
 type ProjectMeta = { id: string; name: string; createdAt: string; updatedAt: string };
 
@@ -15,6 +16,8 @@ export default function ProjectBar() {
   // into it, so reading settings here instead would race that route load and
   // leave the bar naming the previously-opened project.
   const currentId = useCanvasStore((s) => s.currentProjectId);
+  const cancelPendingSave = useCanvasStore((s) => s.cancelPendingSave);
+  const flushPendingSave = useCanvasStore((s) => s.flushPendingSave);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -38,7 +41,8 @@ export default function ProjectBar() {
 
   const switchProject = async (projectId: string) => {
     setMenuOpen(false);
-    await loadProject(projectId);
+    await flushPendingSave();
+    await loadProject(projectId, { reason: "replace" });
     fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -69,6 +73,7 @@ export default function ProjectBar() {
 
   const deleteProject = async (projectId: string) => {
     if (!confirm("Supprimer ce projet et toutes ses données ?")) return;
+    if (currentId === projectId) cancelPendingSave();
     await fetch(`/api/projects?id=${projectId}`, { method: "DELETE" });
     const remaining = projects.filter((p) => p.id !== projectId);
     if (remaining.length === 0 || currentId === projectId) {
@@ -84,9 +89,18 @@ export default function ProjectBar() {
   };
 
   const currentProject = projects.find((p) => p.id === currentId);
+  const dirty = useCanvasStore((s) => s.dirty);
+  const saving = useCanvasStore((s) => s.saving);
+  const saveError = useCanvasStore((s) => s.saveError);
+  const lastSavedAt = useCanvasStore((s) => s.lastSavedAt);
+  const saveProject = useCanvasStore((s) => s.saveProject);
+  const statusKind = saveStatusKind({ dirty, saving, saveError });
+  const statusText = saveStatusLabel(statusKind);
+  const savedAtLabel = lastSavedAt ? formatSavedAt(lastSavedAt) : null;
 
   return (
-    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+    <div className="flex items-center gap-3">
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger render={<Button variant="outline" className="gap-2" />}>
         <FolderOpen className="size-3.5" />
         {currentProject?.name || "Mon projet"}
@@ -150,6 +164,22 @@ export default function ProjectBar() {
           Nouveau projet
         </DropdownMenuItem>
       </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenu>
+      <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }} data-save-status={statusKind}>
+        {statusKind === "error" ? (
+          <button
+            type="button"
+            onClick={() => void saveProject()}
+            className="underline-offset-2 hover:underline"
+            title="Réessayer la sauvegarde"
+          >
+            {statusText}
+          </button>
+        ) : (
+          <span>{statusText}</span>
+        )}
+        {savedAtLabel && <span suppressHydrationWarning>{savedAtLabel}</span>}
+      </div>
+    </div>
   );
 }

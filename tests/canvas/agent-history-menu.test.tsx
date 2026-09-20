@@ -113,7 +113,7 @@ describe("AgentHistoryMenu", () => {
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
-    expect(loadProject).toHaveBeenCalledWith("proj-1");
+    expect(loadProject).toHaveBeenCalledWith("proj-1", { reason: "replace", force: true });
     expect(calls).toEqual(["flush", "cancel", "load"]);
   });
 

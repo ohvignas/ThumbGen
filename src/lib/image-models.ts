@@ -1,8 +1,10 @@
 /**
- * Every image model the canvas can generate with. All of them are served by
- * OpenRouter's Unified Image API (one key, one endpoint). Client-safe — no
- * server imports — so GeneratorNode, /api/generate/openrouter, the settings
- * schema and the Réglages page share this exact list.
+ * Every image model the canvas can generate with. Gemini and Seedream go
+ * through OpenRouter's Unified Image API. OpenAI-family models use
+ * api.openai.com when openaiApiKey is set (identity files + input_fidelity),
+ * otherwise the same OpenRouter endpoint. Client-safe — no server imports —
+ * so GeneratorNode, /api/generate/openrouter, the settings schema and the
+ * Réglages page share this exact list.
  */
 export type ImageModelGroup = "Gemini" | "OpenAI" | "ByteDance";
 

@@ -37,10 +37,12 @@ export default function ReplaceAngleDialog({
     setError(null);
     try {
       const dataUrl = await fileToDataUrl(file, PHOTO_IMPORT);
+      const { removeBackgroundFromSrc } = await import("@/lib/remove-bg");
+      const cutout = await removeBackgroundFromSrc(dataUrl);
       const res = await fetch(`/api/personas/${encodeURIComponent(persona.id)}/photos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ angle, dataUrl }),
+        body: JSON.stringify({ angle, dataUrl: cutout }),
       });
       if (!res.ok) {
         setError(`Remplacement impossible (HTTP ${res.status}).`);
@@ -82,7 +84,7 @@ export default function ReplaceAngleDialog({
                 )}
               </span>
               <span className="text-center text-xs text-muted-foreground">
-                {busyAngle === angle ? "Envoi…" : PERSONA_ANGLE_LABELS[angle]}
+                {busyAngle === angle ? "Suppression du fond…" : PERSONA_ANGLE_LABELS[angle]}
               </span>
               <input
                 type="file"

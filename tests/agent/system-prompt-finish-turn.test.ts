@@ -9,11 +9,10 @@ describe("system prompt — finish_turn", () => {
       "exactly once, as your LAST tool call",
       "max 400 characters",
       '"result_id: <id>"',
-      'kind "ask_agent" + message (max 300 characters)',
-      'kind "focus_node" + node_id',
-      "label max 40 characters",
-      "which costs money",
+      "next_actions: always []",
       "don't call finish_turn in the same step",
+      "next_actions MUST be []",
+      "Paid generation starts only when the user clicks « Générer »",
     ]) {
       expect(AGENT_SYSTEM_PROMPT).toContain(expected);
     }
@@ -26,9 +25,11 @@ describe("system prompt — finish_turn", () => {
     expect(AGENT_SYSTEM_PROMPT).not.toContain("Always announce what you're about to do");
   });
 
-  it("ends on the generate action, never on a generation the agent starts", () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('kind "generate" + node_id');
+  it("never offers generate / focus_node chat chips", () => {
+    expect(AGENT_SYSTEM_PROMPT).not.toContain('kind "generate" + node_id');
+    expect(AGENT_SYSTEM_PROMPT).not.toContain('kind "focus_node" + node_id');
     expect(AGENT_SYSTEM_PROMPT).not.toContain("one ask_agent button per angle");
+    expect(AGENT_SYSTEM_PROMPT).toContain("Do not offer generate, focus_node, ask_agent");
   });
 
   it("keeps finish_turn in the cached block and the dynamic blocks in the same order", () => {

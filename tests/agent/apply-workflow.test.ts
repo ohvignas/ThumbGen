@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { applyWorkflowTool } from "@/lib/agent/tools/apply-workflow";
+import { applyWorkflow, applyWorkflowTool } from "@/lib/agent/tools/apply-workflow";
 import { getDb } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 
@@ -86,7 +86,7 @@ describe("apply_workflow", () => {
     expect(r.isError).toBeFalsy();
   });
 
-  it("resolves image_source to a data URL on the persisted swipeFile node so canvas can render it", async () => {
+  it("resolves image_source to a library URL on the persisted swipeFile node so canvas can render it", async () => {
     const bp = {
       nodes: [
         { id: "f-1", type: "swipeFile", data: { kind: "logo", image_source: `stored:lg_${logoId}`, label: "Brand" } },
@@ -97,7 +97,8 @@ describe("apply_workflow", () => {
     const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
     const nodes = JSON.parse(row.nodes) as Array<{ data: Record<string, unknown> }>;
     const swipe = nodes[0];
-    expect(swipe.data.imageBase64).toMatch(/^data:image\/png;base64,/);
+    expect(swipe.data.imageUrl).toBe(`/api/logos/image?f=${logoId}`);
+    expect(swipe.data.imageBase64).toBeUndefined();
     expect(swipe.data.label).toBe("Brand");
     expect(swipe.data.kind).toBe("logo"); // lets the canvas wire a Logo to logo-in
     expect(swipe.data.image_source).toBe(`stored:lg_${logoId}`); // kept for re-resolve
@@ -173,7 +174,7 @@ describe("apply_workflow", () => {
     const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
     const face = (JSON.parse(row.nodes) as Array<{ data: Record<string, unknown> }>)[0];
     expect(face.data.personaId).toBe(personaId);
-    expect((face.data.personaAngles as Record<string, string>).front).toMatch(/^data:image\/png;base64,/);
+    expect((face.data.personaAngles as Record<string, string>).front).toBe(`/api/personas/image?id=${personaId}&angle=front`);
     expect(face.data.label).toBe("Antoine");
     expect(face.data.imageBase64).toBeUndefined();
   });
@@ -183,5 +184,31 @@ describe("apply_workflow", () => {
     const r = await applyWorkflowTool.handler({ project_id: projectId, blueprint: bp });
     expect(r.isError).toBe(true);
     expect((r.content[0] as { text: string }).text).toContain("stored:persona_");
+  });
+
+  it("stamps placedByAgentAt on created A/B prompts and returns a live workflow patch", async () => {
+    const outcome = await applyWorkflow({
+      project_id: projectId,
+      blueprint: {
+        nodes: [
+          { id: "prompt-a", type: "prompt", data: { prompt: "A shock" } },
+          { id: "prompt-b", type: "prompt", data: { prompt: "B emotion" } },
+          { id: "g-1", type: "generator", data: { model: "openai", aspectRatio: "16x9", abTest: { variants: ["A", "B"] } } },
+        ],
+        edges: [
+          { source: "prompt-a", target: "g-1", targetHandle: "prompt-in" },
+          { source: "prompt-b", target: "g-1", targetHandle: "prompt-in-b" },
+        ],
+      },
+    });
+    expect(outcome.result.isError).toBeFalsy();
+    expect(outcome.workflowPatch).not.toBeNull();
+    expect(outcome.workflowPatch!.created.map((node) => node.id).sort()).toEqual(["g-1", "prompt-a", "prompt-b"]);
+    expect(outcome.workflowPatch!.edges).toHaveLength(2);
+    const row = getDb().prepare("SELECT nodes FROM projects WHERE id = ?").get(projectId) as { nodes: string };
+    const nodes = JSON.parse(row.nodes) as Array<{ id: string; data: Record<string, unknown> }>;
+    for (const node of nodes) {
+      expect(typeof node.data.placedByAgentAt).toBe("string");
+    }
   });
 });
