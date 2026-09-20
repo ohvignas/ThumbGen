@@ -9,7 +9,8 @@ const PROVIDERS: ProviderKeyConfig[] = [
     key: "openrouterApiKey",
     provider: "openrouter",
     title: "OpenRouter",
-    usage: "Requise. Génère les images, fait tourner l'agent et améliore les prompts.",
+    usage:
+      "Requise. Génère les images, fait tourner l'agent et améliore les prompts. Sert aussi à la recherche de sujet (Sonar Pro) si Perplexity n'est pas configuré.",
     placeholder: "sk-or-v1-…",
     helpHref: "https://openrouter.ai/keys",
   },
@@ -17,7 +18,8 @@ const PROVIDERS: ProviderKeyConfig[] = [
     key: "openaiApiKey",
     provider: "openai",
     title: "OpenAI",
-    usage: "Utilisée uniquement pour la dictée vocale du chat.",
+    usage:
+      "Dictée vocale du chat, et génération GPT Image en direct sur api.openai.com (meilleur verrouillage du visage) quand un modèle OpenAI est choisi.",
     placeholder: "sk-…",
     helpHref: "https://platform.openai.com/api-keys",
   },
@@ -25,7 +27,7 @@ const PROVIDERS: ProviderKeyConfig[] = [
     key: "youtubeApiKey",
     provider: "youtube",
     title: "YouTube Data API",
-    usage: "Recherche de vidéos et de miniatures par l'agent, flux d'inspirations.",
+    usage: "Recherche de vidéos et de miniatures (Bibliothèque → Inspirations et agent).",
     placeholder: "AIza…",
     helpHref: "https://console.cloud.google.com/apis/credentials",
   },
@@ -38,6 +40,24 @@ const PROVIDERS: ProviderKeyConfig[] = [
     placeholder: "Client ID",
     helpHref: "https://developers.brandfetch.com/register",
     helpLabel: "Obtenir une clé gratuite",
+  },
+  {
+    key: "perplexityApiKey",
+    provider: "perplexity",
+    title: "Perplexity",
+    usage:
+      "Optionnelle. Recherche de sujet de l'agent (Sonar Pro). Sans cette clé, « Recherche le sujet » utilise OpenRouter.",
+    placeholder: "pplx-…",
+    helpHref: "https://www.perplexity.ai/account/api/keys",
+  },
+  {
+    key: "typesafeApiKey",
+    provider: "typesafe",
+    title: "TypeSafe (Jev)",
+    usage:
+      "Optionnelle. Affine le tri des titres après le score vues ÷ moyenne de chaîne (Inspirations → YouTube). Sans clé, le classement reste le score seul.",
+    placeholder: "tsk-…",
+    helpHref: "https://docs.typesafe.ai/introduction",
   },
 ];
 

@@ -14,13 +14,6 @@ const USAGE = {
 
 let counter = 0;
 
-function systemText(options: LanguageModelV3CallOptions): string {
-  return options.prompt
-    .filter((message) => message.role === "system")
-    .map((message) => message.content)
-    .join("\n");
-}
-
 function step(sentence: string, toolName: string, input: unknown, key: string): LanguageModelV3StreamPart[] {
   const stamp = `${Date.now().toString(36)}${(counter++).toString(36)}`;
   const id = `fake-text-${stamp}`;
@@ -55,12 +48,10 @@ function answerOf(results: ToolResultPart[], key: string): Answer | null {
 }
 
 export function journeyScript(options: LanguageModelV3CallOptions, _personas: FakePersona[]): LanguageModelV3StreamPart[] {
-  const system = systemText(options);
   const results = toolResults(options);
   const last = options.prompt.at(-1);
 
   if (last?.role !== "tool") {
-    if (system.includes("</thumbnail_brief>")) return finish("On reprend avec ce qui est déjà dans la fiche.");
     return step("Je charge la skill.", "read_skill", { name: "thumbnail-packaging" }, "skill");
   }
 
@@ -84,22 +75,7 @@ export function journeyScript(options: LanguageModelV3CallOptions, _personas: Fa
         "ask-promise",
       );
     case "ask-promise":
-      return step(
-        "J'écris la fiche.",
-        "update_brief",
-        {
-          video: {
-            subject: (answer?.other ?? "Une vidéo sur les miniatures YouTube").slice(0, 300),
-            promise: "Savoir créer une miniature qui donne envie de cliquer",
-            audience: "Créateurs YouTube débutants",
-          },
-        },
-        "brief-video",
-      );
-    case "brief-video":
-      return finish("Sujet noté. On peut chercher des logos, des concurrents, ou poser déjà le canvas.", [
-        { kind: "ask_agent", label: "Cherche des logos", message: "Cherche les logos des outils dont parle la vidéo." },
-      ]);
+      return finish("Sujet noté. On peut chercher des logos, des concurrents, ou poser déjà le canvas.");
     default:
       return finish("Tour simulé terminé.");
   }

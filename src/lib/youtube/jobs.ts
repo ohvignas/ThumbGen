@@ -2,6 +2,7 @@ import { getTypedSettings } from "@/lib/settings";
 import * as store from "./channel-store";
 import { buildClassificationStatus, runClassificationQueue } from "./classify";
 import { channelRuntime, isChannelLocked, isQuotaBlocked } from "./runtime";
+import { pollFollowedSnapshots } from "./snapshot-poll";
 import { syncChannel } from "./sync";
 import type { ClassificationStatus } from "./types";
 
@@ -12,6 +13,12 @@ import type { ClassificationStatus } from "./types";
 
 export const STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 export const STALE_TRIGGER_THROTTLE_MS = 10 * 60 * 1000;
+export const RSS_POLL_THROTTLE_MS = 15 * 60 * 1000;
+
+/** True when `lastAt` is missing/0 or at least `intervalMs` has elapsed. */
+export function shouldRunRssPoll(lastAt: number, now: number, intervalMs = RSS_POLL_THROTTLE_MS): boolean {
+  return now - lastAt >= intervalMs;
+}
 
 function logFailure(what: string, err: unknown) {
   console.error(`[channels] ${what}:`, err instanceof Error ? err.message : err);
@@ -119,13 +126,33 @@ export function reconcileSyncStatuses(): void {
   }
 }
 
-/** Tests: resolves once no sync, queue or classification is running. */
+export function queueSnapshotPoll(options: { now?: Date; force?: boolean } = {}): { started: boolean; throttled: boolean } {
+  const runtime = channelRuntime();
+  const now = options.now ?? new Date();
+  if (!getTypedSettings().youtubeApiKey) return { started: false, throttled: false };
+  if (isQuotaBlocked(now)) return { started: false, throttled: true };
+  if (!options.force && !shouldRunRssPoll(runtime.lastSnapshotPollAt, now.getTime())) {
+    return { started: false, throttled: true };
+  }
+  runtime.lastSnapshotPollAt = now.getTime();
+  if (runtime.snapshotPoll) return { started: true, throttled: false };
+  runtime.snapshotPoll = pollFollowedSnapshots(() => now)
+    .then(() => undefined)
+    .catch((err) => logFailure("snapshot poll failed", err))
+    .finally(() => {
+      runtime.snapshotPoll = null;
+    });
+  return { started: true, throttled: false };
+}
+
+/** Tests: resolves once no sync, queue, snapshot poll or classification is running. */
 export async function waitForChannelJobs(): Promise<void> {
   const runtime = channelRuntime();
   for (;;) {
     const pending: Promise<unknown>[] = [...runtime.running.values()];
     if (runtime.staleDrain) pending.push(runtime.staleDrain);
     if (runtime.classification) pending.push(runtime.classification);
+    if (runtime.snapshotPoll) pending.push(runtime.snapshotPoll);
     if (pending.length === 0) return;
     await Promise.allSettled(pending);
   }

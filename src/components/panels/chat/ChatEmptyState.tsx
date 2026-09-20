@@ -14,7 +14,7 @@ export default function ChatEmptyState() {
           <Sparkles />
         </EmptyMedia>
         <EmptyTitle>On commence par quoi ?</EmptyTitle>
-        <EmptyDescription>Décris ta miniature, tape / pour une skill (ex. /croquis), joins une image ou enregistre un vocal.</EmptyDescription>
+        <EmptyDescription>Décris ta miniature, tape / pour une skill (ex. /croquis), @ pour pointer une miniature, joins une image ou enregistre un vocal.</EmptyDescription>
       </EmptyHeader>
     </Empty>
   );

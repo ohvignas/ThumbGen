@@ -9,7 +9,9 @@ beforeEach(() => {
   getDb().exec("DELETE FROM settings");
   setSetting("openrouterApiKey", "test-key");
   fetchMock.mockReset();
-  fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: [], usage: {} }), { status: 200 }));
+  fetchMock.mockResolvedValue(
+    new Response(JSON.stringify({ data: [{ b64_json: "AAAA", media_type: "image/png" }], usage: {} }), { status: 200 }),
+  );
   vi.stubGlobal("fetch", fetchMock);
 });
 

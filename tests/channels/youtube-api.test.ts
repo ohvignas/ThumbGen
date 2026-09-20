@@ -220,7 +220,9 @@ describe("fetchVideos", () => {
     expect(batch.foundIds).toEqual(new Set(["long0000001", "hidden00001"]));
     expect(batch.videos[0]).toEqual({
       videoId: "long0000001",
+      channelId: MINE,
       title: "Vidéo long0000001",
+      description: "",
       publishedAt: "2026-09-01T10:00:00.000Z",
       durationSeconds: 754,
       viewCount: 1200,
@@ -245,19 +247,19 @@ describe("fetchVideos", () => {
       items: [
         {
           id: "negativevw1",
-          snippet: { title: "Négatif", publishedAt: "2026-01-01T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Négatif", publishedAt: "2026-01-01T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "-5", likeCount: "12.5" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "junkcounts01",
-          snippet: { title: "Charabia", publishedAt: "2026-01-02T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Charabia", publishedAt: "2026-01-02T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "abc", likeCount: "-1" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "missingview1",
-          snippet: { title: "Sans vues", publishedAt: "2026-01-03T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Sans vues", publishedAt: "2026-01-03T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: {},
           contentDetails: { duration: "PT1M" },
         },
@@ -278,19 +280,19 @@ describe("fetchVideos", () => {
       items: [
         {
           id: "baddate0001",
-          snippet: { title: "Date invalide", publishedAt: "pas-une-date", liveBroadcastContent: "none" },
+          snippet: { title: "Date invalide", publishedAt: "pas-une-date", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "10" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "nodate00001",
-          snippet: { title: "Sans date", liveBroadcastContent: "none" },
+          snippet: { title: "Sans date", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "10" },
           contentDetails: { duration: "PT1M" },
         },
         {
           id: "gooddate001",
-          snippet: { title: "Date valide", publishedAt: "2026-01-05T00:00:00Z", liveBroadcastContent: "none" },
+          snippet: { title: "Date valide", publishedAt: "2026-01-05T00:00:00Z", liveBroadcastContent: "none", channelId: MINE },
           statistics: { viewCount: "10" },
           contentDetails: { duration: "PT1M" },
         },
@@ -298,5 +300,26 @@ describe("fetchVideos", () => {
     });
     const batch = await fetchVideos(KEY, ["baddate0001", "nodate00001", "gooddate001"]);
     expect(batch.videos.map((video) => video.videoId)).toEqual(["gooddate001"]);
+  });
+
+  it("keeps the snippet description for theme clustering", async () => {
+    installRaw({
+      items: [
+        {
+          id: "desc0000001",
+          snippet: {
+            title: "Clickbait",
+            description: "  On parle de Cursor 2.0.  ",
+            publishedAt: "2026-01-05T00:00:00Z",
+            liveBroadcastContent: "none",
+            channelId: MINE,
+          },
+          statistics: { viewCount: "10" },
+          contentDetails: { duration: "PT1M" },
+        },
+      ],
+    });
+    const batch = await fetchVideos(KEY, ["desc0000001"]);
+    expect(batch.videos[0]?.description).toBe("On parle de Cursor 2.0.");
   });
 });

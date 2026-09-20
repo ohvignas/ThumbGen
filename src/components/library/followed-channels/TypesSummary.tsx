@@ -4,125 +4,134 @@
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { TypeSummaryRow } from "@/lib/youtube/thumb-types";
-import { youtubeWatchUrl, type ChannelListItem } from "@/lib/youtube/types";
+import { performanceBand } from "@/lib/youtube/performance";
+import { classifyVideoFormat, videoFormatLabel } from "@/lib/youtube/video-formats";
+import { WORKING_VIDEO_COUNT, type VideoListItem, type WorkingSubjectHit } from "@/lib/youtube/types";
 import { channelsApi } from "./api";
-import { formatCount, formatScore } from "./view";
+import {
+  PERFORMANCE_BADGE_CLASSES,
+  climbHint,
+  formatJevNote,
+  formatScore,
+  formatViewsPerHour,
+  performanceBandLabel,
+} from "./view";
+import { cn } from "cn";
 
-type Props = { channels: ChannelListItem[]; version: string };
+type Props = {
+  version: string;
+  onOpen: (video: VideoListItem) => void;
+  onSubject: (subject: WorkingSubjectHit | null) => void;
+};
 
-export default function TypesSummary({ channels, version }: Props) {
-  const [scope, setScope] = useState("all");
-  const [rows, setRows] = useState<TypeSummaryRow[] | null>(null);
+export default function TypesSummary({ version, onOpen, onSubject }: Props) {
+  const [subject, setSubject] = useState<WorkingSubjectHit | null>(null);
+  const [items, setItems] = useState<VideoListItem[] | null>(null);
   const [failed, setFailed] = useState(false);
-
-  const scopeItems = [
-    { value: "all", label: "Toutes les chaînes" },
-    ...(channels.some((channel) => channel.isMine) ? [{ value: "mine", label: "Ma chaîne" }] : []),
-    ...channels.filter((channel) => !channel.isMine).map((channel) => ({ value: channel.id, label: channel.title })),
-  ];
-  const effectiveScope = scopeItems.some((item) => item.value === scope) ? scope : "all";
 
   useEffect(() => {
     let cancelled = false;
     channelsApi
-      .typesSummary(effectiveScope)
+      .workingSubject()
       .then((response) => {
         if (cancelled) return;
-        setRows(response.rows);
+        setSubject(response.subject);
+        onSubject(response.subject);
+        setItems(response.videos.slice(0, WORKING_VIDEO_COUNT));
         setFailed(false);
       })
       .catch(() => {
-        if (!cancelled) setFailed(true);
+        if (!cancelled) {
+          setFailed(true);
+          setSubject(null);
+          onSubject(null);
+          setItems([]);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [effectiveScope, version]);
+  }, [version, onSubject]);
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Les types qui marchent</CardTitle>
-        <CardDescription>
-          Score médian des miniatures de chaque type. Un type est classé à partir de 3 miniatures notées.
-        </CardDescription>
-        <CardAction>
-          <Select
-            items={scopeItems}
-            value={effectiveScope}
-            onValueChange={(value) => {
-              if (value) setScope(value);
-            }}
-          >
-            <SelectTrigger size="sm" className="w-48" aria-label="Portée">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {scopeItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardAction>
+      <CardHeader className="gap-3">
+        <CardTitle>🏆 Tendance Youtube</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="grid gap-3">
         {failed ? (
-          <p className="text-sm text-destructive">Impossible de charger le classement des types.</p>
-        ) : rows === null ? (
-          <Skeleton className="h-32 w-full" />
-        ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune miniature classée pour l&apos;instant.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Score médian</TableHead>
-                <TableHead className="text-right">Miniatures</TableHead>
-                <TableHead>Meilleure miniature</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.type}>
-                  <TableCell className="font-medium">{row.label}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {row.enoughData && row.medianScore !== null ? (
-                      formatScore(row.medianScore)
-                    ) : (
-                      <span className="text-muted-foreground">peu de données</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{formatCount(row.totalCount)}</TableCell>
-                  <TableCell>
-                    {row.best ? (
-                      <a
-                        href={youtubeWatchUrl(row.best.videoId)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex min-w-0 items-center gap-2"
-                      >
-                        <img src={row.best.thumbnailUrl} alt="" className="aspect-video w-20 shrink-0 rounded object-cover" />
-                        <span className="line-clamp-1 max-w-56 text-sm">{row.best.title}</span>
-                        <Badge variant="outline">{formatScore(row.best.score)}</Badge>
-                      </a>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
+          <p className="text-sm text-destructive">Impossible de calculer la tendance.</p>
+        ) : items === null ? (
+          <div className="grid gap-2">
+            <Skeleton className="h-6 w-48" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {Array.from({ length: WORKING_VIDEO_COUNT }, (_, index) => (
+                <Skeleton key={index} className="aspect-video w-full" />
               ))}
-            </TableBody>
-          </Table>
+            </div>
+          </div>
+        ) : !subject || items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucune vidéo qui performe ces 7 derniers jours sur tes chaînes suivies.</p>
+        ) : (
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">{subject.why}</p>
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {items.map((video) => (
+                <li key={video.videoId}>
+                  <WorkingThumb video={video} onOpen={onOpen} />
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function WorkingThumb({ video, onOpen }: { video: VideoListItem; onOpen: (video: VideoListItem) => void }) {
+  const format = videoFormatLabel(video.formatId ?? classifyVideoFormat(video.title, video.description, video.durationSeconds));
+  const cote = video.overperformance != null && video.overperformance > 0 ? formatScore(video.overperformance) : null;
+  const band =
+    video.overperformance != null && video.overperformance >= 0.5 ? performanceBand(video.overperformance) : null;
+  const climb = video.viewsPerHour != null ? formatViewsPerHour(video.viewsPerHour) : null;
+  const note = video.jevNote != null ? formatJevNote(video.jevNote) : null;
+
+  return (
+    <button
+      type="button"
+      data-working-video={video.videoId}
+      onClick={() => onOpen(video)}
+      className="grid gap-1.5 text-left"
+      aria-label={`Détails de « ${video.title} »`}
+      title={video.velocityKind ? climbHint(video.velocityKind) : undefined}
+    >
+      <span className="relative block aspect-video overflow-hidden rounded-md bg-muted">
+        <img src={video.thumbnailUrl} alt="" className="size-full object-cover" />
+        {cote ? (
+          <Badge className={cn("absolute top-1.5 left-1.5", band ? PERFORMANCE_BADGE_CLASSES[band] : undefined)}>
+            {cote}
+          </Badge>
+        ) : null}
+        {note ? (
+          <span className="absolute top-1.5 left-14 rounded-sm bg-background/90 px-1.5 py-0.5 text-[10px] font-medium tabular-nums">
+            {note}
+          </span>
+        ) : null}
+        {climb ? (
+          <span className="absolute right-1.5 top-1.5 rounded-sm bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">
+            {climb}
+          </span>
+        ) : null}
+        <span className="absolute right-1.5 bottom-1.5 rounded-sm bg-background/90 px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
+          {format}
+        </span>
+      </span>
+      <span className="line-clamp-2 text-xs font-medium">{video.title}</span>
+      <span className="truncate text-[11px] text-muted-foreground">{video.channelTitle}</span>
+      {band ? <span className="text-[11px] font-medium">{performanceBandLabel(band)}</span> : null}
+    </button>
   );
 }

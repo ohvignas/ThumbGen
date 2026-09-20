@@ -5,7 +5,7 @@ description: Searches Simple Icons, SVGL, and Wikimedia for named brands missing
 
 # find_logos
 
-Searches **storable** mark sources for brand names and writes **unwired** candidates on this conversation's Fiche. Chat label: « Cherche les logos ». Chat-only (v2 route); not on MCP.
+Searches **storable** mark sources for brand names and returns **unwired** candidates for this conversation. Chat label: « Cherche les logos ». Chat-only (v2 route); not on MCP.
 
 Free: local Simple Icons plus SVGL / Wikimedia (4 s per source). No OpenRouter, no YouTube quota, no Brandfetch fetch. Not a visual tool — no `result_id`, no pixels in the tool result. Leave `finish_turn.results` empty unless another visual tool ran.
 
@@ -19,16 +19,16 @@ Success lines are `logo-candidate:<id> | <name> | <source>`. Copy the `lc_…` i
 | Args | `{ names }` (1–12 strings) | `{}` |
 | Returns | `logo-candidate:lc_… \| name \| source` | `stored:lg_<id>` + label, size, date |
 | Wireable? | **No** | Yes |
-| Writes | Fiche `logoCandidates` only (max 36) | none |
+| Writes | conversation `logoCandidates` only (max 36) | none |
 | Sources | Simple Icons / SVGL / Wikimedia (`STORABLE`) | Whatever the user already saved |
 | Empty | `Aucun logo trouvé. L'utilisateur peut importer depuis la Bibliothèque ou Brandfetch en aperçu.` | `No logos in library.` |
 | Next | `ask_user` then `add_logo` | `ask_user` with `stored:lg_` / keep the hit |
 
-`add_logo` turns **one** candidate into a library row + `stored:lg_<id>` (Fiche logos cap 3). Do not skip `list_logos` when the brand might already be saved.
+`add_logo` turns **one** candidate into a library row + `stored:lg_<id>` (cap 3). Do not skip `list_logos` when the brand might already be saved.
 
 ## When
 
-- Named tools / brands / products the user cited, or `research_topic` `entities` (`company` / `tool` / `product`), that are **not** already a `stored:lg_<id>` from `list_logos`, `<thumbnail_brief>` logos, or the canvas.
+- Named tools / brands / products the user cited, or `research_topic` `entities` (`company` / `tool` / `product`), that are **not** already a `stored:lg_<id>` from `list_logos` or the canvas.
 - After research or a clear subject, before wiring `logo-in` / `generate_sketch` `reference_sources`.
 - Empty library, or `list_logos` had no matching `"<label>"`.
 
@@ -62,14 +62,14 @@ Good names: `"Claude"`, `"Notion"`, `"YouTube"`. Bad: `""`, a URL, a sentence, 1
 
 ### What the tool does
 
-1. `ensureBrief` — creates an empty Fiche if this conversation has none. Deleted / unknown conversation → error, no search.
+1. Unknown / deleted conversation → error, no search.
 2. Fake agent (`THUMBGEN_FAKE_AGENT`): writes fixture candidates (`lc_fakeclaude` / Claude / simple-icons), **no** fetch / `searchLogos` / `logGeneration`.
 3. Otherwise, for **each name in order** (sequential): `searchLogos` on Simple Icons + SVGL + Wikimedia in parallel (4 s timeout; a slow/failing source is dropped **silently** — you will not see « SVGL indisponible »).
 4. Keeps only **STORABLE** hits: `simple-icons`, `svgl`, `wikimedia`. Brandfetch is not in the default providers and would be filtered anyway.
 5. Merge order is Simple Icons → SVGL → Wikimedia (duplicates by `key` dropped). **At most 3** of those hits **per name** (`slice(0, 3)`). If Simple Icons already returned 3, you may never see SVGL/Wikimedia for that name. Each provider itself caps at 8 internally.
 6. Each kept hit becomes `{ id: "lc_" + 12 hex, name: result.name (≤80) or the query, source, ref, previewUrl: /api/briefs/<conversation>/logo-candidates/<id> }`.
 7. `setBriefLogoCandidates` **replaces** the whole `logoCandidates` array (schema max 36 = 12×3). Previous `lc_` ids from this chat are gone.
-8. Returns text lines only. The model never sees `ref`, `previewUrl`, or Simple Icons' internal `data:image/svg+xml;base64,…`. `<thumbnail_brief>` later shows `{ id, name }` only.
+8. Returns text lines only. The model never sees `ref`, `previewUrl`, or Simple Icons' internal `data:image/svg+xml;base64,…`.
 
 Simple Icons is the local package (title, slug, aliases; exact then prefix then substring; brand-coloured SVG). SVGL: `api.svgl.app` (5 min cache, 404 = empty). Wikimedia: Commons `intitle:"<name>" intitle:logo`, SVG/PNG only.
 
@@ -91,7 +91,7 @@ logo-candidate:lc_c3d4e5f6a7b8 | Claude | wikimedia
 
 **One obvious hit** for a named brand (one line, or one that clearly is that mark): `add_logo` `{ candidate_id: "lc_…" }` immediately and say so in one line. Do not ask.
 
-**Several plausible hits:** `ask_user` **alone** in the next step (never with `place_node` or `finish_turn`). Omit leftover `step`. Question `"Quels logos garder ?"`, `multiple: true`, `max_selected: 3` (Fiche logos cap), `allow_skip: true`. Each option:
+**Several plausible hits:** `ask_user` **alone** in the next step (never with `place_node` or `finish_turn`). Omit leftover `step`. Question `"Quels logos garder ?"`, `multiple: true`, `max_selected: 3`, `allow_skip: true`. Each option:
 
 - `id`: the bare `lc_…` (this is what `{ selected }` returns → `add_logo`)
 - `label`: candidate name (≤60)
@@ -111,7 +111,7 @@ Then, in the **resumed** turn: `add_logo` once per `{ selected }` id (parallel i
 - `generate_sketch` `reference_sources: ["stored:lg_<id>"]`, never `face_source`
 - later `ask_user` tiles: `image: "stored:lg_<id>"`
 
-`add_logo` already appended Fiche logos. Skip a second `update_brief` logos unless you are dropping/renaming the set. Tell the user the **brand name**, not the raw id. Do not dump JSON.
+`add_logo` already saved the library row. Wire the returned `stored:lg_<id>` on the canvas. Tell the user the **brand name**, not the raw id. Do not dump JSON.
 
 ## Errors
 

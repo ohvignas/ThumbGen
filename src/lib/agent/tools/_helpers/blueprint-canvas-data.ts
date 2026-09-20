@@ -1,5 +1,7 @@
 import { getDb } from "@/lib/db";
 import { MODEL_ID_MAP } from "@/lib/agent/blueprint/models";
+import { imageDisplayUrl } from "@/lib/canvas/image-refs";
+import { personaImageUrl, type PersonaAngle } from "@/lib/personas";
 import { resolveImageSource } from "./image-source";
 
 /**
@@ -11,9 +13,9 @@ export type CanvasData = Record<string, unknown>;
 
 export type CanvasDataOptions = {
   /**
-   * A swipeFile whose image lives in the library (stored:sf_ / stored:lg_)
-   * carries its library `imageUrl` instead of inline base64 (place_node: small
-   * patches and saves). Any other source is still inlined.
+   * Stored/generated/uploaded refs become same-origin `/api/…` URLs instead of
+   * inline base64 (place_node / apply_workflow: small patches and saves).
+   * A source with no library URL is still inlined.
    */
   libraryUrls?: boolean;
 };
@@ -23,17 +25,14 @@ export async function resolveToDataUrl(imageSource: string): Promise<string> {
   return `data:${resolved.mimeType};base64,${resolved.bytes.toString("base64")}`;
 }
 
-/** The library route serving a stored swipe file or logo, or null for any other source. */
+/** Same-origin `/api/…` URL for a stored/generated/uploaded ref, or null. */
 export function libraryImageUrlForSource(source: string): string | null {
-  const match = source.match(/^stored:(sf|lg)_([\w-]+)$/);
-  if (!match) return null;
-  const id = encodeURIComponent(match[2]);
-  return match[1] === "sf" ? `/api/swipe-files/image?f=${id}` : `/api/logos/image?f=${id}`;
+  return imageDisplayUrl(source);
 }
 
 /** `{ imageUrl }` or `{ imageBase64 }` for a swipeFile/sketch source. */
-async function imageFields(type: string, imageSource: string, options: CanvasDataOptions): Promise<CanvasData> {
-  const url = options.libraryUrls && type === "swipeFile" ? libraryImageUrlForSource(imageSource) : null;
+async function imageFields(_type: string, imageSource: string, options: CanvasDataOptions): Promise<CanvasData> {
+  const url = options.libraryUrls ? libraryImageUrlForSource(imageSource) : null;
   return url ? { imageUrl: url } : { imageBase64: await resolveToDataUrl(imageSource) };
 }
 
@@ -55,7 +54,9 @@ export async function blueprintToCanvasData(
       .all(personaId) as { angle: "front" | "left" | "right"; mime_type: string; data: Buffer }[];
     const personaAngles: Record<string, string> = {};
     for (const p of photos) {
-      personaAngles[p.angle] = `data:${p.mime_type};base64,${p.data.toString("base64")}`;
+      personaAngles[p.angle] = options.libraryUrls
+        ? personaImageUrl(personaId, p.angle as PersonaAngle)
+        : `data:${p.mime_type};base64,${p.data.toString("base64")}`;
     }
     const personaRow = getDb().prepare("SELECT label FROM personas WHERE id = ?").get(personaId) as
       | { label: string }

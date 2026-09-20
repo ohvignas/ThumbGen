@@ -1,19 +1,19 @@
 ---
 name: analyze_thumbnails
-description: Vision-classifies competing YouTube thumbs from the last find_competitor_thumbnails call (cached per video_id is free; at most 2 paid OpenRouter calls per conversation), writes patterns/saturation/dominantPalette on the fiche, and returns two text lines. Use after that search with those video_ids (≤12). Not canvas pixels (view_canvas_images) and not a visual search gallery (search_youtube).
+description: Vision-classifies competing YouTube thumbs from the last find_competitor_thumbnails call (cached per video_id is free; at most 2 paid OpenRouter calls per conversation) and returns two text lines. Use after that search with those video_ids (≤12). Not canvas pixels (view_canvas_images) and not a visual search gallery (search_youtube).
 ---
 
 # analyze_thumbnails
 
 Chat label: « Analyse les miniatures concurrentes ». Structured vision on **competing** YouTube thumbs the server already ranked. Cheap OpenRouter classify (`google/gemini-2.5-flash-lite`, `mqdefault`), not a generation. **Never an image.** Not a `finish_turn` visual result (`isVisualResultTool` is false — leave `results` empty). Load with `read_skill` before the first call.
 
-The model never sees the JPEGs. You get two lines of French. The fiche also stores a 3-color palette.
+The model never sees the JPEGs. You get two lines of French.
 
 ## When
 
 - `find_competitor_thumbnails` just returned `youtube:<id>` lines and you need **what works / what everyone does** before proposing a package.
 - The user asks how competing thumbs in this niche look (composition, faces, text, colors) after that ranked search.
-- `<thumbnail_brief>` has no `competition` yet, and competing packaging would help.
+- This conversation has no competition summary yet, and competing packaging would help.
 
 Know the topic first. This tool does not search YouTube.
 
@@ -110,7 +110,7 @@ Ce qui marche : Fond uni · Texte · Visage
 Ce que tout le monde fait (à éviter) : Fond uni · Texte · Visage
 ```
 
-No JSON, no palette, no per-video breakdown, no images. Next turn’s `<thumbnail_brief>` includes `competition` (trust that block over chat for those fields). You may `update_brief` other cards; do not invent a `competition` patch — the server already wrote it.
+No JSON, no palette, no per-video breakdown, no images. Trust this tool’s two-line summary over chat history for those fields. Do not invent a competition dump.
 
 ## Errors
 

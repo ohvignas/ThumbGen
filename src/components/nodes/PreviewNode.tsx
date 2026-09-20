@@ -2,38 +2,29 @@
 
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
+import { generatedImageIdFromUrl, imageDisplayUrl } from "@/lib/canvas/image-refs";
+import { toast } from "@/components/ui/toast";
 import { useState } from "react";
 import NodeShell from "./NodeShell";
+import { ThumbnailDownloadButtons, thumbnailDownloadMenuItems } from "./ThumbnailDownloadActions";
+import ImageIdBadge from "@/components/ImageIdBadge";
+import { visibleImageIdFromValue } from "@/lib/canvas/visible-image-id";
 
 export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const removeNode = useCanvasStore((s) => s.removeNode);
+  const coverImageUrl = useCanvasStore((s) => s.coverImageUrl);
+  const setCoverImage = useCanvasStore((s) => s.setCoverImage);
   const [showDetails, setShowDetails] = useState(false);
 
   const images = data.generatedImages || [];
   const selectedIndex = data.selectedImageIndex || 0;
-  const currentImage = images[selectedIndex];
+  const currentRaw = images[selectedIndex];
+  const currentImage = typeof currentRaw === "string" && currentRaw ? imageDisplayUrl(currentRaw) ?? currentRaw : undefined;
   const isLoading = data.genStatus === "loading";
   const isError = data.genStatus === "error";
-
-  const handleDownload = async () => {
-    if (!currentImage) return;
-    try {
-      const res = await fetch(currentImage);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = `thumbnail-${Date.now()}.png`;
-      link.click();
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      const link = document.createElement("a");
-      link.href = currentImage;
-      link.download = `thumbnail-${Date.now()}.png`;
-      link.click();
-    }
-  };
+  const coverId = currentImage ? generatedImageIdFromUrl(currentImage) : null;
+  const isCover = Boolean(coverId && coverImageUrl && generatedImageIdFromUrl(coverImageUrl) === coverId);
 
   const formatTime = (ms: number) => {
     if (ms < 1000) return `${ms}ms`;
@@ -44,6 +35,26 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
     <NodeShell
       title={data.label || "Aperçu"}
       onDelete={() => removeNode(id)}
+      extraMenuItems={[
+        ...thumbnailDownloadMenuItems(currentImage),
+        ...(coverId && currentImage
+          ? [
+              {
+                label: isCover ? "✓ Miniature gagnante" : "Miniature gagnante",
+                onClick: () => {
+                  if (isCover) return;
+                  void setCoverImage(currentImage).then((ok) => {
+                    toast({
+                      title: ok
+                        ? "Miniature gagnante enregistrée"
+                        : "Impossible d'enregistrer la miniature gagnante",
+                    });
+                  });
+                },
+              },
+            ]
+          : []),
+      ]}
       width={320}
       icon={
         isLoading ? (
@@ -88,17 +99,23 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
             <path d="M15 9l-6 6M9 9l6 6" />
           </svg>
           <span className="text-xs font-medium" style={{ color: "var(--ember)" }}>Erreur</span>
-          {data.genError && (
-            <p className="text-[10px] text-center" style={{ color: "var(--text-muted)" }}>{data.genError}</p>
-          )}
+          <p className="text-[10px] text-center px-3 max-w-full break-words whitespace-pre-wrap" style={{ color: "var(--text-muted)" }}>
+            {data.genError || "Échec de la génération"}
+          </p>
         </div>
       )}
 
       {/* Image */}
       {currentImage && !isLoading && (
         <>
-          <div className="rounded-xl overflow-hidden">
+          <div className="relative rounded-xl overflow-hidden">
             <img src={currentImage} alt="Miniature générée" className="w-full" />
+            {isCover && (
+              <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                Gagnante
+              </span>
+            )}
+            <ImageIdBadge id={visibleImageIdFromValue(currentImage)} />
           </div>
 
           {data.genWarning && (
@@ -178,22 +195,16 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
             </div>
           )}
 
-          <button
-            onClick={handleDownload}
-            className="w-full mt-2 py-2 rounded-xl text-xs font-medium transition-colors"
-            style={{ background: "var(--surface)", color: "var(--text-secondary)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--node-bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface)")}
-          >
-            Télécharger
-          </button>
+          <ThumbnailDownloadButtons src={currentImage} />
         </>
       )}
 
       {/* Empty state (no loading, no error, no image) */}
       {!currentImage && !isLoading && !isError && (
         <div className="w-full h-48 rounded-xl flex items-center justify-center" style={{ background: "var(--surface)" }}>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Aucune image</span>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {data.genPromptUsed ? "Génération interrompue" : "Aucune image"}
+          </span>
         </div>
       )}
 

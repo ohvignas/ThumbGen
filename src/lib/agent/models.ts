@@ -51,12 +51,10 @@ export const AGENT_MODELS: AgentModel[] = [
   },
 ];
 
-// Gemini models hit a "corrupted thought signature" failure on multi-image
-// tool results (e.g. search_youtube returning multiple thumbnails), which
-// blocks the agent's own research step — the exact feature this default
-// needs to support. The running instance's DB-stored setting was already
-// switched to Claude; this is the code-level fallback so a fresh deploy or
-// a wiped /app/data volume doesn't silently regress back to the broken model.
+// Fresh installs still land on Claude: Gemini 3 thinking + tools used to 400
+// on OpenRouter ("Corrupted thought signature") until we omit thought
+// signatures and pin Google AI Studio (gemini-thought-signatures.ts). Keep
+// the safer default so a wiped /app/data volume does not surprise people.
 export const DEFAULT_AGENT_MODEL = "anthropic/claude-sonnet-4.6";
 
 export function getModelById(id: string): AgentModel | undefined {

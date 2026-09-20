@@ -6,6 +6,7 @@
  */
 
 const REF_PREFIX = /^(stored:(lg|sf|gi|persona)_[\w-]+|generated:[\w-]+|uploaded:[\w-]+)$/;
+const INLINE_BLOB_MIN = 240;
 
 /** The part of a filename before its extension (`abc.png` → `abc`), as the image routes read it. */
 function stripExtension(filename: string): string {
@@ -58,6 +59,63 @@ export function toImageSourceRef(value: unknown): string | null {
   const upload = path.match(/^\/api\/chat-uploads\/([\w-]+)$/);
   if (upload) return `uploaded:${upload[1]}`;
   return null;
+}
+
+/**
+ * Compact form for /api/generate/openrouter: stored/generated/uploaded refs,
+ * or the persona URL with its angle (toImageSourceRef drops the angle).
+ * Data URLs stay as-is — the caller must not add more of them.
+ */
+export function compactGenerationImageRef(value: string): string {
+  if (!value || value.startsWith("data:") || REF_PREFIX.test(value)) return value;
+  if (value.startsWith("/api/personas/image") && toImageSourceRef(value)) return value;
+  return toImageSourceRef(value) ?? value;
+}
+
+/** True when the generate route can turn this string into pixels without a client data URL. */
+export function isServerResolvableGenerationRef(value: string): boolean {
+  if (!value) return false;
+  if (value.startsWith("data:")) return true;
+  if (REF_PREFIX.test(value)) return true;
+  return toImageSourceRef(value) !== null;
+}
+
+/** True for a data URL or a long raw base64 blob — not JSON, paths, or refs. */
+export function isInlineImageBytes(value: unknown): boolean {
+  if (typeof value !== "string" || !value) return false;
+  if (value.startsWith("data:")) return true;
+  if (value.length <= INLINE_BLOB_MIN) return false;
+  if (value.startsWith("/") || /^(stored:|generated:|uploaded:)/.test(value)) return false;
+  return /^[A-Za-z0-9+/=\s]+$/.test(value);
+}
+
+/** Same-origin URL of a row in `generated_images`. */
+export function generatedImageUrl(id: string): string {
+  return `/api/generated-images/image?id=${id}`;
+}
+
+/**
+ * Same-origin `/api/…` URL for a stored/generated/uploaded ref, or the value
+ * itself when it is already a same-origin path. Null for inline pixels.
+ */
+export function imageDisplayUrl(value: string): string | null {
+  if (!value || isInlineImageBytes(value)) return null;
+  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  const ref = toImageSourceRef(value) ?? (REF_PREFIX.test(value) ? value : null);
+  if (!ref) return null;
+  if (ref.startsWith("stored:gi_")) return generatedImageUrl(ref.slice("stored:gi_".length));
+  if (ref.startsWith("stored:sf_")) return `/api/swipe-files/image?f=${encodeURIComponent(ref.slice("stored:sf_".length))}`;
+  if (ref.startsWith("stored:lg_")) return `/api/logos/image?f=${encodeURIComponent(ref.slice("stored:lg_".length))}`;
+  if (ref.startsWith("stored:persona_")) return `/api/personas/image?id=${encodeURIComponent(ref.slice("stored:persona_".length))}`;
+  if (ref.startsWith("generated:")) return `/api/generated-sketches/${ref.slice("generated:".length)}`;
+  if (ref.startsWith("uploaded:")) return `/api/chat-uploads/${ref.slice("uploaded:".length)}`;
+  return null;
+}
+
+/** UUID (or legacy filename stem) of a generated-image URL, or null. */
+export function generatedImageIdFromUrl(value: unknown): string | null {
+  const ref = toImageSourceRef(value);
+  return ref?.startsWith("stored:gi_") ? ref.slice("stored:gi_".length) : null;
 }
 
 /** Every distinct generated image of a generator node: variant A's list, then the other variants'. */

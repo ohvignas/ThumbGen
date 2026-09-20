@@ -9,7 +9,7 @@ describe("system prompt — slash invoke block", () => {
     expect(without.some((block) => block.text.startsWith("<invoked_skill"))).toBe(false);
 
     const block = '<invoked_skill name="generate_sketch" slash="croquis">\nbody\n</invoked_skill>';
-    const withInvoke = buildSystemMessages({ nodes: [], edges: [] }, "proj_1", undefined, null, block);
+    const withInvoke = buildSystemMessages({ nodes: [], edges: [] }, "proj_1", undefined, block);
     expect(withInvoke.at(-1)).toEqual({ type: "text", text: block });
     expect(withInvoke.at(-1)!.cache_control).toBeUndefined();
     expect(withInvoke[0].text).toBe(AGENT_SYSTEM_PROMPT);

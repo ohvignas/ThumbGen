@@ -5,11 +5,11 @@ description: Packages a new YouTube thumbnail — promise, title plus 0–4 word
 
 # thumbnail-packaging
 
-YouTube title + thumbnail packaging for a **new** miniature. Not a numbered interview. **Gather only what you lack.** Deduce the rest. Skip any tool the user already covered. Trust `<thumbnail_brief>` over chat history for those fields.
+YouTube title + thumbnail packaging for a **new** miniature. Not a numbered interview. **Gather only what you lack.** Deduce the rest. Skip any tool the user already covered. There is no Fiche / `update_brief` / `<thumbnail_brief>` — keep decisions in chat and on the canvas.
 
-Do **not** mention a 7-step pipeline, run STEPS 1–7, write « Until then », or send leftover `step` on `ask_user` / `update_brief`. `ask_user.step` is ignored leftover — omit it.
+Do **not** mention a 7-step pipeline, run STEPS 1–7, write « Until then », or send leftover `step` on `ask_user`. `ask_user.step` is ignored leftover — omit it.
 
-Existing canvas they want looked at, completed, or changed → `read_skill existing-workflow`. This skill is for a **new** thumbnail.
+Existing canvas they want looked at, completed, or changed → `read_skill existing-workflow`. This skill is for a **new** thumbnail **from scratch** (full 7-sentence prompts). First-gen A/B here = two complete alternative prompts (variant slots). Iterating an already-generated miniature (preview / `stored:gi_` on `ref-in`) is **not** this skill: short edit prompts, not a second scene essay.
 
 ## When
 
@@ -19,8 +19,8 @@ Existing canvas they want looked at, completed, or changed → `read_skill exist
 
 ## When not
 
-- `<canvas_state>` has nodes **and** the ask is about **that** workflow (« améliore », « change le fond », « remplace le texte ») → `existing-workflow`
-- You already loaded this skill this conversation and the packages/cards are in the brief — act, don't re-read
+- `<canvas_state>` has nodes **and** the ask is about **that** workflow (« améliore cette miniature », « change le fond », « remplace le texte ») → `existing-workflow` (iterate = short edit prompt + generated image on `ref-in`; A/B is not the trigger)
+- You already loaded this skill this conversation and the packages/cards are already decided — act, don't re-read
 - Dumping `list_followed_videos` as the first question of a new video (ask what **this** video is about)
 
 ## Promise
@@ -33,7 +33,7 @@ If you still don't know the video: `ask_user` free question (`options: []`, `all
 
 > De quoi parle la vidéo, et qu'est-ce que le spectateur saura faire ou comprendre à la fin ?
 
-Then `update_brief` `video: { subject, promise, audience }` (and `script` = spoken body only, ≤ 8000, no header). Optional memory — not a pipeline.
+Keep subject, promise, and audience in this conversation (and `script` = spoken body only, ≤ 8000, no header). Put the work on the canvas when you are ready — do not write a Fiche.
 
 ## Title + thumbnail text
 
@@ -51,11 +51,11 @@ Each **variant** is a title + thumbnail **pair** (max 3 variants, keys A / B / C
 
 - **0 to 4 words**, max **20 characters**. Empty string = no on-image text.
 - It **complements the title**, never repeats it, never promises what the video doesn't deliver.
-- Brand / tool names that already sit in the title may reappear on the thumb; other overlapping content words trigger a Fiche warning — rephrase once so the text adds what the title leaves unsaid.
+- Brand / tool names that already sit in the title may reappear on the thumb; other overlapping content words should be rephrased once so the text adds what the title leaves unsaid.
 - Readable at **168×94 px** (YouTube mobile preview). ALL CAPS, bold sans-serif, thick black outline when rendered on-image.
 - Language = thumbnail language from Réglages, not the reply language.
 
-`update_brief` **refuses** text over 4 words or 20 characters. Fix and retry once.
+Never put more than 4 words or 20 characters on the thumb. Fix and retry the package once if you overshoot.
 
 ## A/B must really differ
 
@@ -66,13 +66,13 @@ YouTube Studio « Tester et comparer » = up to 3 thumbs. One ThumbGen generator
 - **`concepts`** (default) — different concepts. Never the same layout **and** the same focal subject.
 - **`single-variable`** — B and C change **only** `abVariable` from A: `text` \| `emotion` \| `background` \| `hero`.
 
-Ask only if they have not chosen: « Quelle stratégie pour le test A/B ? » — « Trouver le meilleur concept » vs « Optimiser un détail » (then which variable).
+Ask only if they have not chosen: « Quelle stratégie pour le test A/B ? » — « Trouver le meilleur concept » vs « Optimiser un détail » (then which variable). `ask_user` options are **text sentences** (full label + one-line description). Never a persona, logo, or canvas photo as the choice visual.
 
-Propose 1–3 packages (`label` = direction, `description` = `Titre | Texte miniature`). `ask_user` multiple, `max_selected` 3. Write each kept package: `update_brief` `variant: { key, set: { direction, title, thumbnailText, visualIdea, titleRole, thumbRole } }` plus `abStrategy` / `abVariable`. Warnings that variants are too close: rephrase once, then go on. Don't silently pick a "best" package for them.
+Propose 1–3 packages (`label` = direction, `description` = `Titre | Texte miniature`). `ask_user` multiple, `max_selected` 3. Keep each chosen package in this conversation (`direction`, `title`, `thumbnailText`, `visualIdea`, `titleRole`, `thumbRole`, plus `abStrategy` / `abVariable`). If variants are too close: rephrase once, then go on. Don't silently pick a "best" package for them.
 
 ## Composition card
 
-Fill a card per kept variant (`update_brief` `variant.set.composition` **replaces** the whole card). Then confirm with `ask_user` if they have not validated. Never a 4th element: if they want one, propose which to drop.
+Fill a card per kept variant, then confirm with `ask_user` if they have not validated. Never a 4th element: if they want one, propose which to drop.
 
 | Field | Rule |
 |---|---|
@@ -85,7 +85,7 @@ Fill a card per kept variant (`update_brief` `variant.set.composition` **replace
 | `emotion` | **only with a Personnage** (refused if `common.persona` is `"none"`). Label: `curiosité` `surprise` `satisfaction` `inquiétude` `concentration` `déterminé`. Intensity 1–3 (default 2). Mouth `closed` by default; `open` only when the angle really calls for it |
 | `palette` | `{ dominant, accent, highlight }` as `#RRGGBB`. Hierarchy ~60 / 30 / 10. Brand colors from `<channel_profile>` when present |
 
-Refused: not exactly one hero, 4 elements, sizes over 110 %, text zone on the hero's cell, emotion without a character. Fix what `update_brief` names; retry once.
+Invalid: not exactly one hero, 4 elements, sizes over 110 %, text zone on the hero's cell, emotion without a character. Fix what you named; retry the card once.
 
 Confirm: « Variante A : \<direction\> — on valide la carte ? » with « Valider » / « Changer l'émotion » / « Changer le fond » / « Changer le texte » / « Changer le sujet focal ». Card details in option `description` (≤ 140). A change re-asks only that field, 3 options.
 
@@ -97,12 +97,12 @@ Confirm: « Variante A : \<direction\> — on valide la carte ? » with « Valid
 
 ## When to research / logos / competitors / sketches
 
-Call a tool **only if you still lack that input**. Caps are per conversation / fiche.
+Call a tool **only if you still lack that input**. Caps are per conversation.
 
 | Need | Tool | Skip when |
 |---|---|---|
-| Topic or named brands still fuzzy | `research_topic` (`query`, `language` fr\|en). Paid. Max **2**. `refresh: true` to redo. Sources = API citations only | User already explained; no OpenRouter key (say so, continue with names they gave) |
-| Named tools/brands on the thumb | `list_logos` first. Hits → keep the obvious one or `ask_user` « Quels logos garder ? » (`image: stored:lg_<id>`, `max_selected` 3). Miss → `find_logos` then `add_logo` `{ candidate_id }` → `stored:lg_<id>`. Max **3** logos on the brief | They said no logo; already have the refs |
+| Topic or named brands still fuzzy | `research_topic` (`query`, `language` fr\|en). Paid Perplexity (or OpenRouter). Max **2**. `refresh: true` to redo. Sources = API citations only | User already explained; no Perplexity and no OpenRouter key (say so, continue with names they gave) |
+| Named tools/brands on the thumb | `list_logos` first. Hits → keep the obvious one or `ask_user` « Quels logos garder ? » (`image: stored:lg_<id>`, `max_selected` 3). Miss → `find_logos` then `add_logo` `{ candidate_id }` → `stored:lg_<id>`. Max **3** logos | They said no logo; already have the refs |
 | What works in the niche | After you know the topic: `find_competitor_thumbnails` (`query_fr` + `query_en`, max **2** searches) then `analyze_thumbnails` on those ids. Two-line summary: « Ce qui marche : … / Ce que tout le monde fait (à éviter) : … ». Optional refs: `ask_user` « Lesquelles garder en référence ? » (`max_selected` 3, skip allowed) then `import_youtube_thumbnail` for chosen ids only (max **3** refs) | They forbid competitors; no YouTube key (say so). Do **not** open a new video with `list_followed_videos` |
 | Spoken content of **this** video | `extract_youtube_script` | Unpublished / no captions / they already pasted the script |
 | Cheap composition draft | `generate_sketch` — see Sketches | Idea still empty; they want the **final** image |
@@ -115,15 +115,16 @@ Optional. Show a layout once packages + a focal exist. Load `generate_sketch` be
 
 - Prompt you write (PROMPT ANATOMY). `face_source: "stored:persona_<id>"` when they appear. Logos in `reference_sources`. Default `style: "pencil_sketch"`, `aspect_ratio: "16x9"`.
 - One draft per kept package, then talk. Retouch = new prompt, same face/refs. Not the published thumb.
-- Cap (fiche only): `2 × max(1, variants.length) + 3`. Past the limit: one sentence, offer to ship the canvas **without** another sketch. No brief → unguarded but still ~$0.02 — stay stingy.
-- Record: `variant.set.sketch: { source: "generated:sk_<id>", status: "pending", autoFixed: false }`.
+- Cap (when a brief exists): `2 × max(1, variants.length) + 3` **live** sketch nodes on the canvas (`liveSketchCount`). Deleted / past session drafts do not count. 1 live croquis ≠ the cap. Announce a limit only after the tool refused. Stay stingy (~$0.02 each).
 - Show via `finish_turn.results` with that call's `result_id`. Never `ask_agent` that would start a paid generation.
 
 ## PROMPT ANATOMY
 
-When you call `generate_sketch` **or** fill a prompt node: **at most 7 sentences**, this order, **no labels** in the prompt. Omit a line if irrelevant. A great thumb is a story in one frame (foreground action → midground context → background mood). Flat "person + logo on grey" is dead.
+**This skill is FIRST GEN / FROM SCRATCH.** A/B here = two complete 7-sentence prompts (variant slots). If a generated thumb is already on the canvas and they want a tweak (« améliore cette miniature »), stop and follow `existing-workflow` (short edit prompt + that image). Do not rewrite a new scene.
 
-1. **SUBJECT** — foreground who. Realistic pose. Face decomposed (« mouth closed, eyes slightly narrowed », not « shocked »). Outfit if it matters.
+When you call `generate_sketch` **or** fill a prompt node **for a new thumbnail**: **at most 7 sentences**, this order, **no labels** in the prompt. Omit a line if irrelevant. A great thumb is a story in one frame (foreground action → midground context → background mood). Flat "person + logo on grey" is dead.
+
+1. **SUBJECT** — If a Personnage is in the thumb: **"the person in the identity/avatar reference photos"** plus pose and decomposed face (« mouth closed, eyes slightly narrowed », not « shocked »). Never a generic « Young man ». Outfit if it matters.
 2. **SCENE** — midground happening + background place/mood. Skip only for an explicit flat portrait.
 3. **COMPOSITION** — **one** valid framing: `extreme close-up` \| `close-up` \| `medium close-up` \| `medium shot` \| `medium full shot` \| `full shot` \| `wide shot`. Subject left / center / right third. Midground slightly out of focus; background bokeh if you want depth. Invalid: « ultra close-up », « extreme medium shot », « super wide ».
 4. **OBJECTS** — ≤3 elements **including the hero**. Each: % of frame + grid/position + plane. Ex: `Claude logo (orange 8-pointed star, 14% frame) center-left, foreground.`
@@ -133,7 +134,7 @@ When you call `generate_sketch` **or** fill a prompt node: **at most 7 sentences
 
 Anti-contradiction: medium shot has no room for a giant logo beside a torso — use wide/full for subject-left + logo-right. Shallow DoF = one sharp plane. Pose must be anatomically possible.
 
-Anti-noise (do **not** put in the prompt): ALL-CAPS emphasis, « preserve face fidelity » (that's `face_source`), CTR/viral marketing, 8K/masterpiece piles, « professionally/stunning ».
+Anti-noise (do **not** put in the prompt): ALL-CAPS emphasis, « preserve face fidelity » (the generate / sketch path appends the IDENTITY / AVATAR lock), CTR/viral marketing, 8K/masterpiece piles, « professionally/stunning ». When a Personnage is connected, do not write « Young man ».
 
 YouTube: high saturation + contrast (168×94 kills subtle gradients). Dark grounds (`#0F172A`, `#1A1A1A`) make warm subjects pop. Face 50–70% on face-forward thumbs. Text: yellow/white/red on dark; avoid YouTube UI in the bottom-right.
 
@@ -162,7 +163,7 @@ Sketches are always Flash Image ~$0.02, n=1, 1K — not this table. Final run bi
 | One variant, live `iv-*` nodes | `place_node` (one node per call; several `place_node` in one model step OK). Ids: `iv-prompt`, `iv-persona`, `iv-ref-1..3`, `iv-logo-1..3`, `iv-generator`. **No `abTest`** on `iv-generator` |
 | Two or three packages / A/B/C | **`apply_workflow`** — one generator `data.abTest: { variants: ["A","B"] }` or `{ variants: ["A","B","C"] }`. Never two generators « to compare ». `place_node` cannot do this graph |
 | Precise edit of an existing non-interview canvas | `existing-workflow` then `apply_workflow` with **only** changed/added nodes |
-| Start paid generation | `finish_turn` `next_actions: [{ kind: "generate", node_id }]` — not these tools |
+| Start paid generation | User clicks « Générer » on the canvas generator — not these tools |
 
 Never the same model step as `ask_user` or `finish_turn`. `finish_turn` last, alone.
 
@@ -184,13 +185,9 @@ If `<canvas_state>` already has `iv-prompt` / `iv-persona` / `iv-ref-*` / `iv-lo
 
 Never generate the final image yourself. Never `ask_agent` that would start a paid run.
 
-After the workflow is on the canvas: `finish_turn` with `summary` 1–2 sentences (≤ 400), `next_actions: [{ "kind": "generate", "node_id": "<generator>" }]`. The app writes the « Générer » label and cost. **Only their click** starts it.
+After the workflow is on the canvas: `finish_turn` with `summary` 1–2 sentences (≤ 400), `next_actions: []`. They click « Générer » on the generator node. **Only their click** starts it.
 
 `finish_turn` every turn, last, alone. `ask_user` / `request_user_image` pause the turn — finish after they answer.
-
-## Fiche (`update_brief`)
-
-Optional memory the user edits in « Fiche ». Send **only what changed**. Objects merge field by field; `logos` / `references` replaced whole; variant merged by `key`; `set.composition` / `set.sketch` replace that whole object. Omit `step`. Invalid brief → reasons, fix once. Warnings (text repeating the title, variants too close) → rephrase once, continue.
 
 ## Flexible flow (not a script)
 
@@ -215,6 +212,6 @@ User: « Miniature : j'ai remplacé Figma par Claude pendant 7 jours. »
 
 You already know the promise. Skip research. `list_logos` → Claude (keep) ; Figma missing → `find_logos` / `add_logo`. `list_personas` → channel default. Propose two **concepts** packages, e.g. title « J'ai remplacé Figma par Claude pendant 7 jours » + thumb « ADIEU ? » vs a different layout/focal (not the same card with a synonym). One `ask_user` on packages if both are plausible; otherwise keep both for A/B.
 
-Cards: exactly one hero, ≤3 elements, text zone not on the hero. Optional pencil sketches. Then `apply_workflow` one generator `abTest: { variants: ["A","B"] }`, shared face + logos, two prompts. `finish_turn` `kind: "generate"` on that generator.
+Cards: exactly one hero, ≤3 elements, text zone not on the hero. Optional pencil sketches. Then `apply_workflow` one generator `abTest: { variants: ["A","B"] }`, shared face + logos, two prompts. `finish_turn` `next_actions: []`.
 
 If they had said « remplace le texte par X » on an existing graph: do **not** follow this skill — `existing-workflow`.

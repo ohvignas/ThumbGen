@@ -1,4 +1,5 @@
 "use client";
+import { useLayoutEffect, useRef } from "react";
 import { ArrowDownIcon } from "lucide-react";
 import type { UIMessage } from "ai";
 import { MessageGroup } from "@/components/ui/message";
@@ -9,16 +10,33 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from "@/components/ui/message-scroller";
 import AssistantTurn from "./AssistantTurn";
 import ChatEmptyState from "./ChatEmptyState";
 import Message, { AssistantRow, type ChatTurnControls } from "./Message";
 import TurnProgress from "./TurnProgress";
-import { groupConsecutiveMessages, stoppedTurnPlacement, trailingAssistantRow } from "./chat-view-model";
+import {
+  chatPinToBottomReason,
+  groupConsecutiveMessages,
+  lastUserMessageId,
+  stoppedTurnPlacement,
+  trailingAssistantRow,
+} from "./chat-view-model";
 import { INTERRUPTED_TURN_ERROR, emptyAssistantTurn, isBusyStatus, liveTurnError } from "./turn-model";
 
-/** Pixels of the previous turn kept visible above a newly anchored user message. */
-const PREVIOUS_ITEM_PEEK_PX = 48;
+/** Force the viewport to the last line after a send or when a turn ends. */
+function PinChatToBottom({ lastUserId, turnActive }: { lastUserId: string; turnActive: boolean }) {
+  const { scrollToEnd } = useMessageScroller();
+  const prevRef = useRef({ lastUserId, turnActive });
+  useLayoutEffect(() => {
+    const next = { lastUserId, turnActive };
+    const reason = chatPinToBottomReason(prevRef.current, next);
+    prevRef.current = next;
+    if (reason) scrollToEnd({ behavior: "auto" });
+  }, [lastUserId, turnActive, scrollToEnd]);
+  return null;
+}
 
 export default function MessageList({ messages, controls }: { messages: UIMessage[]; controls: ChatTurnControls }) {
   const stopped = stoppedTurnPlacement(messages, controls.stoppedLive, controls.liveTurnStart);
@@ -36,12 +54,12 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
   const rowControls: ChatTurnControls = { ...controls, stoppedLive: stopped === "last-message" };
 
   return (
-    <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={PREVIOUS_ITEM_PEEK_PX}>
+    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller className="flex-1 border-t border-border">
         <MessageScrollerViewport>
           <MessageScrollerContent aria-busy={isBusyStatus(controls.status)} className="p-(--card-spacing)">
             {groups.map((group) => (
-              <MessageScrollerItem key={group.key} messageId={group.key} scrollAnchor={group.role === "user"}>
+              <MessageScrollerItem key={group.key} messageId={group.key}>
                 <MessageGroup>
                   {group.messages.map((message, index) => (
                     <Message
@@ -80,6 +98,7 @@ export default function MessageList({ messages, controls }: { messages: UIMessag
           <span className="sr-only">Aller au dernier message</span>
         </MessageScrollerButton>
       </MessageScroller>
+      <PinChatToBottom lastUserId={lastUserMessageId(messages)} turnActive={isBusyStatus(controls.status)} />
     </MessageScrollerProvider>
   );
 }

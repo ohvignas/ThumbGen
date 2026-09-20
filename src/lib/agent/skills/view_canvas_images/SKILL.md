@@ -1,6 +1,6 @@
 ---
 name: view_canvas_images
-description: Sends canvas pixels (sketches, logos, Personnage, generated, uploads) to vision. Use when the user talks about how an image looks, or before analysing or editing an existing workflow. Not for ids, prompts or selectedImage refs — those live in <canvas_state> / get_canvas_state.
+description: Sends canvas pixels (sketches, logos, Personnage, generated, uploads) to vision. @mentions and analyse / regarder / améliorer / iterate already attach those JPEGs on this user turn — call this only for other nodes. Not for ids, prompts or selectedImage refs — those live in <canvas_state> / get_canvas_state.
 ---
 
 # view_canvas_images
@@ -10,13 +10,14 @@ Look at the pixels on the open canvas. Free (no paid generation). Token-heavy: a
 ## When to use
 
 - The user talks about how something **looks**: "cette image", "le fond", "le visage", "le logo", "le croquis", "change the colours".
-- Before analysing, completing or modifying an **existing** workflow (`<canvas_state>` has nodes). General ask → omit `node_ids`. Targeted ask → pass those ids.
+- Before analysing, completing or modifying an **existing** workflow when the needed nodes are **not** already attached this turn (`<canvas_state>` has nodes). General ask → omit `node_ids`. Targeted ask → pass those ids.
 - A generator or preview has `selectedImage` (`stored:gi_<id>` in the snapshot) and you must **see** the chosen output before iterating it.
 - You are about to claim something is restored, fixed or back in place — look first.
 - A later turn's history replaced prior pixels with `[image retirée de l'historique — rappelle l'outil si besoin]` and you need to see them again.
 
 ## When not
 
+- @mention or analyse / regarder / améliorer / iterate this turn: those images are already attached as JPEG file parts on the user message. Call this tool only if you need additional nodes.
 - You only need ids, types, prompts, edges, `generatedCount` or `selectedImage` refs. That is already in `<canvas_state>` this turn. If that snapshot might be stale after a write, call `get_canvas_state` — it still returns **no bytes**.
 - Empty canvas, or nodes that only hold text (a `prompt` node has nothing to see).
 - Brand-new thumbnail from scratch with nothing visual on the canvas yet.
@@ -92,8 +93,8 @@ The autosave hint is always this exact sentence:
 
 ## Chains
 
-1. **Existing workflow (vague)** — `view_canvas_images` (omit `node_ids` if the ask is general) → read prompts in `<canvas_state>` → treat `selectedImage` as the start point → `finish_turn` with 1–2 sentences and 1–3 `ask_agent` buttons. Modify **nothing** this turn.
-2. **Existing workflow (precise)** — `view_canvas_images` on the concerned nodes → `apply_workflow` with **only** changed or added nodes, same ids. Never `remove_node_ids` unless they asked to delete.
+1. **Existing workflow (vague)** — @ / analyse / améliorer already attach the current JPEG. Call this tool only for extra nodes. Then read prompts in `<canvas_state>` → treat `selectedImage` as the start point → `finish_turn` with 1–2 sentences and 1–3 `ask_agent` buttons. Modify **nothing** this turn.
+2. **Existing workflow (precise)** — look at attached pixels (or this tool on extra nodes) → `apply_workflow` with **only** changed or added nodes, same ids. Never `remove_node_ids` unless they asked to delete.
 3. **Iterate a chosen generation** — header `stored:gi_<id>` (or snapshot `selectedImage`) → swipeFile `kind: "reference"`, `image_source: "stored:gi_<id>"` on `ref-in`. Do not rebuild the whole graph.
 4. **Verify a fix** — after `apply_workflow` / restore, call this again (or re-read `<canvas_state>` for structure). Never say it is restored without that check.
 5. **Canvas changed under you** — `apply_workflow` says so → `get_canvas_state` (not this tool) → retry the same targeted write once.
@@ -107,9 +108,12 @@ Load `existing-workflow` when `<canvas_state>` is non-empty and the request is a
 User: "Le fond de la miniature est trop sombre, améliore."
 `<canvas_state>` has `gen` (generator, `selectedImage: "stored:gi_vci-g2"`, `generatedCount: 3`), `face`, a swipeFile upload, a preview.
 
+The current thumbnail JPEG is already attached this turn. Call this tool only if you also need the Personnage or the import:
+
 ```
 view_canvas_images
   project_id: <project_id>
+  node_ids: ["face", "upload"]
 ```
 
 Typical headers (canvas order, prompt nodes omitted):

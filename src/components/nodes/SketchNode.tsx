@@ -2,6 +2,8 @@
 
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
+import { imageDisplayUrl } from "@/lib/canvas/image-refs";
+import { openSketchEditorDetail } from "@/lib/canvas/sketch-scene";
 import NodeShell from "./NodeShell";
 
 export default function SketchNode({ id, data }: NodeProps<AppNode>) {
@@ -9,7 +11,12 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
   const removeNode = useCanvasStore((s) => s.removeNode);
   const nodes = useCanvasStore((s) => s.nodes);
 
-  const hasImage = !!data.imageBase64;
+  const previewSrc =
+    data.imageBase64 ||
+    data.imageUrl ||
+    (typeof data.image_source === "string" ? imageDisplayUrl(data.image_source) : null) ||
+    "";
+  const hasImage = Boolean(previewSrc);
 
   const openEditor = () => {
     // Collect images from all nodes in the current workflow
@@ -27,14 +34,7 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
 
     window.dispatchEvent(
       new CustomEvent("open-sketch-editor", {
-        detail: {
-          nodeId: id,
-          imageBase64: data.imageBase64 || null,
-          aspectRatio: data.aspectRatio || "16x9",
-          sketchElements: data.sketchElements || null,
-          sketchFiles: data.sketchFiles || null,
-          workflowAssets,
-        },
+        detail: openSketchEditorDetail(id, data, workflowAssets),
       })
     );
   };
@@ -63,7 +63,7 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
           }}
         >
           <img
-            src={data.imageBase64}
+            src={previewSrc}
             alt="Croquis"
             className="w-full h-full object-contain"
           />
@@ -94,7 +94,7 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
       )}
 
       <Handle type="source" position={Position.Right} id="image" />
-      <div className="handle-label handle-label-right" style={{ top: "50%", right: -8, transform: "translateX(100%) translateY(-50%)" }}>
+      <div className="handle-label handle-label-right" style={{ top: "50%", right: -24, transform: "translateX(100%) translateY(-50%)" }}>
         <span style={{ color: "var(--canvas-accent)", fontSize: 10 }}>Croquis</span>
       </div>
     </NodeShell>

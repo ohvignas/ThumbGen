@@ -217,7 +217,7 @@ export default function GeneratorNode({ id, data, positionAbsoluteX, positionAbs
           {resolved.map((inputs, variantIndex) => (
             <div key={inputs.variant}>
               {abActive && (
-                <div className="relative -mx-3 mt-2 flex h-7 items-center justify-between px-3">
+                <div className="relative -mx-3 mt-2 flex h-10 items-center justify-between px-3">
                   <SectionTitle>Variante {inputs.variant}</SectionTitle>
                   {inputs.variant === "C" && (
                     <Button

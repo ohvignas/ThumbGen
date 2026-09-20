@@ -15,7 +15,7 @@ import FieldError from "./FieldError";
 import { describeSecretStatus } from "./secret-status";
 
 export type ProviderKeyConfig = {
-  key: "openrouterApiKey" | "openaiApiKey" | "youtubeApiKey" | "brandfetchApiKey";
+  key: "openrouterApiKey" | "openaiApiKey" | "youtubeApiKey" | "brandfetchApiKey" | "perplexityApiKey" | "typesafeApiKey";
   provider: TestableProvider;
   title: string;
   usage: string;

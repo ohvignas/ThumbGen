@@ -80,6 +80,28 @@ export function lastUserText(messages: UIMessage[]): string {
   return "";
 }
 
+/** Id of the last user message; "" when the list has none. */
+export function lastUserMessageId(messages: UIMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === "user") return message.id;
+  }
+  return "";
+}
+
+export type ChatPinSnapshot = { lastUserId: string; turnActive: boolean };
+
+/**
+ * When the list must jump to the bottom even if the user had scrolled up:
+ * a new user send, or the live turn finishing (stream / tools / error).
+ * Mid-stream growth stays with MessageScroller `autoScroll` (only if already at the bottom).
+ */
+export function chatPinToBottomReason(prev: ChatPinSnapshot, next: ChatPinSnapshot): "send" | "turn-complete" | null {
+  if (next.lastUserId !== prev.lastUserId && next.lastUserId !== "") return "send";
+  if (prev.turnActive && !next.turnActive) return "turn-complete";
+  return null;
+}
+
 /** A client request (request_user_image / request_user_sketch) the user already answered. */
 function hasAnsweredClientRequest(message: UIMessage): boolean {
   return message.parts.some(

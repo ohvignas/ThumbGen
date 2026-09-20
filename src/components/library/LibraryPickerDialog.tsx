@@ -4,7 +4,10 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LibrarySearchInput from "./LibrarySearchInput";
+import YoutubeRegionSelect from "./YoutubeRegionSelect";
+import { useYoutubeSearchRegion } from "./useYoutubeSearchRegion";
 import { PICKER_TABS, type LibraryKind, type LibraryPick, type PickerTab } from "./picker-tabs";
+import { DEFAULT_YOUTUBE_SEARCH_REGION, type YoutubeSearchRegion } from "@/lib/youtube/search-regions";
 
 /** A library kind, or « all » (the chat): every kind behind a top-level switcher. */
 export type LibraryPickerKind = LibraryKind | "all";
@@ -21,7 +24,10 @@ const COPY: Record<LibraryPickerKind, { title: string; description: string }> = 
     title: "Choisir un logo",
     description: "Un logo de ta bibliothèque, ou cherche-le en ligne : il sera ajouté à ta bibliothèque.",
   },
-  inspirations: { title: "Choisir une image de référence", description: "Une image de ta bibliothèque." },
+  inspirations: {
+    title: "Choisir une image de référence",
+    description: "Une image de ta bibliothèque, une chaîne suivie, ou une miniature YouTube.",
+  },
   all: { title: "Choisir dans la bibliothèque", description: "Un personnage, un logo ou une image de ta bibliothèque." },
 };
 
@@ -48,10 +54,48 @@ export function PickErrorLine({ error }: { error: string | null }) {
   );
 }
 
+export function youtubePickerTabActive(
+  kind: LibraryPickerKind,
+  activeKind: LibraryKind | null,
+  tabByKind: Partial<Record<LibraryKind, string>>,
+): boolean {
+  const current = kind === "all" ? activeKind : kind;
+  return current === "inspirations" && tabByKind.inspirations === "youtube";
+}
+
+/** Search field, plus the country select when the YouTube source tab is open. */
+export function LibraryPickerQueryRow({
+  query,
+  onQueryChange,
+  region,
+  onRegionChange,
+  showRegion,
+}: {
+  query: string;
+  onQueryChange: (query: string) => void;
+  region: YoutubeSearchRegion;
+  onRegionChange: (region: YoutubeSearchRegion) => void;
+  showRegion: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <LibrarySearchInput
+        className="min-w-0 flex-1"
+        value={query}
+        onChange={onQueryChange}
+        placeholder="Rechercher"
+        label="Rechercher dans la bibliothèque"
+      />
+      {showRegion ? <YoutubeRegionSelect value={region} onChange={onRegionChange} /> : null}
+    </div>
+  );
+}
+
 function KindTabs({
   tabs,
   query,
   onPick,
+  region,
   tabId,
   onTabChange,
   nested,
@@ -59,13 +103,14 @@ function KindTabs({
   tabs: PickerTab[];
   query: string;
   onPick: (item: LibraryPick) => void;
+  region: YoutubeSearchRegion;
   tabId: string | undefined;
   onTabChange: (tabId: string) => void;
   nested: boolean;
 }) {
   // Inside the kind switcher, a kind with one tab (Personnages) needs no second tab row.
   if (nested && tabs.length === 1) {
-    return <div className="min-h-0 flex-1 overflow-y-auto pr-1">{tabs[0].render({ query, onPick })}</div>;
+    return <div className="min-h-0 flex-1 overflow-y-auto pr-1">{tabs[0].render({ query, onPick, region })}</div>;
   }
   const activeTab = tabs.find((tab) => tab.id === tabId)?.id ?? tabs[0]?.id;
   return (
@@ -85,7 +130,7 @@ function KindTabs({
       </TabsList>
       {tabs.map((tab) => (
         <TabsContent key={tab.id} value={tab.id} className="min-h-0 overflow-y-auto pr-1">
-          {tab.render({ query, onPick })}
+          {tab.render({ query, onPick, region })}
         </TabsContent>
       ))}
     </Tabs>
@@ -97,6 +142,7 @@ export function LibraryPickerTabs({
   kind,
   query,
   onPick,
+  region = DEFAULT_YOUTUBE_SEARCH_REGION,
   tabByKind,
   onTabChange,
   activeKind,
@@ -105,6 +151,7 @@ export function LibraryPickerTabs({
   kind: LibraryPickerKind;
   query: string;
   onPick: (item: LibraryPick) => void;
+  region?: YoutubeSearchRegion;
   tabByKind: Partial<Record<LibraryKind, string>>;
   onTabChange: (kind: LibraryKind, tabId: string) => void;
   activeKind: LibraryKind | null;
@@ -116,6 +163,7 @@ export function LibraryPickerTabs({
         tabs={PICKER_TABS[kind]}
         query={query}
         onPick={onPick}
+        region={region}
         tabId={tabByKind[kind]}
         onTabChange={(tabId) => onTabChange(kind, tabId)}
         nested={false}
@@ -144,6 +192,7 @@ export function LibraryPickerTabs({
             tabs={PICKER_TABS[entry.kind]}
             query={query}
             onPick={onPick}
+            region={region}
             tabId={tabByKind[entry.kind]}
             onTabChange={(tabId) => onTabChange(entry.kind, tabId)}
             nested
@@ -173,6 +222,7 @@ export default function LibraryPickerDialog({
   const [tabByKind, setTabByKind] = useState<Partial<Record<LibraryKind, string>>>({});
   const [activeKind, setActiveKind] = useState<LibraryKind | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
+  const [region, setRegion] = useYoutubeSearchRegion();
 
   const changeOpen = (next: boolean) => {
     if (!next) {
@@ -212,12 +262,19 @@ export default function LibraryPickerDialog({
             <DialogTitle>{COPY[kind].title}</DialogTitle>
             <DialogDescription>{COPY[kind].description}</DialogDescription>
           </DialogHeader>
-          <LibrarySearchInput value={query} onChange={setQuery} placeholder="Rechercher" label="Rechercher dans la bibliothèque" />
+          <LibraryPickerQueryRow
+            query={query}
+            onQueryChange={setQuery}
+            region={region}
+            onRegionChange={setRegion}
+            showRegion={youtubePickerTabActive(kind, activeKind ?? initialKind ?? null, tabByKind)}
+          />
           <PickErrorLine error={pickError} />
           <LibraryPickerTabs
             kind={kind}
             query={query}
             onPick={pick}
+            region={region}
             tabByKind={tabByKind}
             onTabChange={(tabKind, tabId) => setTabByKind((current) => ({ ...current, [tabKind]: tabId }))}
             activeKind={activeKind ?? initialKind ?? null}

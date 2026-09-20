@@ -11,6 +11,7 @@ export default function NodeShell({
   onRename,
   onRemoveBg,
   removingBg,
+  extraMenuItems,
   accentColor,
   headerExtra,
   width = 460,
@@ -23,6 +24,7 @@ export default function NodeShell({
   onRename?: (newName: string) => void;
   onRemoveBg?: () => void;
   removingBg?: boolean;
+  extraMenuItems?: Array<{ label: string; onClick: () => void; disabled?: boolean }>;
   accentColor?: string;
   headerExtra?: ReactNode;
   width?: number;
@@ -61,7 +63,7 @@ export default function NodeShell({
 
   return (
     <div
-      className="node-card dark rounded-xl border transition-all text-(--text-primary)"
+      className="node-card dark overflow-visible rounded-xl border transition-all text-(--text-primary)"
       style={{
         width,
         background: "var(--node-bg)",
@@ -110,6 +112,7 @@ export default function NodeShell({
             onClick={() => setMenuOpen(!menuOpen)}
             className="p-1 rounded-md transition-colors nopan nodrag"
             style={{ color: "var(--text-muted)" }}
+            aria-label="Actions du nœud"
             onMouseEnter={(e) =>
               (e.currentTarget.style.color = "var(--text-secondary)")
             }
@@ -141,6 +144,18 @@ export default function NodeShell({
                   }}
                 />
               )}
+              {extraMenuItems?.map((item) => (
+                <NodeMenuItem
+                  key={item.label}
+                  label={item.label}
+                  disabled={item.disabled}
+                  onClick={() => {
+                    if (item.disabled) return;
+                    item.onClick();
+                    setMenuOpen(false);
+                  }}
+                />
+              ))}
               {onRemoveBg && (
                 <NodeMenuItem
                   label={removingBg ? "Suppression…" : "Retirer le fond"}
@@ -184,16 +199,22 @@ function NodeMenuItem({
   label,
   onClick,
   danger,
+  disabled,
 }: {
   label: string;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className="w-full text-left px-3 py-2 text-xs transition-colors"
-      style={{ color: danger ? "var(--ember)" : "var(--text-secondary)" }}
+      style={{
+        color: danger ? "var(--ember)" : "var(--text-secondary)",
+        opacity: disabled ? 0.55 : 1,
+      }}
       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >

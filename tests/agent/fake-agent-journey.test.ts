@@ -3,8 +3,6 @@ import { hasToolCall, isStepCount, streamText, tool, type ModelMessage } from "a
 import { z } from "zod";
 import { askUserInputSchema } from "@/lib/agent/browser-tools/ask-user";
 import { finishTurnInputSchema } from "@/lib/agent/finish-turn";
-import { applyBriefUpdate, briefUpdateInputSchema } from "@/lib/brief/merge";
-import { emptyBrief } from "@/lib/brief/schema";
 import { FAKE_JOURNEY_SCENARIO, createFakeAgentModel, fakeAgentScenario, isFakeAgentEnabled } from "@/lib/agent/v2/fake-agent-model";
 import { resolveAgentLanguageModel } from "@/lib/agent/v2/agent-model";
 import { setSetting } from "@/lib/settings";
@@ -24,7 +22,6 @@ async function play(
   const tools = {
     read_skill: tool({ inputSchema: z.object({ name: z.string() }), execute: async () => "skill body" }),
     ask_user: tool({ inputSchema: askUserInputSchema }),
-    update_brief: tool({ inputSchema: z.looseObject({}), execute: async () => "Fiche enregistrée." }),
     finish_turn: tool({ inputSchema: finishTurnInputSchema, execute: async () => ({ ok: true }) }),
   };
   for (let turn = 0; turn < 8; turn++) {
@@ -80,16 +77,13 @@ describe("fake agent — free conversation", () => {
     if (previousKey !== undefined) process.env.OPENROUTER_API_KEY = previousKey;
   });
 
-  it("loads a skill, asks once, writes the fiche, finishes — never sketches", async () => {
+  it("loads a skill, asks once, finishes — never sketches or writes a fiche", async () => {
     const calls = await play((input) => (input.options as unknown[]).length === 0 ? { other: "Une vidéo sur les miniatures YouTube" } : { skipped: true });
-    expect(calls.map((c) => c.toolName)).toEqual(["read_skill", "ask_user", "update_brief", "finish_turn"]);
+    expect(calls.map((c) => c.toolName)).toEqual(["read_skill", "ask_user", "finish_turn"]);
     expect(calls[0].input).toEqual({ name: "thumbnail-packaging" });
     expect(calls[1].input.step).toBeUndefined();
     expect(askUserInputSchema.safeParse(calls[1].input).success).toBe(true);
-    const brief = applyBriefUpdate(emptyBrief(), briefUpdateInputSchema.parse(calls[2].input), "2026-09-17T10:00:00.000Z");
-    expect(brief.ok).toBe(true);
-    if (brief.ok) expect(brief.brief.video.subject).toBe("Une vidéo sur les miniatures YouTube");
-    expect(calls.some((c) => /generate_sketch|trigger|generation/.test(c.toolName))).toBe(false);
+    expect(calls.some((c) => /generate_sketch|trigger|generation|update_brief/.test(c.toolName))).toBe(false);
   });
 
   it("runs under the real system prompt", async () => {
@@ -102,10 +96,11 @@ describe("fake agent — free conversation", () => {
     expect(calls.at(-1)!.toolName).toBe("finish_turn");
   });
 
-  it("does not restart a wizard when a brief already exists", async () => {
+  it("does not special-case a leftover thumbnail_brief block", async () => {
     const calls = await play(() => ({ skipped: true }), {
       system: SYSTEM({ nodes: [{ id: "iv-prompt", type: "prompt" }], edges: [] }, '\n\n<thumbnail_brief>\n{"video":{"promise":"Savoir cliquer"}}\n</thumbnail_brief>'),
     });
-    expect(calls.map((c) => c.toolName)).toEqual(["finish_turn"]);
+    expect(calls[0].toolName).toBe("read_skill");
+    expect(calls.some((c) => c.toolName === "update_brief")).toBe(false);
   });
 });

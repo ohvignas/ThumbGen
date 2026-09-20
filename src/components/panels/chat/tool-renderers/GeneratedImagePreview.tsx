@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useChatStore } from "@/store/chat-store";
+import ImageIdBadge from "@/components/ImageIdBadge";
+import { visibleImageIdFromToolText } from "@/lib/canvas/visible-image-id";
 
 /**
  * See SearchYoutubeGallery.tsx for the full explanation of why a tool part's
@@ -69,9 +71,9 @@ function extractSketchId(text: string): string | null {
 export default function GeneratedImagePreview({ part }: { part: { output?: unknown } }) {
   const openAnnotate = useChatStore((s) => s.openAnnotate);
   const projectId = useCanvasStore((s) => s.currentProjectId);
-  const loadProject = useCanvasStore((s) => s.loadProject);
+  const flushPendingSave = useCanvasStore((s) => s.flushPendingSave);
+  const placeChatSketch = useCanvasStore((s) => s.placeChatSketch);
   const [applying, setApplying] = useState(false);
-  const [applied, setApplied] = useState(false);
 
   const items = normalizeToolContent(part.output);
   const textItem = items.find((c): c is Extract<NormalizedItem, { type: "text" }> => c.type === "text");
@@ -80,27 +82,42 @@ export default function GeneratedImagePreview({ part }: { part: { output?: unkno
 
   if (!imageItem) return null;
   const url = `data:${imageItem.mediaType};base64,${imageItem.data}`;
+  const visibleId = textItem ? visibleImageIdFromToolText(textItem.text) : null;
 
-  // Verbatim port of the fetch call from the OLD ToolCallCard.tsx's
-  // applySketchToCanvas (POST /api/agent/apply-sketch, body {sketch_id,
-  // project_id}) — field names confirmed against the real route handler at
-  // src/app/api/agent/apply-sketch/route.ts, which reads exactly
-  // `body.sketch_id` / `body.project_id` and responds with
-  // {success, sketchNodeId, createdGenId} (only `res.ok` is checked here,
-  // matching the old component).
+  // POST /api/agent/apply-sketch then placeChatSketch locally. Do not
+  // flush+loadProject after: that save tombstoned the new id and stripped
+  // imageBase64, so a second click landed as an empty sketch.
   const applyToCanvas = async () => {
-    if (!sketchId || applied || applying) return;
+    if (!sketchId || applying) return;
     setApplying(true);
     try {
+      // Flush first so apply-sketch reads the live canvas. Do not flush+reload
+      // after: that POST listed the new sketch in deletedNodeIds and emptied it.
+      await flushPendingSave();
       const res = await fetch("/api/agent/apply-sketch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sketch_id: sketchId, project_id: projectId }),
       });
-      if (res.ok) {
-        setApplied(true);
-        await loadProject(projectId);
-      }
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        sketchNodeId?: string;
+        position?: { x: number; y: number };
+        image_source?: string;
+        imageUrl?: string;
+      };
+      if (typeof body.sketchNodeId !== "string" || !body.sketchNodeId) return;
+      // Place only — no edge. Each click is a new unused sketch node.
+      placeChatSketch({
+        id: body.sketchNodeId,
+        type: "sketch",
+        position: body.position ?? { x: 200, y: 200 },
+        data: {
+          image_source: body.image_source ?? `generated:${sketchId}`,
+          imageUrl: body.imageUrl ?? `/api/generated-sketches/${sketchId}`,
+          label: "Sketch IA",
+        },
+      });
     } finally {
       setApplying(false);
     }
@@ -110,10 +127,11 @@ export default function GeneratedImagePreview({ part }: { part: { output?: unkno
     <div className="relative rounded-md overflow-hidden border border-border" style={{ maxWidth: 280 }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={url} alt="généré" loading="lazy" onClick={() => openAnnotate(url)} className="w-full aspect-video object-cover cursor-zoom-in" />
+      <ImageIdBadge id={visibleId} />
       {sketchId && (
-        <button type="button" onClick={applyToCanvas} disabled={applied || applying}
+        <button type="button" onClick={applyToCanvas} disabled={applying}
           className="absolute top-1.5 right-1.5 px-2 py-1 rounded text-[9px] uppercase bg-black/85 text-white border border-primary">
-          {applied ? "Ajouté ✓" : applying ? "…" : "+ canvas"}
+          {applying ? "…" : "+ canvas"}
         </button>
       )}
     </div>

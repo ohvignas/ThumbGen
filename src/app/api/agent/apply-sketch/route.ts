@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { getDb } from "@/lib/db";
 import { nextUpdatedAt } from "@/lib/canvas/canvas-patch";
+import { chatSketchNodeData, isWorkflowSketchSlotId } from "@/lib/canvas/chat-sketch";
+import { persistNodesForSave } from "@/lib/canvas/persist-snapshot";
+import { writeProjectCanvas } from "@/lib/canvas-snapshots";
+import { forgetTombstones } from "@/lib/local-storage";
 
 export const runtime = "nodejs";
 
@@ -20,14 +24,22 @@ type CanvasEdge = {
   targetHandle?: string | null;
 };
 
+function newChatSketchId(): string {
+  for (let i = 0; i < 8; i++) {
+    const id = `sketch-${uuid().slice(0, 8)}`;
+    if (!isWorkflowSketchSlotId(id)) return id;
+  }
+  return `sketch-${uuid().replace(/-/g, "").slice(0, 8)}`;
+}
+
 /**
- * Drops a generated sketch onto the canvas as a sketch node, wired into the
- * existing generator (or creates a fresh generator if none). Marks the sketch
- * as attached so the GC won't purge it.
+ * Drops a generated sketch onto the canvas as a NEW unused sketch node
+ * (never sketch-a/b/c). Does not create edges or a generator — the user
+ * only asked to place it. Marks the sketch as attached so the GC won't
+ * purge it.
  *
- * The frontend's useCanvasSync polling (2s) picks up the change automatically,
- * but the response also includes the IDs so the caller could do an immediate
- * loadProject() if they want.
+ * Persists `generated:` + `/api/generated-sketches/…` — not imageBase64 —
+ * so a later save cannot strip the pixels and leave an empty node.
  */
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as
@@ -43,9 +55,6 @@ export async function POST(req: NextRequest) {
     .get(body.sketch_id) as { mime_type: string; data: Buffer; prompt: string } | undefined;
   if (!sketch) return NextResponse.json({ error: "Sketch not found" }, { status: 404 });
 
-  const dataUrl = `data:${sketch.mime_type};base64,${sketch.data.toString("base64")}`;
-
-  // Pin so GC keeps it (the sketch is now attached to a node).
   db.prepare("UPDATE generated_sketches SET attached = 1 WHERE id = ?").run(body.sketch_id);
 
   const row = db
@@ -55,68 +64,33 @@ export async function POST(req: NextRequest) {
   const edges: CanvasEdge[] = row ? JSON.parse(row.edges) : [];
 
   const existingGen = nodes.find((n) => n.type === "generator");
-  const sketchNodeId = `sketch-${uuid().slice(0, 8)}`;
+  let sketchNodeId = newChatSketchId();
+  while (nodes.some((n) => n.id === sketchNodeId) || isWorkflowSketchSlotId(sketchNodeId)) {
+    sketchNodeId = newChatSketchId();
+  }
 
-  // Anchor: place sketch to the left of the generator (or near center if no gen).
+  const existingSketches = nodes.filter((n) => n.type === "sketch").length;
   const refPos = existingGen?.position ?? { x: 200, y: 200 };
+  const position = { x: refPos.x - 380, y: refPos.y + 40 + existingSketches * 220 };
+  const data = chatSketchNodeData(body.sketch_id, sketch.prompt.slice(0, 60) || "Sketch IA");
   const sketchNode: CanvasNode = {
     id: sketchNodeId,
     type: "sketch",
-    position: { x: refPos.x - 380, y: refPos.y + 40 },
-    data: {
-      imageBase64: dataUrl,
-      label: sketch.prompt.slice(0, 60) || "Sketch IA",
-    },
+    position,
+    data,
   };
   nodes.push(sketchNode);
 
-  let createdGenId: string | null = null;
-  if (existingGen) {
-    edges.push({
-      id: `e-${uuid().slice(0, 8)}`,
-      source: sketchNodeId,
-      target: existingGen.id,
-      sourceHandle: null,
-      targetHandle: "sketch-in",
-    });
-  } else {
-    createdGenId = `generator-${uuid().slice(0, 8)}`;
-    nodes.push({
-      id: createdGenId,
-      type: "generator",
-      position: { x: refPos.x + 200, y: refPos.y },
-      data: { model: "gemini-3.1-flash-image", aspectRatio: "16x9", numImages: 1 },
-    });
-    edges.push({
-      id: `e-${uuid().slice(0, 8)}`,
-      source: sketchNodeId,
-      target: createdGenId,
-      sourceHandle: null,
-      targetHandle: "sketch-in",
-    });
-  }
-
-  // ISO and strictly after the stored value, like every other canvas writer.
   const updatedAt = nextUpdatedAt(row?.updated_at);
-  if (row) {
-    db.prepare("UPDATE projects SET nodes = ?, edges = ?, updated_at = ? WHERE id = ?").run(
-      JSON.stringify(nodes),
-      JSON.stringify(edges),
-      updatedAt,
-      body.project_id,
-    );
-  } else {
-    db.prepare("INSERT INTO projects (id, nodes, edges, updated_at) VALUES (?, ?, ?, ?)").run(
-      body.project_id,
-      JSON.stringify(nodes),
-      JSON.stringify(edges),
-      updatedAt,
-    );
-  }
+  const persistedNodes = persistNodesForSave(nodes);
+  writeProjectCanvas(body.project_id, JSON.stringify(persistedNodes), JSON.stringify(edges), db, updatedAt);
+  forgetTombstones(body.project_id, { nodeIds: [sketchNodeId], edgeIds: [] });
 
   return NextResponse.json({
     success: true,
     sketchNodeId,
-    createdGenId,
+    position,
+    image_source: data.image_source,
+    imageUrl: data.imageUrl,
   });
 }

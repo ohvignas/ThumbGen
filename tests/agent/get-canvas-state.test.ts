@@ -72,5 +72,30 @@ describe("get_canvas_state", () => {
     const parsed = JSON.parse((r.content[0] as { text: string }).text);
     expect(parsed.nodes).toEqual([]);
     expect(parsed.edges).toEqual([]);
+    expect(parsed.liveSketchCount).toBe(0);
+  });
+
+  it("reports liveSketchCount and omits tombstoned sketch nodes", async () => {
+    const projectId = "test-canvas-state-tombs";
+    getDb()
+      .prepare("INSERT OR REPLACE INTO projects (id, nodes, edges) VALUES (?, ?, '[]')")
+      .run(
+        projectId,
+        JSON.stringify([
+          { id: "sketch-live", type: "sketch", data: { label: "Live" } },
+          { id: "sketch-dead", type: "sketch", data: { label: "Dead" } },
+          { id: "p-keep", type: "prompt", data: { prompt: "ok" } },
+        ]),
+      );
+    getDb()
+      .prepare("INSERT OR REPLACE INTO canvas_tombstones (project_id, kind, item_id, deleted_at) VALUES (?, 'node', ?, ?)")
+      .run(projectId, "sketch-dead", new Date().toISOString());
+    const r = await getCanvasStateTool.handler({ project_id: projectId });
+    const parsed = JSON.parse((r.content[0] as { text: string }).text) as {
+      nodes: Array<{ id: string }>;
+      liveSketchCount: number;
+    };
+    expect(parsed.nodes.map((n) => n.id)).toEqual(["sketch-live", "p-keep"]);
+    expect(parsed.liveSketchCount).toBe(1);
   });
 });

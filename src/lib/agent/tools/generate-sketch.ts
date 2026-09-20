@@ -7,6 +7,12 @@ import { getCostPerImage } from "@/lib/model-costs";
 import { ToolDefinition } from "./types";
 import { registerTool } from "./index";
 import { resolveImageSource } from "./_helpers/image-source";
+import {
+  applyReferenceRolesToPrompt,
+  classifySketchReferenceSource,
+  REFERENCE_ROLE_ORDER,
+  type ReferenceEntry,
+} from "@/lib/generation/reference-prompt";
 
 const InputSchema = z.object({
   prompt: z.string().min(1),
@@ -51,43 +57,37 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
 
     // Resolve image inputs (face + extra refs) → data URLs for OpenRouter's
     // input_references (each entry must be {type:"image_url", image_url:{url}}
-    // — a bare string 400s, confirmed against the real API).
+    // — a bare string 400s, confirmed against the real API). Roles are named
+    // in the prompt: OpenRouter has no per-image identity field.
     const imageDataUrls: string[] = [];
-    const sourcesToLoad: string[] = [];
-    if (face_source) sourcesToLoad.push(face_source);
-    if (reference_sources?.length) sourcesToLoad.push(...reference_sources);
-    for (const src of sourcesToLoad) {
+    const referenceEntries: ReferenceEntry[] = [];
+    const sourcesToLoad: { source: string; role: ReferenceEntry["role"] }[] = [];
+    if (face_source) sourcesToLoad.push({ source: face_source, role: "identity" });
+    if (reference_sources?.length) {
+      for (const source of reference_sources) {
+        sourcesToLoad.push({ source, role: classifySketchReferenceSource(source) });
+      }
+    }
+    sourcesToLoad.sort((a, b) => REFERENCE_ROLE_ORDER[a.role] - REFERENCE_ROLE_ORDER[b.role]);
+    for (const { source, role } of sourcesToLoad) {
       try {
-        const resolved = await resolveImageSource(src);
+        const resolved = await resolveImageSource(source);
         imageDataUrls.push(`data:${resolved.mimeType};base64,${resolved.bytes.toString("base64")}`);
+        referenceEntries.push(role === "logo" ? { role, label: "Logo" } : { role });
       } catch (e) {
         return {
           isError: true,
           requestNotSent: true,
-          content: [{ type: "text" as const, text: `Cannot resolve image_source ${src}: ${(e as Error).message}` }],
+          content: [{ type: "text" as const, text: `Cannot resolve image_source ${source}: ${(e as Error).message}` }],
         };
       }
     }
 
-    // Instruct the model on what the attached images are for. Without this
-    // preface Gemini may treat them as decorative input or ignore them.
-    const prefaceParts: string[] = [];
-    if (face_source) {
-      prefaceParts.push(
-        "Use the first attached image as a STRICT reference for the person's face — preserve their identity, facial features, hair, and skin tone exactly.",
-      );
-    }
-    if (reference_sources?.length) {
-      const refStart = face_source ? "next" : "attached";
-      prefaceParts.push(
-        `The ${refStart} image(s) are visual references (logos, brand assets, or composition inspiration) — incorporate them faithfully into the scene at the size and position described in the prompt.`,
-      );
-    }
-    const preface = prefaceParts.length ? prefaceParts.join(" ") + " " : "";
     const stylized = useStyle === "pencil_sketch" ? `${prompt}${PENCIL_SUFFIX}` : prompt;
+    const scene = `Generate a YouTube thumbnail draft. ${stylized}`;
     const body = {
       model: OPENROUTER_SKETCH_SLUG,
-      prompt: `Generate a YouTube thumbnail draft. ${preface}${stylized}`,
+      prompt: applyReferenceRolesToPrompt(scene, referenceEntries),
       n: 1,
       aspect_ratio: ASPECT_MAP[ratio],
       resolution: "1K",

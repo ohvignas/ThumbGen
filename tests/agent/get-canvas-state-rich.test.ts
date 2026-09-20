@@ -57,6 +57,8 @@ describe("get_canvas_state — richer summaries", () => {
     expect(await byId("sw-logo")).toMatchObject({ source: "library:stored:lg_lg1", hasImage: true });
     expect(await byId("sw-up")).toEqual({ label: "images (3).png", kind: "reference", source: "canvas-upload", hasImage: true });
     expect(await byId("sk-agent")).toMatchObject({ source: "library:generated:sk_1", hasImage: true, label: "Sketch IA" });
+    const rich = JSON.parse(((await getCanvasStateTool.handler({ project_id: projectId })).content[0] as { text: string }).text);
+    expect(rich.liveSketchCount).toBe(1);
   });
 
   it("omits source when the node has no image", () => {
@@ -71,6 +73,11 @@ describe("get_canvas_state — richer summaries", () => {
       count: 2,
       generatedCount: 2,
       selectedImage: "stored:gi_g2",
+      selectedVisibleId: "#G2",
+      images: [
+        { visibleId: "#G1", image: "stored:gi_g1" },
+        { visibleId: "#G2", image: "stored:gi_g2" },
+      ],
     });
     const empty = await byId("gen-empty");
     expect(empty.generatedCount).toBe(0);
@@ -78,7 +85,14 @@ describe("get_canvas_state — richer summaries", () => {
   });
 
   it("reports a preview's output", async () => {
-    expect(await byId("prev")).toEqual({ label: "Nano #1", hasOutput: true, imageCount: 1, selectedImage: "stored:gi_p1" });
+    expect(await byId("prev")).toEqual({
+      label: "Nano #1",
+      hasOutput: true,
+      imageCount: 1,
+      selectedImage: "stored:gi_p1",
+      selectedVisibleId: "#P1",
+      images: [{ visibleId: "#P1", image: "stored:gi_p1" }],
+    });
     expect(await byId("prev-empty")).toEqual({ label: "Nano #2", hasOutput: false, imageCount: 0 });
   });
 
@@ -100,6 +114,18 @@ describe("get_canvas_state — richer summaries", () => {
 
   it("points to view_canvas_images to actually see the images", () => {
     expect(getCanvasStateTool.description).toContain("view_canvas_images");
+  });
+
+  it("lists generated aperçus as currentThumbnails", async () => {
+    const r = await getCanvasStateTool.handler({ project_id: projectId });
+    const parsed = JSON.parse((r.content[0] as { text: string }).text) as {
+      currentThumbnails?: Array<{ image: string; imageNode: string; role: string; visibleId?: string }>;
+    };
+    expect(parsed.currentThumbnails?.map((row) => ({ image: row.image, imageNode: row.imageNode, visibleId: row.visibleId }))).toEqual([
+      { image: "stored:gi_p1", imageNode: "prev", visibleId: "#P1" },
+      { image: "stored:gi_g2", imageNode: "gen", visibleId: "#G2" },
+    ]);
+    expect(parsed.currentThumbnails?.[0].role).toContain("improvements apply to THIS image");
   });
 
   it("the chat snapshot uses the same summaries", () => {

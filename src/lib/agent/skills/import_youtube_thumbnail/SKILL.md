@@ -11,7 +11,7 @@ Two ids, never interchangeable:
 
 | Token | Where it goes |
 | --- | --- |
-| `stored:sf_<uuid>` | `place_node` / `apply_workflow` `image_source`, `generate_sketch` `reference_sources`, `update_brief` `references[].source` |
+| `stored:sf_<uuid>` | `place_node` / `apply_workflow` `image_source`, `generate_sketch` `reference_sources` |
 | `result_id: <toolCallId>` | `finish_turn.results` only (so the user sees the import in chat). Last text line of a **successful** chat call. Copy it exactly. |
 
 ## When
@@ -86,8 +86,6 @@ data: { image_source: "stored:sf_<uuid>", label?: "…" }
 
 `generate_sketch`: `reference_sources: ["stored:sf_<uuid>"]` (optional, paid).
 
-`update_brief`: `references` **replaces** the whole list (max 3). Each `source` must match `stored:sf_<id>`.
-
 ## Errors
 
 Quoted server text. Do not invent a thumb. Do not retry the same id in a loop.
@@ -108,7 +106,7 @@ Typical:
 1. Discover ids: `list_followed_videos` (local, no quota; own catalog) or `search_youtube` / `get_channel_videos` / `find_competitor_thumbnails`.
 2. Optional `ask_user` with `image: "youtube:<videoId>"` (no import yet). Never same step as `place_node` / `finish_turn`.
 3. `import_youtube_thumbnail` on the **chosen** ids only (≤3, parallel ok).
-4. `place_node` `iv-ref-N` and/or `apply_workflow`, optional `update_brief` `references`.
+4. `place_node` `iv-ref-N` and/or `apply_workflow`.
 5. `finish_turn` with those import `result_id`s in `results`.
 
 Vs neighbors:

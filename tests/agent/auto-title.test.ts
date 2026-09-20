@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { getDb } from "@/lib/db";
 import { createConversation, getConversation } from "@/lib/agent/conversation/store";
 import { setSetting } from "@/lib/settings";
@@ -10,11 +10,22 @@ vi.mock("ai", async (importOriginal) => {
 });
 
 const projectId = "test-auto-title";
+let savedOpenRouter: string | undefined;
 
 beforeAll(() => {
   getDb()
     .prepare("INSERT OR IGNORE INTO projects_meta (id, name) VALUES (?, ?)")
     .run(projectId, "Auto-Title Test Project");
+});
+
+beforeEach(() => {
+  savedOpenRouter = process.env.OPENROUTER_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+});
+
+afterEach(() => {
+  if (savedOpenRouter === undefined) delete process.env.OPENROUTER_API_KEY;
+  else process.env.OPENROUTER_API_KEY = savedOpenRouter;
 });
 
 describe("generateAndPersistTitle", () => {

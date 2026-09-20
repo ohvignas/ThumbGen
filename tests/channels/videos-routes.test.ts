@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as typesSummaryRoute } from "@/app/api/channels/types-summary/route";
+import { GET as workingSubjectRoute } from "@/app/api/channels/working-subject/route";
 import { PATCH as setVideoType } from "@/app/api/channels/videos/[videoId]/route";
 import { POST as useVideo } from "@/app/api/channels/videos/[videoId]/use/route";
 import { GET as listVideosRoute } from "@/app/api/channels/videos/route";
 import { getDb } from "@/lib/db";
 import * as store from "@/lib/youtube/channel-store";
 import { getSwipeFileTitle } from "@/lib/youtube/thumbnails";
-import type { TypesSummaryResponse, UseVideoResponse, VideoListResponse } from "@/lib/youtube/types";
+import type { TypesSummaryResponse, UseVideoResponse, VideoListResponse, WorkingSubjectResponse } from "@/lib/youtube/types";
 import { createFakeYouTube, type FakeYouTube } from "./fake-youtube";
 
 const DAY = 86_400_000;
 let fake: FakeYouTube;
+let savedTypesafeEnv: string | undefined;
 
 const videoParams = (videoId: string) => ({ params: Promise.resolve({ videoId }) });
 const patch = (videoId: string, body: unknown) =>
@@ -37,6 +39,9 @@ function video(videoId: string, days: number, viewCount: number) {
 
 beforeEach(() => {
   getDb().exec("DELETE FROM followed_channels");
+  getDb().exec("DELETE FROM settings");
+  savedTypesafeEnv = process.env.TYPESAFE_API_KEY;
+  delete process.env.TYPESAFE_API_KEY;
   const channelId = store.insertChannel(
     { youtubeChannelId: `UC${"w".repeat(22)}`, title: "Ma chaîne", handle: null, avatarUrl: null, subscriberCount: null, videoCount: null },
     { isMine: true },
@@ -50,6 +55,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  if (savedTypesafeEnv === undefined) delete process.env.TYPESAFE_API_KEY;
+  else process.env.TYPESAFE_API_KEY = savedTypesafeEnv;
 });
 
 describe("GET /api/channels/videos", () => {
@@ -130,15 +137,34 @@ describe("POST /api/channels/videos/[videoId]/use", () => {
   });
 });
 
+describe("GET /api/channels/working-subject", () => {
+  it("always uses the 7-day rising window and never pads", async () => {
+    const res = await workingSubjectRoute();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as WorkingSubjectResponse;
+    expect(body.period).toBe("7d");
+    expect(body.jevUsed).toBe(false);
+    expect(body.videos.length).toBeLessThanOrEqual(4);
+    expect(body.subject).toBeNull();
+  });
+});
+
 describe("GET /api/channels/types-summary", () => {
   it("summarizes the requested scope", async () => {
     store.setAiThumbType("routevid002", "face_text");
     store.setAiThumbType("routevid003", "face_text");
 
-    const mine = (await typesSummaryRoute(new Request("http://localhost/api/channels/types-summary?scope=mine")).json()) as TypesSummaryResponse;
-    expect(mine.rows).toMatchObject([{ type: "face_text", totalCount: 3, scoredCount: 3, enoughData: true, medianScore: 3 }]);
+    const mine = (await (
+      await typesSummaryRoute(new Request("http://localhost/api/channels/types-summary?scope=mine"))
+    ).json()) as TypesSummaryResponse;
+    expect(mine.rows).toMatchObject([
+      { themeId: "autres-sujets", totalCount: 3, scoredCount: 3, enoughData: false, winner: null, medianScore: null },
+    ]);
+    expect(mine.jevUsed).toBe(false);
 
-    const unknown = (await typesSummaryRoute(new Request("http://localhost/api/channels/types-summary?scope=unknown")).json()) as TypesSummaryResponse;
-    expect(unknown.rows).toEqual([]);
+    const unknown = (await (
+      await typesSummaryRoute(new Request("http://localhost/api/channels/types-summary?scope=unknown"))
+    ).json()) as TypesSummaryResponse;
+    expect(unknown).toEqual({ rows: [], jevUsed: false });
   });
 });

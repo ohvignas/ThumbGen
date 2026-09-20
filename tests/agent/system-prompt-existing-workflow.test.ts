@@ -8,6 +8,10 @@ describe("system prompt — existing workflow", () => {
     expect(AGENT_SYSTEM_PROMPT).toContain("<canvas_state>");
     expect(AGENT_SYSTEM_PROMPT).toMatch(/precise request/i);
     expect(AGENT_SYSTEM_PROMPT).toContain("other nodes are kept automatically");
+    expect(AGENT_SYSTEM_PROMPT).toContain("short change-only prompt");
+    expect(AGENT_SYSTEM_PROMPT).toContain("FROM SCRATCH only");
+    expect(AGENT_SYSTEM_PROMPT).toContain("currentThumbnails");
+    expect(AGENT_SYSTEM_PROMPT).toContain("two complete alternative prompts");
     expect(AGENT_SYSTEM_PROMPT).not.toContain("THUMBNAIL JOURNEY —");
     expect(AGENT_SYSTEM_PROMPT).not.toContain("- IMMEDIATELY call apply_workflow with the COMPLETE blueprint (don't ask first):");
   });
@@ -17,5 +21,7 @@ describe("system prompt — existing workflow", () => {
     expect(text).toContain("view_canvas_images");
     expect(text).toContain("remove_node_ids");
     expect(text).toMatch(/stored:gi_/);
+    expect(text).toContain("short change-only prompt");
+    expect(text).toContain("7-sentence scene recreation");
   });
 });

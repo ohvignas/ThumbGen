@@ -8,8 +8,6 @@ import {
   type AgentPromptPrefs,
 } from "@/lib/agent/system-prompt";
 import { EMPTY_CHANNEL_PROFILE } from "@/lib/settings-schema";
-import { emptyBrief } from "@/lib/brief/schema";
-
 const PROFILE_PREFS: AgentPromptPrefs = {
   ...DEFAULT_AGENT_PROMPT_PREFS,
   youtubeChannel: "https://www.youtube.com/@demo",
@@ -31,14 +29,14 @@ function blockIndex(blocks: Array<{ text: string; cache_control?: unknown }>, ta
 }
 
 describe("system prompt", () => {
-  it("appends the thumbnail brief after canvas_state when the conversation has one", () => {
-    const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc", DEFAULT_AGENT_PROMPT_PREFS, { ...emptyBrief(), step: 3 });
-    expect(blocks.at(-2)!.text).toContain("<canvas_state>");
-    expect(blocks.at(-1)!.text.startsWith("<thumbnail_brief>")).toBe(true);
-    expect(blocks.at(-1)!.text).not.toContain('"step":');
-    expect(blocks.at(-1)!.cache_control).toBeUndefined();
-    // The cached static prompt names <thumbnail_brief>; only the per-turn blocks matter.
-    expect(buildSystemMessages({ nodes: [], edges: [] }, "proj-abc").slice(1).some((block) => block.text.includes("<thumbnail_brief>"))).toBe(false);
+  it("never injects a thumbnail brief / Fiche into the system prompt", () => {
+    const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc");
+    expect(blocks.some((block) => block.text.includes("<thumbnail_brief>"))).toBe(false);
+    expect(AGENT_SYSTEM_PROMPT).not.toContain("thumbnail_brief");
+    expect(AGENT_SYSTEM_PROMPT).not.toContain("update_brief");
+    expect(AGENT_SYSTEM_PROMPT).toContain("There is no Fiche");
+    expect(AGENT_SYSTEM_PROMPT).toContain("liveSketchCount");
+    expect(AGENT_SYSTEM_PROMPT).toContain("Never tell the user a 5-sketch-per-project cap is full");
   });
 
   it("contains the persona and the canvas_state instruction", () => {

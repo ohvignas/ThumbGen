@@ -24,6 +24,7 @@ export type FakeVideo = {
   channelId: string;
   publishedAt: string;
   title?: string;
+  description?: string;
   durationSeconds?: number;
   views?: number;
   likes?: number | null;
@@ -107,6 +108,17 @@ export function createFakeYouTube(
     if (networkDown) throw new TypeError("fetch failed");
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
 
+    if (url.hostname === "www.youtube.com" && url.pathname === "/feeds/videos.xml") {
+      const channelId = url.searchParams.get("channel_id") ?? "";
+      const list = videos
+        .filter((video) => video.channelId === channelId)
+        .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt));
+      const body = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015">${list
+        .map((video) => `<entry><yt:videoId>${video.id}</yt:videoId></entry>`)
+        .join("")}</feed>`;
+      return new Response(body, { status: 200, headers: { "content-type": "application/atom+xml" } });
+    }
+
     if (url.hostname === "i.ytimg.com") {
       const [, , videoId = "", file = ""] = url.pathname.split("/");
       const size = file.replace(/\.jpg$/, "");
@@ -169,6 +181,7 @@ export function createFakeYouTube(
           id: video.id,
           snippet: {
             title: video.title ?? `Vidéo ${video.id}`,
+            description: video.description ?? "",
             publishedAt: video.publishedAt,
             liveBroadcastContent: video.live ?? "none",
             channelId: video.channelId,

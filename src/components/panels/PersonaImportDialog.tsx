@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ImagePlus } from "lucide-react";
+import { Eraser, ImagePlus } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PERSONA_ANGLES, PERSONA_ANGLE_LABELS, type PersonaAngle } from "@/lib/personas";
+import { REMOVE_BG_LABEL, REMOVING_BG_LABEL } from "@/lib/remove-bg";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -27,11 +28,29 @@ export default function PersonaImportDialog({
 }) {
   const [photos, setPhotos] = useState<Partial<Record<PersonaAngle, string>>>({});
   const [name, setName] = useState("");
+  const [removingBg, setRemovingBg] = useState(false);
+  const [bgError, setBgError] = useState<string | null>(null);
+  const hasPhoto = PERSONA_ANGLES.some((angle) => photos[angle]);
 
   const pick = async (angle: PersonaAngle, file: File | undefined) => {
     if (!file) return;
     const dataUrl = await prepareFile(file);
+    setBgError(null);
     setPhotos((previous) => ({ ...previous, [angle]: dataUrl }));
+  };
+
+  const stripBackgrounds = async () => {
+    if (!hasPhoto || removingBg || saving) return;
+    setRemovingBg(true);
+    setBgError(null);
+    try {
+      const { stripPhotoBackgrounds } = await import("@/lib/remove-bg");
+      setPhotos(await stripPhotoBackgrounds(photos, PERSONA_ANGLES));
+    } catch {
+      setBgError("Impossible de retirer le fond — réessaie.");
+    } finally {
+      setRemovingBg(false);
+    }
   };
 
   return (
@@ -85,13 +104,25 @@ export default function PersonaImportDialog({
               </label>
             ))}
           </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={!hasPhoto || removingBg || saving}
+            onClick={() => void stripBackgrounds()}
+          >
+            <Eraser />
+            {removingBg ? REMOVING_BG_LABEL : REMOVE_BG_LABEL}
+          </Button>
+          {bgError && <p className="text-sm text-destructive">{bgError}</p>}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Annuler
           </Button>
-          <Button disabled={!photos.front || saving} onClick={() => void onSubmit(photos, name.trim())}>
+          <Button disabled={!photos.front || saving || removingBg} onClick={() => void onSubmit(photos, name.trim())}>
             {saving ? "Enregistrement…" : "Créer le personnage"}
           </Button>
         </DialogFooter>

@@ -55,8 +55,9 @@ describe("blueprintToCanvasData", () => {
     const result = await blueprintToCanvasData("swipeFile", { kind: "reference", image_source: data }, { libraryUrls: true });
     expect(result.imageBase64).toBe(data);
     expect(result.imageUrl).toBeUndefined();
-    expect(libraryImageUrlForSource("generated:abc")).toBeNull();
-    expect(libraryImageUrlForSource("stored:gi_abc")).toBeNull();
+    expect(libraryImageUrlForSource("generated:abc")).toBe("/api/generated-sketches/abc");
+    expect(libraryImageUrlForSource("stored:gi_abc")).toBe("/api/generated-images/image?id=abc");
+    expect(libraryImageUrlForSource("data:image/png;base64,AAAA")).toBeNull();
   });
 
   it("resolves a Personnage to its angles and maps generator fields", async () => {
@@ -67,7 +68,7 @@ describe("blueprintToCanvasData", () => {
       .run(uuid(), personaId, "front", "image/png", PNG.length, PNG);
     const face = await blueprintToCanvasData("faceReference", { image_source: `stored:persona_${personaId}` }, { libraryUrls: true });
     expect(face.personaId).toBe(personaId);
-    expect((face.personaAngles as Record<string, string>).front).toMatch(/^data:image\/png;base64,/);
+    expect((face.personaAngles as Record<string, string>).front).toBe(`/api/personas/image?id=${personaId}&angle=front`);
 
     expect(await blueprintToCanvasData("generator", { model: "nano-banana", aspectRatio: "16x9", count: 2 })).toEqual({
       model: "gemini-3.1-flash-image",

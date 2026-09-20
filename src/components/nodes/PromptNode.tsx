@@ -1,19 +1,86 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { isPromptInputHandle } from "@/lib/canvas/generator-variants";
 import NodeShell from "./NodeShell";
+import { useFocusedDraft } from "./use-focused-draft";
+
+/** React Flow listens on the window for Space-to-pan and node drag. */
+function isolateFromFlow(event: { stopPropagation: () => void }) {
+  event.stopPropagation();
+}
+
+const editorSurface: CSSProperties = {
+  background: "var(--surface)",
+  color: "var(--text-primary)",
+  border: "1px solid transparent",
+  whiteSpace: "pre-wrap",
+  overflowWrap: "break-word",
+  wordBreak: "normal",
+  userSelect: "text",
+};
+
+const FLOW_EDITOR_CLASS =
+  "nodrag nowheel nopan nokey w-full rounded-xl px-4 text-sm leading-relaxed whitespace-pre-wrap break-words select-text overflow-y-auto focus:outline-none";
+
+function FlowTextarea({
+  value,
+  onChange,
+  onFocus,
+  onBlur,
+  placeholder,
+  compact,
+  "aria-label": ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  placeholder: string;
+  compact?: boolean;
+  "aria-label": string;
+}) {
+  return (
+    <textarea
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={compact ? 3 : 8}
+      className={`${FLOW_EDITOR_CLASS} ${compact ? "min-h-16 max-h-40 resize-y py-2 text-xs" : "min-h-40 max-h-80 resize-y py-3"}`}
+      style={{
+        ...editorSurface,
+        color: compact ? "var(--text-tertiary)" : "var(--text-primary)",
+      }}
+      onPointerDown={isolateFromFlow}
+      onMouseDown={isolateFromFlow}
+      onKeyDown={isolateFromFlow}
+      onWheel={isolateFromFlow}
+      onFocus={(e) => {
+        onFocus();
+        e.currentTarget.style.borderColor = "var(--canvas-accent)";
+      }}
+      onBlur={(e) => {
+        onBlur();
+        e.currentTarget.style.borderColor = "transparent";
+      }}
+    />
+  );
+}
 
 export default function PromptNode({ id, data }: NodeProps<AppNode>) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const removeNode = useCanvasStore((s) => s.removeNode);
-  const allNodes = useCanvasStore((s) => s.nodes);
-  const allEdges = useCanvasStore((s) => s.edges);
 
-  // Collect workflow context: find what's connected to the same Generator as this Prompt
+  const prompt = useFocusedDraft(id, "prompt", data.prompt || "", (value) => updateNodeData(id, { prompt: value }));
+  const negative = useFocusedDraft(id, "negativePrompt", data.negativePrompt || "", (value) =>
+    updateNodeData(id, { negativePrompt: value }),
+  );
+
   const getWorkflowContext = () => {
+    const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
     const connectedGenerators = allEdges
       .filter((e) => e.source === id && isPromptInputHandle(e.targetHandle))
       .map((e) => e.target);
@@ -22,7 +89,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
       const faces = allNodes.filter((n) => n.type === "faceReference" && n.data.personaId);
       const logos = allNodes.filter((n) => n.type === "swipeFile" && n.data.label && n.data.label !== "Image");
       const refs = allNodes.filter((n) => n.type === "swipeFile");
-      const sketches = allNodes.filter((n) => n.type === "sketch" && n.data.imageBase64);
+      const sketches = allNodes.filter((n) => n.type === "sketch" && (n.data.imageBase64 || n.data.imageUrl));
       return {
         faces: faces.length,
         logos: logos.map((n) => n.data.label || "Logo"),
@@ -39,7 +106,7 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
     const logoEdges = genEdges.filter((e) => e.targetHandle === "logo-in");
     const logoNodes = connectedNodes.filter((n) => logoEdges.some((e) => e.source === n.id));
     const refNodes = connectedNodes.filter((n) => n.type === "swipeFile" && !logoEdges.some((e) => e.source === n.id));
-    const sketches = connectedNodes.filter((n) => n.type === "sketch" && n.data.imageBase64);
+    const sketches = connectedNodes.filter((n) => n.type === "sketch" && (n.data.imageBase64 || n.data.imageUrl));
     const gen = allNodes.find((n) => connectedGenerators.includes(n.id));
 
     const previewRefs = connectedNodes.filter((n) => n.type === "preview" && n.data.genPromptUsed);
@@ -58,7 +125,8 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
   const [enhancing, setEnhancing] = useState(false);
 
   const handleEnhance = async () => {
-    const currentPrompt = data.prompt;
+    prompt.flush();
+    const currentPrompt = prompt.value;
     if (!currentPrompt) return;
     setEnhancing(true);
     try {
@@ -81,22 +149,28 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
 
   return (
     <NodeShell title="Prompt" onDelete={() => removeNode(id)} width={380}>
-      <div className="space-y-2">
-        <textarea
-          value={data.prompt || ""}
-          onChange={(e) => updateNodeData(id, { prompt: e.target.value })}
+      <div
+        className="nodrag nowheel nopan nokey space-y-2"
+        onPointerDown={isolateFromFlow}
+        onMouseDown={isolateFromFlow}
+        onKeyDown={isolateFromFlow}
+        onWheel={isolateFromFlow}
+      >
+        <FlowTextarea
+          aria-label="Prompt"
+          value={prompt.value}
+          onChange={prompt.onChange}
+          onFocus={prompt.onFocus}
+          onBlur={prompt.onBlur}
           placeholder="Décris ta miniature : un gros plan de mon visage choqué avec le logo Claude…"
-          className="w-full h-24 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none nopan nodrag"
-          style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid transparent" }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--canvas-accent)")}
-          onBlur={(e) => (e.currentTarget.style.borderColor = "transparent")}
         />
 
-        {data.prompt && (
+        {prompt.value && (
           <button
+            type="button"
             onClick={handleEnhance}
             disabled={enhancing}
-            className="w-full py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-2 nopan nodrag"
+            className="w-full py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-2 nopan nodrag nowheel nokey"
             style={{
               background: enhancing ? "var(--surface)" : "rgba(110, 221, 179, 0.1)",
               color: enhancing ? "var(--text-muted)" : "var(--canvas-accent)",
@@ -121,19 +195,19 @@ export default function PromptNode({ id, data }: NodeProps<AppNode>) {
           </button>
         )}
 
-        <textarea
-          value={data.negativePrompt || ""}
-          onChange={(e) => updateNodeData(id, { negativePrompt: e.target.value })}
+        <FlowTextarea
+          aria-label="Negative prompt"
+          compact
+          value={negative.value}
+          onChange={negative.onChange}
+          onFocus={negative.onFocus}
+          onBlur={negative.onBlur}
           placeholder="Negative prompt (optional)..."
-          className="w-full h-12 rounded-xl px-4 py-2 text-xs resize-none focus:outline-none nopan nodrag"
-          style={{ background: "var(--surface)", color: "var(--text-tertiary)", border: "1px solid transparent" }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--canvas-accent)")}
-          onBlur={(e) => (e.currentTarget.style.borderColor = "transparent")}
         />
       </div>
 
       <Handle type="source" position={Position.Right} id="prompt" />
-      <div className="handle-label handle-label-right" style={{ top: "50%", right: -8, transform: "translateX(100%) translateY(-50%)" }}>
+      <div className="handle-label handle-label-right" style={{ top: "50%", right: -24, transform: "translateX(100%) translateY(-50%)" }}>
         <span style={{ color: "var(--canvas-accent)", fontSize: 10 }}>Prompt</span>
       </div>
     </NodeShell>

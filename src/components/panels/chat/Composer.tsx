@@ -1,14 +1,18 @@
 "use client";
-import { useRef, useState, type ChangeEvent, type KeyboardEvent, type Ref } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type Ref } from "react";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useChatStore } from "@/store/chat-store";
+import { useCanvasStore } from "@/store/canvas-store";
 import MicButton from "./MicButton";
 import AttachButton from "./AttachButton";
 import SkillPicker from "./SkillPicker";
+import MentionPicker from "./MentionPicker";
 import type { ChatStatus } from "ai";
 import type { SlashSkill } from "@/lib/agent/skills/slash-catalog";
 import { applySlashPick, composerSlashQuery, filterSlashSkills, slashQueryAtCursor } from "@/lib/agent/skills/slash-query";
+import { applyMentionPick, composerMentionQuery, filterMentionableImages, mentionQueryAtCursor } from "@/lib/agent/mentions/mention-query";
+import { catalogMentionableImages, type MentionableImage } from "@/lib/canvas/mentionable-images";
 
 function assignRef(ref: Ref<HTMLTextAreaElement> | undefined, el: HTMLTextAreaElement | null) {
   if (!ref) return;
@@ -32,24 +36,36 @@ export default function Composer({
   const setDraft = useChatStore((s) => s.setDraft);
   const attachments = useChatStore((s) => s.attachments);
   const removeAttachment = useChatStore((s) => s.removeAttachment);
+  const nodes = useCanvasStore((s) => s.nodes);
+  const coverImageUrl = useCanvasStore((s) => s.coverImageUrl);
+  const mentionCatalog = useMemo(
+    () => catalogMentionableImages(nodes, { coverImageUrl }),
+    [nodes, coverImageUrl],
+  );
   const localRef = useRef<HTMLTextAreaElement>(null);
   const [cursor, setCursor] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [dismissedStart, setDismissedStart] = useState<number | null>(null);
+  const [dismissedSlashStart, setDismissedSlashStart] = useState<number | null>(null);
+  const [dismissedMentionStart, setDismissedMentionStart] = useState<number | null>(null);
 
   const streaming = status === "streaming" || status === "submitted";
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !streaming;
 
-  const openQuery = composerSlashQuery(draft, cursor);
-  const pickerOpen = openQuery !== null && openQuery.start !== dismissedStart;
-  const items = pickerOpen && openQuery ? filterSlashSkills(openQuery.query) : [];
+  const slashQuery = composerSlashQuery(draft, cursor);
+  const mentionQuery = composerMentionQuery(draft, cursor);
+  const slashOpen = slashQuery !== null && slashQuery.start !== dismissedSlashStart;
+  const mentionOpen = mentionQuery !== null && mentionQuery.start !== dismissedMentionStart && !slashOpen;
+  const slashItems = slashOpen && slashQuery ? filterSlashSkills(slashQuery.query) : [];
+  const mentionItems = mentionOpen && mentionQuery ? filterMentionableImages(mentionCatalog, mentionQuery.query) : [];
+  const pickerKind = mentionOpen ? "mention" : slashOpen ? "slash" : null;
+  const items = pickerKind === "mention" ? mentionItems : slashItems;
   const safeIndex = items.length === 0 ? 0 : Math.min(activeIndex, items.length - 1);
 
-  const pick = (skill: SlashSkill) => {
-    const next = applySlashPick(draft, cursor, skill.slash);
+  const applyPick = (next: { text: string; cursor: number }) => {
     setDraft(next.text);
     setCursor(next.cursor);
-    setDismissedStart(null);
+    setDismissedSlashStart(null);
+    setDismissedMentionStart(null);
     setActiveIndex(0);
     requestAnimationFrame(() => {
       const el = localRef.current;
@@ -59,6 +75,14 @@ export default function Composer({
     });
   };
 
+  const pickSlash = (skill: SlashSkill) => {
+    applyPick(applySlashPick(draft, cursor, skill.slash));
+  };
+
+  const pickMention = (item: MentionableImage) => {
+    applyPick(applyMentionPick(draft, cursor, item.visibleId));
+  };
+
   const syncCursor = (el: HTMLTextAreaElement) => {
     setCursor(el.selectionStart ?? el.value.length);
   };
@@ -66,19 +90,24 @@ export default function Composer({
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     const nextCursor = e.target.selectionStart ?? value.length;
-    const prevQuery = composerSlashQuery(draft, cursor)?.query;
-    const nextOpen = composerSlashQuery(value, nextCursor);
+    const prevSlash = composerSlashQuery(draft, cursor)?.query;
+    const prevMention = composerMentionQuery(draft, cursor)?.query;
+    const nextSlash = composerSlashQuery(value, nextCursor);
+    const nextMention = composerMentionQuery(value, nextCursor);
     const resolvedCursor =
-      nextCursor === 0 && slashQueryAtCursor(value, value.length) ? value.length : nextCursor;
-    if (prevQuery !== nextOpen?.query) setActiveIndex(0);
-    if (dismissedStart !== null && nextOpen?.start !== dismissedStart) setDismissedStart(null);
+      nextCursor === 0 && (slashQueryAtCursor(value, value.length) || mentionQueryAtCursor(value, value.length))
+        ? value.length
+        : nextCursor;
+    if (prevSlash !== nextSlash?.query || prevMention !== nextMention?.query) setActiveIndex(0);
+    if (dismissedSlashStart !== null && nextSlash?.start !== dismissedSlashStart) setDismissedSlashStart(null);
+    if (dismissedMentionStart !== null && nextMention?.start !== dismissedMentionStart) setDismissedMentionStart(null);
     setDraft(value);
     setCursor(resolvedCursor);
   };
 
   const onComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
-    if (pickerOpen) {
+    if (pickerKind) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         if (items.length > 0) setActiveIndex((index) => (index + 1) % items.length);
@@ -91,13 +120,15 @@ export default function Composer({
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        if (openQuery) setDismissedStart(openQuery.start);
+        if (pickerKind === "slash" && slashQuery) setDismissedSlashStart(slashQuery.start);
+        if (pickerKind === "mention" && mentionQuery) setDismissedMentionStart(mentionQuery.start);
         return;
       }
       if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
         if (items.length > 0) {
           e.preventDefault();
-          pick(items[safeIndex]!);
+          if (pickerKind === "slash") pickSlash(slashItems[safeIndex]!);
+          else pickMention(mentionItems[safeIndex]!);
           return;
         }
         if (e.key === "Tab") return;
@@ -123,8 +154,11 @@ export default function Composer({
         </div>
       )}
 
-      {pickerOpen && (
-        <SkillPicker items={items} activeIndex={safeIndex} onHover={setActiveIndex} onPick={pick} />
+      {slashOpen && (
+        <SkillPicker items={slashItems} activeIndex={safeIndex} onHover={setActiveIndex} onPick={pickSlash} />
+      )}
+      {mentionOpen && (
+        <MentionPicker items={mentionItems} activeIndex={safeIndex} onHover={setActiveIndex} onPick={pickMention} />
       )}
 
       <InputGroup className="rounded-xl bg-muted border-border">
@@ -140,13 +174,19 @@ export default function Composer({
           onSelect={(e) => syncCursor(e.currentTarget)}
           onKeyUp={(e) => syncCursor(e.currentTarget)}
           onKeyDown={onComposerKeyDown}
-          placeholder="Décris ta miniature, tape / pour une skill, ou enregistre un vocal…"
+          placeholder="Décris ta miniature, tape / pour une skill, @ pour une miniature…"
           className="h-14 min-h-14 px-3 py-2.5 text-foreground"
           rows={2}
           role="combobox"
-          aria-expanded={pickerOpen}
-          aria-controls="brainstorm-slash-picker"
-          aria-activedescendant={pickerOpen && items[safeIndex] ? `slash-skill-${items[safeIndex].slash}` : undefined}
+          aria-expanded={pickerKind !== null}
+          aria-controls={mentionOpen ? "brainstorm-mention-picker" : slashOpen ? "brainstorm-slash-picker" : undefined}
+          aria-activedescendant={
+            mentionOpen && mentionItems[safeIndex]
+              ? `mention-image-${mentionItems[safeIndex].visibleId.replace("#", "")}`
+              : slashOpen && slashItems[safeIndex]
+                ? `slash-skill-${slashItems[safeIndex].slash}`
+                : undefined
+          }
           aria-autocomplete="list"
         />
         <InputGroupAddon align="block-end">

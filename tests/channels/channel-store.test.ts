@@ -138,6 +138,13 @@ describe("videos", () => {
     channelId = store.insertChannel(details("v")).channel.id;
   });
 
+  it("stores the YouTube description for theme clustering", () => {
+    store.upsertVideos(channelId, [video("vid-1", { description: "On parle de Cursor 2.0." })], STAMP_1);
+    expect(store.getVideo("vid-1")?.description).toBe("On parle de Cursor 2.0.");
+    store.updateVideoStats([video("vid-1", { description: "Nouveau texte Cursor 2.0." })], STAMP_2);
+    expect(store.getVideo("vid-1")?.description).toBe("Nouveau texte Cursor 2.0.");
+  });
+
   it("updates stats on re-import without touching the thumbnail type", () => {
     store.upsertVideos(channelId, [video("vid-1")], STAMP_1);
     store.setManualThumbType("vid-1", "versus");
@@ -149,6 +156,20 @@ describe("videos", () => {
       thumb_type_source: "manual",
       stats_updated_at: STAMP_2,
     });
+  });
+
+  it("writes a snapshot on upsert and on stats refresh, then deletes it with the video", () => {
+    store.upsertVideos(channelId, [video("vid-1", { viewCount: 10, likeCount: 1 })], STAMP_1);
+    store.updateVideoStats([video("vid-1", { viewCount: 22, likeCount: 2 })], STAMP_2);
+    const rows = getDb()
+      .prepare("SELECT captured_at, view_count, like_count FROM video_stat_snapshots WHERE video_id = 'vid-1' ORDER BY captured_at")
+      .all();
+    expect(rows).toEqual([
+      { captured_at: STAMP_1, view_count: 10, like_count: 1 },
+      { captured_at: STAMP_2, view_count: 22, like_count: 2 },
+    ]);
+    store.deleteVideos(["vid-1"]);
+    expect(getDb().prepare("SELECT COUNT(*) AS n FROM video_stat_snapshots WHERE video_id = 'vid-1'").get()).toEqual({ n: 0 });
   });
 
   it("lists videos to refresh, refreshes and deletes them", () => {

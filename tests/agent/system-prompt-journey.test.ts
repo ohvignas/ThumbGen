@@ -22,6 +22,8 @@ describe("system prompt — no thumbnail journey wizard", () => {
     const body = readSkillBody("thumbnail-packaging") ?? "";
     expect(body).toMatch(/0.?4 words|4 words/i);
     expect(body).not.toMatch(/STEPS\n1\./);
+    expect(body).toContain("There is no Fiche");
+    expect(body).not.toMatch(/Then `update_brief`/);
   });
 
   it("stays in the cached block", () => {

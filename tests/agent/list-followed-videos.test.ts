@@ -15,14 +15,15 @@ import { listFollowedVideosTool } from "@/lib/agent/tools/list-followed-videos";
 import { TOOL_LABELS } from "@/lib/agent/tool-labels";
 
 const DAY = 86_400_000;
+let savedTypesafeEnv: string | undefined;
 const fetchSpy = vi.fn(async () => {
   throw new Error("no network in tests");
 });
 
-function video(videoId: string, days: number, viewCount: number) {
+function video(videoId: string, days: number, viewCount: number, title = `Titre ${videoId}`) {
   return {
     videoId,
-    title: `Titre ${videoId}`,
+    title,
     publishedAt: new Date(Date.now() - days * DAY).toISOString(),
     durationSeconds: 600,
     viewCount,
@@ -50,12 +51,17 @@ const ids = (text: string) => [...text.matchAll(/youtube:([\w-]+)/g)].map((m) =>
 
 beforeEach(() => {
   getDb().exec("DELETE FROM followed_channels");
+  getDb().exec("DELETE FROM settings");
+  savedTypesafeEnv = process.env.TYPESAFE_API_KEY;
+  delete process.env.TYPESAFE_API_KEY;
   vi.stubGlobal("fetch", fetchSpy);
   fetchSpy.mockClear();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  if (savedTypesafeEnv === undefined) delete process.env.TYPESAFE_API_KEY;
+  else process.env.TYPESAFE_API_KEY = savedTypesafeEnv;
 });
 
 function seed() {
@@ -63,10 +69,19 @@ function seed() {
   const other = channel("o", "Concurrent", false);
   store.upsertVideos(
     mine,
-    [video("mine0000001", 10, 900), video("mine0000002", 20, 4000), video("mine0000003", 30, 2000), video("mine0000004", 40, 500)],
+    [
+      video("mine0000001", 10, 900, "iPhone 17 A"),
+      video("mine0000002", 20, 4000, "Cursor 2.0 A"),
+      video("mine0000003", 30, 2000, "Cursor 2.0 B"),
+      video("mine0000004", 40, 500, "iPhone 17 B"),
+    ],
     new Date().toISOString(),
   );
-  store.upsertVideos(other, [video("othr0000001", 15, 9000), video("othr0000002", 25, 300)], new Date().toISOString());
+  store.upsertVideos(
+    other,
+    [video("othr0000001", 15, 9000, "Cursor 2.0 C"), video("othr0000002", 25, 300, "iPhone 17 C")],
+    new Date().toISOString(),
+  );
   for (const id of ["mine0000002", "mine0000003", "othr0000001"]) store.setAiThumbType(id, "face_text");
   for (const id of ["mine0000001", "mine0000004", "othr0000002"]) store.setAiThumbType(id, "text_only");
 }
@@ -77,7 +92,7 @@ describe("list_followed_videos", () => {
     const { result, text } = await run({ scope: "mine", sort: "date", limit: 3 });
     expect(result.isError).toBeFalsy();
     expect(ids(text)).toEqual(["mine0000001", "mine0000002", "mine0000003"]);
-    expect(text).toContain('"Titre mine0000002"');
+    expect(text).toContain('"Cursor 2.0 A"');
     expect(text).toContain("perf: ×4");
     expect(text).toContain("type: Visage + texte");
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -95,18 +110,36 @@ describe("list_followed_videos", () => {
     expect(ids(text)).toEqual(["othr0000001", "mine0000002", "mine0000003"]);
   });
 
-  it("keeps only the best performing thumbnail type", async () => {
+  it("keeps only the winning title/description theme", async () => {
     seed();
     const { text } = await run({ scope: "all", sort: "score", best_type: true, limit: 12 });
-    expect(text).toContain("type Visage + texte");
+    expect(text).toContain("thème Cursor 2.0");
+    expect(text).toContain("pourquoi:");
     expect(ids(text).sort()).toEqual(["mine0000002", "mine0000003", "othr0000001"]);
   });
 
-  it("says when there is not enough data for a best type", async () => {
+  it("says when there is not enough data for a winning theme", async () => {
     seed();
     const { text } = await run({ scope: "mine", sort: "score", best_type: true });
-    expect(text).toContain("pas assez de données pour un meilleur type");
+    expect(text).toContain("pas assez de données pour une meilleure thématique");
     expect(ids(text)).toHaveLength(4);
+  });
+
+  it("does not elect Autres sujets as best_type", async () => {
+    const mine = channel("z", "Ma chaîne", true);
+    store.upsertVideos(
+      mine,
+      [
+        video("lone0000001", 10, 5000, "Tarte aux pommes"),
+        video("lone0000002", 20, 4000, "Étagère murale"),
+        video("lone0000003", 30, 9000, "Voyage à Kyoto"),
+      ],
+      new Date().toISOString(),
+    );
+    const { text } = await run({ scope: "mine", sort: "score", best_type: true });
+    expect(text).toContain("pas assez de données pour une meilleure thématique");
+    expect(text).not.toContain("thème Autres sujets");
+    expect(ids(text).sort()).toEqual(["lone0000001", "lone0000002", "lone0000003"]);
   });
 
   it("covers every channel marked « Ma chaîne », like the types summary", async () => {

@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   buildGenerationPayload,
   faceImageSources,
+  generationPayloadFits,
   inputPreview,
+  isEditSourceNode,
   nodeImageSource,
   type ImageLoader,
   type PayloadNode,
@@ -99,8 +101,9 @@ describe("buildGenerationPayload", () => {
     expect(payload).toEqual({
       prompt: "A\nB",
       negativePrompt: "flou",
+      editImages: ["loaded(/g1)"],
       faceImages: ["loaded(/f)", "loaded(/l)"],
-      referenceImages: ["loaded(/ref)", "loaded(/g1)"],
+      referenceImages: ["loaded(/ref)"],
       logos: [{ image: "loaded(data:logo)", label: "Marque" }],
       sketchImages: ["loaded(data:sketch)"],
     });
@@ -125,10 +128,109 @@ describe("buildGenerationPayload", () => {
     expect(await buildGenerationPayload(variantInputs({}), loader)).toEqual({
       prompt: "",
       negativePrompt: "",
+      editImages: [],
       faceImages: [],
       referenceImages: [],
       logos: [],
       sketchImages: [],
     });
+  });
+
+  it("treats a stored:gi_ swipeFile as an edit source, not a layout swipe", async () => {
+    const gi = n("gi", "swipeFile", {
+      kind: "reference",
+      imageUrl: "/api/generated-images/image?id=abc-1",
+      image_source: "stored:gi_abc-1",
+    });
+    const swipe = n("sf", "swipeFile", { imageUrl: "/api/swipe-files/image?f=sf1" });
+    expect(isEditSourceNode(gi)).toBe(true);
+    expect(isEditSourceNode(swipe)).toBe(false);
+    const payload = await buildGenerationPayload(
+      variantInputs({ ref: { nodes: [swipe, gi], inherited: false } }),
+      loader,
+    );
+    expect(payload.editImages).toEqual(["stored:gi_abc-1"]);
+    expect(payload.referenceImages).toEqual(["stored:sf_sf1"]);
+  });
+
+  it("sends stored refs and persona URLs instead of inlined imageBase64", async () => {
+    const payload = await buildGenerationPayload(
+      variantInputs({
+        face: [
+          n("f", "faceReference", {
+            personaId: "p1",
+            personaAngles: {
+              front: "data:image/png;base64,HUGEFRONT",
+              left: "data:image/png;base64,HUGELEFT",
+            },
+          }),
+        ],
+        logo: [
+          n("l", "swipeFile", {
+            image_source: "stored:lg_logo1",
+            imageBase64: "data:image/png;base64,HUGELOGO",
+            label: "Marque",
+          }),
+        ],
+        sketch: {
+          nodes: [
+            n("s", "sketch", {
+              imageUrl: "/api/generated-sketches/sk_9",
+              imageBase64: "data:image/png;base64,HUGESKETCH",
+            }),
+          ],
+          inherited: false,
+        },
+        ref: {
+          nodes: [
+            n("r1", "preview", {
+              generatedImages: ["/api/generated-images/image?id=abc-1"],
+              imageBase64: "data:image/png;base64,HUGETHUMB",
+            }),
+            n("r2", "swipeFile", {
+              imageUrl: "/api/swipe-files/image?f=sf1",
+              imageBase64: "data:image/png;base64,HUGESWIPE",
+            }),
+          ],
+          inherited: false,
+        },
+      }),
+      loader,
+    );
+
+    expect(payload.faceImages).toEqual([
+      "/api/personas/image?id=p1&angle=front",
+      "/api/personas/image?id=p1&angle=left",
+    ]);
+    expect(payload.editImages).toEqual(["stored:gi_abc-1"]);
+    expect(payload.referenceImages).toEqual(["stored:sf_sf1"]);
+    expect(payload.logos).toEqual([{ image: "stored:lg_logo1", label: "Marque" }]);
+    expect(payload.sketchImages).toEqual(["generated:sk_9"]);
+    expect(JSON.stringify(payload)).not.toMatch(/base64,HUGE/);
+  });
+
+  it("rejects a payload that is still huge after compacting", () => {
+    expect(
+      generationPayloadFits({
+        prompt: "x",
+        negativePrompt: "",
+        editImages: [],
+        faceImages: [`data:image/png;base64,${"A".repeat(8_000_000)}`],
+        referenceImages: [],
+        logos: [],
+        sketchImages: [],
+      }),
+    ).toBe(false);
+    expect(
+      generationPayloadFits({
+        prompt: "x",
+        negativePrompt: "",
+        editImages: ["stored:gi_abc"],
+        faceImages: ["/api/personas/image?id=p1&angle=front"],
+        referenceImages: [],
+        logos: [],
+        sketchImages: [],
+      }),
+    ).toBe(true);
   });
 });

@@ -93,4 +93,29 @@ describe("/api/generate/openrouter error passthrough", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("maps Gemini content moderation to French instead of the raw OpenRouter string", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Gemini blocked this request through content moderation." } }), {
+        status: 400,
+      }),
+    );
+
+    const res = await postGenerate();
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toBe("Requête bloquée par la modération de contenu");
+    expect(json.error).not.toMatch(/Gemini blocked|content moderation/i);
+  });
+
+  it("treats a 200 with no image data as an error", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+
+    const res = await postGenerate();
+    const json = await res.json();
+
+    expect(res.ok).toBe(false);
+    expect(json.error).toMatch(/aucune image/i);
+  });
 });

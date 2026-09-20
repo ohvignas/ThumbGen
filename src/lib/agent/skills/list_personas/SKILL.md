@@ -19,7 +19,6 @@ Call once in the conversation, then reuse the refs:
 - Before `ask_user` character options (thumbnails need `image: stored:persona_<id>`)
 - Before `place_node` `iv-persona` or `apply_workflow` `faceReference`
 - Before `generate_sketch` with `face_source`
-- Before `update_brief` `common.persona` (must be `stored:persona_<id>` or `"none"`)
 - They just created one in Bibliothèque — list again; the previous empty result is stale
 - `<channel_profile>` has a default character and you still need to confirm the id / offer others
 
@@ -28,7 +27,7 @@ Call once in the conversation, then reuse the refs:
 - They already said no face / "aucun" / "sans visage" / "pas moi" — do not list, do not invent a face
 - You already listed this conversation and the ids are still in context (unless they went to create one)
 - The open canvas already has the Personnage they want: `<canvas_state>` `faceReference.summary.persona` is `stored:persona_<id>` — reuse it
-- `<thumbnail_brief>` already has `common.persona` and they are not changing character — trust the brief
+- You already chose a Personnage this conversation and they are not changing character — reuse that `stored:persona_<id>`
 - Logos → `list_logos`. Inspiration / competitor thumbs → `list_swipe_files` / `import_youtube_thumbnail`. Those refs go on `logo-in` / `ref-in`, never `face-in`
 - Do not call `request_user_image` (`suggested_kind: "face"` or anything else) to stand in for a Personnage. An upload cannot become a `faceReference`
 - Do not treat a former single-photo face (`stored:fr_…`) as valid. That scheme is dead; `apply_workflow` rejects it
@@ -81,7 +80,6 @@ Deleted defaults are stripped from the prompt even if Réglages still stores the
 | Sink | Field | What the app does |
 |---|---|---|
 | `ask_user` option | `image: stored:persona_<id>` | Square tile = **front** (`/api/personas/image?id=…&angle=front`). Option `id` ≤ 40 chars |
-| `update_brief` | `common.persona: "stored:persona_<id>"` or `"none"` | Brief memory. Emotion on a card is refused when persona is `"none"` |
 | `generate_sketch` | `face_source: "stored:persona_<id>"` | **Front only** (else first existing angle). Costs money. Omit when no face |
 | `place_node` | `{ id: "iv-persona", type: "faceReference", data: { image_source: "stored:persona_<id>" } }` | Wires to generator `face-in`. Label defaults to the library name |
 | `apply_workflow` | node `type: "faceReference"`, `data.image_source: "stored:persona_<id>"`, edge `targetHandle: "face-in"` | Expands to **all** stored angles (`personaId` + `personaAngles`). A/B: one shared face, never duplicated per variant |
@@ -129,25 +127,17 @@ followed by the formatted Zod issues (same `stored:persona_` message inside).
 
 > Could not resolve the image of node iv-persona: Persona not found or has no photos: stored:persona_<id>
 
-`update_brief` if `common.persona` is malformed:
-
-> Personnage au format stored:persona_<id>
-
-`update_brief` if a variant has `composition.emotion` while `common.persona` is `"none"`:
-
-> Pas d'émotion sans personnage
-
-Fix: call `list_personas`, copy a real ref (or go faceless). Do not retry with `stored:fr_`, `uploaded:`, `stored:sf_`, `generated:`, or `request_user_image`.
+Fix: call `list_personas`, copy a real ref (or go faceless). Do not retry with `stored:fr_`, `uploaded:`, `stored:sf_`, `generated:`, or `request_user_image`. Emotion on a card only with a Personnage.
 
 ## Chains
 
-**Choice (typical):** `list_personas` → `ask_user` (one option per Personnage, `image: stored:persona_<id>`, plus "Aucun") → `update_brief` `{ common: { persona } }` → later `generate_sketch` `{ face_source }` and/or `place_node` / `apply_workflow` faceReference on `face-in` → `finish_turn`.
+**Choice (typical):** `list_personas` → `ask_user` (one option per Personnage, `image: stored:persona_<id>`, plus "Aucun") → later `generate_sketch` `{ face_source }` and/or `place_node` / `apply_workflow` faceReference on `face-in` → `finish_turn`.
 
-**Default, no objection:** `<channel_profile>` default ref (confirm with a list if you have not listed yet) → skip the question → write `common.persona` → same sketch / canvas path.
+**Default, no objection:** `<channel_profile>` default ref (confirm with a list if you have not listed yet) → skip the question → same sketch / canvas path.
 
 **Empty library, they want to appear:** tell them Bibliothèque → onglet Personnages (webcam 3 angles **or** one photo per angle) → `finish_turn` with a comeback button → after they return, `list_personas` again.
 
-**Empty library, they don't need to appear:** faceless packages. No `face_source`, no `iv-persona`, `common.persona: "none"`.
+**Empty library, they don't need to appear:** faceless packages. No `face_source`, no `iv-persona`.
 
 **Existing canvas:** if `faceReference.summary.persona` is already the one they want, do not list; do not rebuild the node. To swap character: list, then `apply_workflow` update that node's `image_source` (omit `label` to keep a custom node name).
 
@@ -178,7 +168,7 @@ User: "Fais-moi une miniature où je suis dessus."
 - `{ id: "c3d4", label: "Studio", image: "stored:persona_c3d4" }`
 - `{ id: "none", label: "Aucun" }`
 
-5. They pick Antoine. `update_brief` `{ common: { persona: "stored:persona_a1b2" } }`.
+5. They pick Antoine.
 6. Sketch: `generate_sketch` `{ prompt: "…", face_source: "stored:persona_a1b2" }`.
 7. Canvas: `place_node` `{ id: "iv-persona", type: "faceReference", data: { image_source: "stored:persona_a1b2" } }` (or `apply_workflow` with that node on `face-in`). Generator model `seedream` if there is no thumb text.
 8. `finish_turn` — do not include the list call in `results`.

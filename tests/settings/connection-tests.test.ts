@@ -4,7 +4,7 @@ import { setSetting } from "@/lib/settings";
 import { testProviderKey } from "@/lib/connection-tests";
 import { POST } from "@/app/api/settings/test/route";
 
-const ENV_NAMES = ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "YOUTUBE_API_KEY"];
+const ENV_NAMES = ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "YOUTUBE_API_KEY", "PERPLEXITY_API_KEY"];
 const savedEnv: Record<string, string | undefined> = {};
 const fetchMock = vi.fn<typeof fetch>();
 

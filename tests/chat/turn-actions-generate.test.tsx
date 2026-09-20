@@ -94,7 +94,7 @@ describe("TurnActions — generate", () => {
 });
 
 describe("turn model — generate action", () => {
-  it("maps finish_turn's generate action", () => {
+  it("never maps finish_turn generate / focus chips into the chat", () => {
     const message = {
       id: "m1",
       role: "assistant",
@@ -108,6 +108,6 @@ describe("turn model — generate action", () => {
         },
       ],
     } as unknown as UIMessage;
-    expect(splitAssistantTurn(message).nextActions).toEqual([{ kind: "generate", nodeId: "iv-generator" }]);
+    expect(splitAssistantTurn(message).nextActions).toEqual([]);
   });
 });

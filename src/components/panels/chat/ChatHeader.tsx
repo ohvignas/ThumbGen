@@ -15,7 +15,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "cn";
 import AgentAvatar from "./AgentAvatar";
 import UsageSummary from "./UsageSummary";
-import BriefButton from "@/components/brief/BriefButton";
 import { useConversations } from "./useConversations";
 
 const STATUS: Record<ChatStatus, { label: string; dot: string }> = {
@@ -60,7 +59,6 @@ export default function ChatHeader({
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium leading-tight">{active?.title ?? "Nouvelle conversation"}</p>
-        {/* One line, truncated: the « Fiche » button and its badge leave less room in the 400px panel. */}
         <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight text-muted-foreground">
           <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />
           <span className="truncate">Agent ThumbGen</span>
@@ -69,7 +67,6 @@ export default function ChatHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        <BriefButton conversationId={activeConversationId} />
         <HeaderButton label="Nouvelle conversation" onClick={create}>
           <Plus />
         </HeaderButton>

@@ -22,7 +22,7 @@ There is no numbered pipeline and no « Étape n/7 ». Place a node when that ch
 - **Many non-`iv-*` nodes**, sketches, custom ids (`prompt-1`, `journey-generator`) → `apply_workflow`
 - **Delete** nodes → `apply_workflow` `remove_node_ids`, and only if they asked
 - **Same step as `ask_user` or `finish_turn`** — question alone; `finish_turn` last and alone
-- Starting a paid generation — `finish_turn` `next_actions: [{ kind: "generate", node_id: "iv-generator" }]`; they click
+- Starting a paid generation — they click « Générer » on the canvas generator
 - A sketch node — `generate_sketch` returns `generated:sk_<id>`; `place_node` has no sketch id
 - An existing non-interview workflow they want edited → `apply_workflow` (skill `existing-workflow`)
 
@@ -61,7 +61,7 @@ Any other id (`prompt-1`, `iv-ref-4`, …) is refused. Type must match the id. A
 { "id": "iv-prompt", "type": "prompt", "data": { "prompt": "<final image prompt>", "negativePrompt": "<optional>" } }
 ```
 
-`prompt` is required. Write it from thumbnail-packaging (PROMPT ANATOMY). If on-image text is rendered, put the exact words in quotes with font, color, outline, and size in % of height. If text is an overlay, describe the reserved empty zone.
+`prompt` is required. Two intents: **first gen** (no generated aperçu as source) = thumbnail-packaging 7-sentence anatomy (A/B uses `apply_workflow` with two complete prompts). **Iterate** (generated thumb / `stored:gi_` on `ref-in`): short change-only prompt, same angle, not a scene rewrite. A/B is variant slots, not a reason to shorten. If on-image text is rendered, put the exact words in quotes with font, color, outline, and size in % of height. If text is an overlay, describe the reserved empty zone.
 
 **`iv-persona`** — Personnage only, never a one-off photo.
 
@@ -169,7 +169,7 @@ Quote the tool text (the `<id>` / type / kind / source vary):
 3. `list_logos` / `add_logo` → `place_node` `iv-logo-n` with `stored:lg_<id>`
 4. `import_youtube_thumbnail` / `list_swipe_files` → `place_node` `iv-ref-n` with `stored:sf_<id>`
 5. `list_past_generations` → `place_node` `iv-ref-n` with `stored:gi_<id>`
-6. After `iv-generator`: `finish_turn` with `next_actions: [{ "kind": "generate", "node_id": "iv-generator" }]`
+6. After `iv-generator`: `finish_turn` with `next_actions: []`. They click « Générer » on the node.
 7. Two or three packages to compare → **stop using `place_node` for the graph**; `apply_workflow` + `abTest` (skill `apply_workflow`)
 8. `place_node` error → one-sentence apology; do not retry a deleted node until they say so
 
@@ -202,7 +202,7 @@ One variant, choices already known (persona, one logo, one imported ref). Same s
 Next step, alone:
 
 ```json
-{ "summary": "Le workflow est sur le canvas.", "results": [], "next_actions": [{ "kind": "generate", "node_id": "iv-generator" }] }
+{ "summary": "Le workflow est sur le canvas.", "results": [], "next_actions": [] }
 ```
 
-Two packages to A/B? Do **not** place two prompts with `place_node`. Call `apply_workflow` with `abTest` and per-variant handles (`prompt-in` / `prompt-in-b`).
+Two packages to A/B? Do **not** place two prompts with `place_node`. Call `apply_workflow` with `abTest` and per-variant handles (`prompt-in` / `prompt-in-b`). First-gen A/B = two complete 7-sentence prompts; iterate-on-image = short deltas.

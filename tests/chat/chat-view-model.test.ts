@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
 import {
   belongsToLiveTurn,
+  chatPinToBottomReason,
   conversationChangeEffects,
   groupConsecutiveMessages,
+  lastUserMessageId,
   lastUserText,
   liveTurnStart,
   retryableUserText,
@@ -91,6 +93,25 @@ describe("lastUserText", () => {
     expect(lastUserText(messages)).toBe("Change le fond");
     expect(lastUserText([msg("u1", "user", [{ type: "file", mediaType: "image/png", url: "data:," }])])).toBe("");
     expect(lastUserText([])).toBe("");
+  });
+});
+
+describe("lastUserMessageId", () => {
+  it("returns the last user message id, or empty when there is none", () => {
+    expect(lastUserMessageId([msg("u1", "user"), msg("a1", "assistant"), msg("u2", "user")])).toBe("u2");
+    expect(lastUserMessageId([msg("u1", "user"), msg("a1", "assistant")])).toBe("u1");
+    expect(lastUserMessageId([msg("a1", "assistant")])).toBe("");
+    expect(lastUserMessageId([])).toBe("");
+  });
+});
+
+describe("chatPinToBottomReason", () => {
+  it("pins after a new user send and after the turn ends, not mid-stream", () => {
+    expect(chatPinToBottomReason({ lastUserId: "u1", turnActive: false }, { lastUserId: "u2", turnActive: true })).toBe("send");
+    expect(chatPinToBottomReason({ lastUserId: "u2", turnActive: true }, { lastUserId: "u2", turnActive: false })).toBe("turn-complete");
+    expect(chatPinToBottomReason({ lastUserId: "u2", turnActive: true }, { lastUserId: "u2", turnActive: true })).toBeNull();
+    expect(chatPinToBottomReason({ lastUserId: "u1", turnActive: false }, { lastUserId: "u1", turnActive: true })).toBeNull();
+    expect(chatPinToBottomReason({ lastUserId: "u1", turnActive: false }, { lastUserId: "", turnActive: false })).toBeNull();
   });
 });
 

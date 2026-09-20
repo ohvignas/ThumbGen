@@ -49,8 +49,8 @@ export async function executeAddLogo(context: AddLogoContext, input: AddLogoInpu
 export function buildAddLogoTool(context: AddLogoContext): Tool {
   return aiTool({
     description: [
-      "Saves one find_logos candidate into the library. Use after the user picked a logo-candidate id (or a single obvious hit). Pass candidate_id only, never a URL. Returns stored:lg_<id>. Max 3 logos on the Fiche.",
-      "Returns stored:lg_<id> to write on the brief with update_brief logos.",
+      "Saves one find_logos candidate into the library. Use after the user picked a logo-candidate id (or a single obvious hit). Pass candidate_id only, never a URL. Returns stored:lg_<id>. Max 3 logos per conversation.",
+      "Returns stored:lg_<id> to wire on the canvas (place_node / apply_workflow / generate_sketch). Do not write a Fiche.",
     ].join("\n"),
     inputSchema: addLogoInputSchema,
     execute: async (input: AddLogoInput) => executeAddLogo(context, input),

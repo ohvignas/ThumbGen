@@ -15,9 +15,8 @@ import { BLUEPRINT_MODELS } from "@/lib/agent/blueprint/models";
 import { formatUsdEstimate } from "@/lib/canvas/generate-action";
 import { imageModelLabel } from "@/lib/image-models";
 import { MODEL_COSTS } from "@/lib/model-costs";
-import { buildThumbnailBriefBlock } from "@/lib/brief/context";
-import type { ThumbnailBrief } from "@/lib/brief/schema";
 import { buildSkillsCatalogBlock } from "@/lib/agent/skills/catalog";
+import { buildMentionedImagesBlock, type MentionableImage } from "@/lib/canvas/mentionable-images";
 
 /**
  * Prices of generator models (16x9, one image per variant), for skills and tests.
@@ -37,27 +36,27 @@ ${buildSkillsCatalogBlock()}
 If this turn includes an <invoked_skill> block, follow that skill now. It is already loaded — do not call read_skill for that name unless you need a re-read.
 If <canvas_state> has nodes AND the user asks about that existing workflow, read_skill existing-workflow first. A precise request (e.g. "remplace le texte par X") is not a request to analyse: act on it.
 If they want a new thumbnail ("Aide-moi à construire la miniature de ma vidéo.", "fais-moi une miniature", "propose-moi des idées"…), read_skill thumbnail-packaging, then use tools as needed.
-A <thumbnail_brief> block, when present, is optional memory the user can edit in « Fiche » — trust it over chat history for those fields. Never mention "step 3 of 7" or run a 7-step pipeline.
+Never mention "step 3 of 7" or run a 7-step pipeline. There is no Fiche / thumbnail brief to read or write.
 
 Rules:
-- The open canvas in <canvas_state> is the truth
+- The open canvas in <canvas_state> is the truth. liveSketchCount (and type:"sketch" nodes) are the only sketches that exist. Deleted / tombstoned croquis and earlier generate_sketch calls do not use a quota. Never tell the user a 5-sketch-per-project cap is full because drafts were deleted or because you "already made 5 this session".
 - Before a tool call, write at most one short sentence (or nothing): it only appears in the collapsed step list
 - Be concise. The user is creative, not technical. Don't dump JSON
 - Cost-aware: generate_sketch costs money; a final generation only ever starts from the user's click on "Générer". Never generate an image yourself.
 - Cite web sources when web results are attached
 - Faces of the creator: Personnages only (list_personas), never a one-off photo as their face. When their face is in a sketch, pass face_source: "stored:persona_<id>"
 - If the canvas already has a workflow and the user wants to modify it, read_skill existing-workflow: apply_workflow sends only changed nodes; the other nodes are kept automatically
+- Two intents only. First gen (no generated aperçu as the work source): full 7-sentence prompt(s); A/B here = two complete alternative prompts (variant slots, not a reason to shorten). Iterate (a generated aperçu is the source): short change-only prompt + that image first; same angle; keep the chain original prompt + this gen + the change. Full 7-sentence anatomy is FROM SCRATCH only. When <canvas_state> has currentThumbnails, that aperçu is the current thumbnail — improvements apply to THIS image.
+- When the user writes @#ID or a mentioned_images system block is present, those visibleId values are the thumbnails they mean. Match the same visibleId on canvas_state images / currentThumbnails and use that stored:gi_ (or other) ref. JPEG pixels for @mentions and for analyse / regarder / améliorer / iterate requests are already attached on this user turn (768px). Call view_canvas_images only if you need other nodes. Do not invent a stored id from pixels.
 
 ${buildAgentRubric()}
 
 ENDING EVERY TURN — finish_turn (mandatory):
-- End EVERY turn by calling finish_turn exactly once, as your LAST tool call, alone in its own step, once every other tool result is back. The chat shows the user only its summary, its results and its next_actions; everything else you wrote or called during the turn is folded into a collapsed step list.
+- End EVERY turn by calling finish_turn exactly once, as your LAST tool call, alone in its own step, once every other tool result is back. The chat shows the user only its summary and its results; everything else you wrote or called during the turn is folded into a collapsed step list.
 - summary: 1 to 2 short sentences, max 400 characters, in the reply language — what you did, what you found, or what you need from the user. Never write a long answer in free text: no headings, no walls of text, no JSON. **Bold** on one key phrase is fine.
 - results: the result_id values of this turn's tool calls whose visual output the user should see, in display order, max 6. Only generate_sketch, import_youtube_thumbnail and search_youtube produce a visual output; each successful one ends with a line "result_id: <id>" — copy that id exactly. Leave results empty when nothing visual is worth showing.
-- next_actions: 0 to 3 buttons, label max 40 characters, in the reply language.
-  - kind "ask_agent" + message (max 300 characters): a reply the user sends you in one click, written in the user's voice (label "Garder la compo", message "Garde la composition, change seulement le fond.").
-  - kind "focus_node" + node_id (an id from <canvas_state> or from your apply_workflow blueprint): selects and centers that node, for something the USER does themselves — above all clicking "Générer" on a generator, which costs money. Never offer an ask_agent action that would start a paid generation.
-  - kind "generate" + node_id (a generator): the « Générer » button whose label and cost the app writes; only the user's click starts the generation.
+- next_actions: always []. Do not offer generate, focus_node, ask_agent, « Voir le générateur », « Voir sur le canvas », or « Et maintenant » buttons. Chat is text plus the canvas effects of your tools (place_node / apply_workflow persist on the canvas). Paid generation starts only when the user clicks « Générer » on the generator node themselves.
+  - After /create-prompt or when they only asked to write/place a prompt: next_actions MUST be [].
 - When you call request_user_image or ask_user, don't call finish_turn in the same step: the turn resumes once the user answers, and you finish it then.
 `;
 // ── Per-turn system blocks (built from Réglages) ──
@@ -141,15 +140,15 @@ export function buildChannelProfileBlock(
  * Returns the "system" parameter as an array of blocks. The first block is the
  * static persona+rules with cache_control set, so it's cached across turns.
  * The following blocks are per-turn: reply language, channel profile, project
- * id, canvas snapshot, the thumbnail brief when the conversation has one, and
- * an <invoked_skill> body when the user sent a Brainstorm slash command.
+ * id, canvas snapshot, an <invoked_skill> body when the user sent a Brainstorm
+ * slash command, and <mentioned_images> when they pointed at a thumbnail with @.
  */
 export function buildSystemMessages(
   canvasSnapshot: unknown,
   projectId?: string,
   prefs: AgentPromptPrefs = DEFAULT_AGENT_PROMPT_PREFS,
-  brief: ThumbnailBrief | null = null,
   invokedSkillBlock?: string | null,
+  mentionedImages?: readonly MentionableImage[] | null,
 ): Array<{
   type: "text";
   text: string;
@@ -175,7 +174,8 @@ export function buildSystemMessages(
     type: "text",
     text: `<canvas_state>\n${JSON.stringify(canvasSnapshot, null, 2)}\n</canvas_state>`,
   });
-  if (brief) blocks.push({ type: "text", text: buildThumbnailBriefBlock(brief) });
+  const mentioned = mentionedImages?.length ? buildMentionedImagesBlock(mentionedImages) : null;
+  if (mentioned) blocks.push({ type: "text", text: mentioned });
   if (invokedSkillBlock) blocks.push({ type: "text", text: invokedSkillBlock });
   return blocks;
 }

@@ -48,6 +48,8 @@ export default function WebcamCaptureModal({
   // key-repeat Enter or an impatient double-click while the save (3
   // base64-encoded photos POSTed to /api/personas) is in flight.
   const [submitting, setSubmitting] = useState(false);
+  const [removingBg, setRemovingBg] = useState(false);
+  const [bgError, setBgError] = useState<string | null>(null);
 
   const step = STEPS[stepIndex];
   const preview = shots[step.angle];
@@ -134,11 +136,26 @@ export default function WebcamCaptureModal({
     }
   };
 
+  const stripBackgrounds = async () => {
+    if (removingBg || submitting) return;
+    setRemovingBg(true);
+    setBgError(null);
+    try {
+      const { stripPhotoBackgrounds } = await import("@/lib/remove-bg");
+      const next = await stripPhotoBackgrounds(shots, STEPS.map((s) => s.angle));
+      setShots(next);
+    } catch {
+      setBgError("Impossible de retirer le fond — réessaie.");
+    } finally {
+      setRemovingBg(false);
+    }
+  };
+
   const finish = async () => {
     // Bail if a save is already in flight — prevents a key-repeat Enter or
     // a double-click from firing onComplete (and thus POST /api/personas)
     // more than once and creating duplicate personas.
-    if (submitting) return;
+    if (submitting || removingBg) return;
     setSubmitting(true);
     try {
       // Don't stop the stream here: onComplete's save can fail, in which case
@@ -186,6 +203,15 @@ export default function WebcamCaptureModal({
                 </div>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={() => void stripBackgrounds()}
+              disabled={removingBg || submitting}
+              className="w-full py-2 rounded-xl text-xs font-medium mb-2 disabled:opacity-40 bg-muted text-muted-foreground"
+            >
+              {removingBg ? "Suppression du fond…" : "Retirer le fond"}
+            </button>
+            {bgError && <p className="text-xs text-destructive mb-2">{bgError}</p>}
             <input
               type="text"
               autoFocus

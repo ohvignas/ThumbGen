@@ -145,9 +145,17 @@ function toChannelDetails(item: NonNullable<ChannelsResponse["items"]>[number]):
 }
 
 export async function fetchChannelDetails(apiKey: string, youtubeChannelId: string): Promise<ChannelDetails | null> {
-  const data = await youtubeGet<ChannelsResponse>(apiKey, "channels", { part: CHANNEL_PARTS, id: youtubeChannelId });
-  const item = data.items?.[0];
-  return item ? toChannelDetails(item) : null;
+  const channels = await fetchChannels(apiKey, [youtubeChannelId]);
+  return channels[0] ?? null;
+}
+
+/** `channels.list` — at most 50 ids (1 quota unit). */
+export async function fetchChannels(apiKey: string, youtubeChannelIds: readonly string[]): Promise<ChannelDetails[]> {
+  const ids = [...new Set(youtubeChannelIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+  if (ids.length > VIDEOS_BATCH_SIZE) throw new Error(`fetchChannels takes at most ${VIDEOS_BATCH_SIZE} ids`);
+  const data = await youtubeGet<ChannelsResponse>(apiKey, "channels", { part: CHANNEL_PARTS, id: ids.join(",") });
+  return (data.items ?? []).map(toChannelDetails);
 }
 
 export type ResolvedChannel = { status: "found"; channel: ChannelDetails } | { status: "not-found" };
@@ -203,7 +211,14 @@ export async function fetchPlaylistPage(apiKey: string, playlistId: string, page
 type VideosResponse = {
   items?: Array<{
     id?: string;
-    snippet?: { title?: string; publishedAt?: string; liveBroadcastContent?: string; channelId?: string; thumbnails?: ThumbnailSet };
+    snippet?: {
+      title?: string;
+      description?: string;
+      publishedAt?: string;
+      liveBroadcastContent?: string;
+      channelId?: string;
+      thumbnails?: ThumbnailSet;
+    };
     statistics?: { viewCount?: string; likeCount?: string };
     contentDetails?: { duration?: string };
   }>;
@@ -232,6 +247,7 @@ export async function fetchVideos(apiKey: string, videoIds: readonly string[]): 
       videoId: item.id,
       channelId,
       title: item.snippet?.title?.trim() || item.id,
+      description: (item.snippet?.description ?? "").trim().slice(0, 4000),
       publishedAt: new Date(published).toISOString(),
       durationSeconds: parseIsoDuration(item.contentDetails?.duration),
       viewCount: toCount(item.statistics?.viewCount) ?? 0,

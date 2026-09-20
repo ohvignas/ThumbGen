@@ -7,6 +7,8 @@ services:
         YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
         SITE_PASSWORD: ${SITE_PASSWORD:-}
     container_name: thumbgen
+    # Long-lived `node server.js`. Keep this container up: followed-channel RSS
+    # + young-video snapshots run on an in-process 15 min timer (no cron).
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -17,4 +19,5 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}
       - MCP_API_KEY=${MCP_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
       - SITE_PASSWORD=${SITE_PASSWORD:-}

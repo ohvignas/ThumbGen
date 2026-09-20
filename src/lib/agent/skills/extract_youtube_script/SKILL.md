@@ -85,7 +85,7 @@ Other thrown messages are prefixed the same way (`Failed to extract transcript: 
 
 1. **URL or picked video** → rewrite to `watch?v=` → `extract_youtube_script`.
 2. Distill **subject** (≤300) and a result-oriented **promise** (≤90). Thumbnail text must not promise what this script does not deliver.
-3. Optional `update_brief` `video`: `{ subject, promise, script }`. `video.script` max is **8000 characters** — store the spoken **body only**, never the `Transcript (N segments…)` header, never the `…[truncated]` line. If you saw the marker, the body is already 8000 chars. Later `<thumbnail_brief>` shows at most 1500 chars of that script plus `scriptChars`.
+3. Distill subject + promise from the spoken **body only** (never the `Transcript (N segments…)` header, never the `…[truncated]` line). If you saw the marker, the body is already 8000 chars. Keep that in this conversation — do not write a Fiche.
 4. Same video as a visual reference (max 3 refs): `import_youtube_thumbnail` with the 11-char `video_id`, then swipeFile `kind=reference` `stored:sf_<id>`. That is a different tool; this one does not import images.
 5. `research_topic` only if brands/tools are still unclear after the script (paid, max 2 / conversation). Skip if the transcript was enough.
 6. Continue `thumbnail-packaging` (packages, then canvas). `finish_turn` last, alone: 1–2 sentences in the reply language about what the video is actually about — **do not paste the transcript**. `results` empty for this tool. `next_actions` can offer to propose packages.
@@ -100,4 +100,4 @@ You: `extract_youtube_script` `{ "url": "https://www.youtube.com/watch?v=dQw4w9W
 
 Tool: `Transcript (214 segments, 9120 chars):\n\nWe're going to break down …\n…[truncated]`
 
-You: `update_brief` `video: { subject: "…", promise: "…", script: "<first 8000 chars of body, no header, no marker>" }` then `finish_turn` `{ "summary": "La vidéo explique … — je m'appuie sur le script, pas seulement le titre.", "results": [], "next_actions": [{ "kind": "ask_agent", "label": "Propose 3 packages", "message": "Propose trois packages titre + miniature à partir de ce script." }] }`
+You: `finish_turn` `{ "summary": "La vidéo explique … — je m'appuie sur le script, pas seulement le titre.", "results": [], "next_actions": [] }`

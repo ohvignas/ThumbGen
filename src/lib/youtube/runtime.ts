@@ -29,10 +29,13 @@ export type ChannelRuntime = {
   myChannelBackoff: { input: string; until: number; notFound: boolean } | null;
   /** « Utiliser comme référence » copies in flight by video id → library id (null: no thumbnail on YouTube). */
   thumbnailCopies: Map<string, Promise<string | null>>;
+  snapshotPoll: Promise<void> | null;
+  lastSnapshotPollAt: number;
 };
 
 declare global {
   var __thumbgen_channel_runtime: ChannelRuntime | undefined;
+  var __thumbgen_rss_poll_timer: ReturnType<typeof setInterval> | undefined;
 }
 
 function createRuntime(): ChannelRuntime {
@@ -48,6 +51,8 @@ function createRuntime(): ChannelRuntime {
     myChannel: null,
     myChannelBackoff: null,
     thumbnailCopies: new Map(),
+    snapshotPoll: null,
+    lastSnapshotPollAt: 0,
   };
 }
 
@@ -56,8 +61,12 @@ export function channelRuntime(): ChannelRuntime {
   return globalThis.__thumbgen_channel_runtime;
 }
 
-/** Tests only: forget locks, queues, throttles and caches. */
+/** Tests only: forget locks, queues, throttles, caches and the RSS timer. */
 export function resetChannelRuntime(): void {
+  if (globalThis.__thumbgen_rss_poll_timer) {
+    clearInterval(globalThis.__thumbgen_rss_poll_timer);
+    globalThis.__thumbgen_rss_poll_timer = undefined;
+  }
   globalThis.__thumbgen_channel_runtime = createRuntime();
 }
 

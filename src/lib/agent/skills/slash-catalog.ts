@@ -45,7 +45,7 @@ export const SLASH_SKILLS: SlashSkill[] = [
     slash: "recherche",
     skill: "research_topic",
     title: "Recherche",
-    description: "Brief du sujet (Perplexity, payant).",
+    description: "Brief du sujet (Perplexity ou OpenRouter, payant).",
   },
   {
     slash: "concurrents",

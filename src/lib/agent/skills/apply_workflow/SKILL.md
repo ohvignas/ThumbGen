@@ -19,7 +19,7 @@ How you **ship** a design. MERGES into the open canvas; never replaces it. Snaps
 ## When not
 
 - One live interview node (`iv-prompt`, `iv-persona`, `iv-ref-1..3`, `iv-logo-1..3`, `iv-generator`) → `place_node`. That path auto-wires A-handles only and **refuses** `abTest` on `iv-generator`
-- Start a paid generation → `finish_turn` with `kind: "generate"` and the generator `node_id`. Only the user's click on « Générer » costs money
+- Start a paid generation → they click « Générer » on the canvas generator. Only that click costs money
 - Vague look / analyse / improve on a non-empty canvas → `existing-workflow` first (view images, ask; modify only when the ask is precise)
 - Rebuild or resend the whole canvas. Omitted nodes stay. `remove_node_ids` is not how you "replace"
 - Pick a "best" variant for them. A/B means they compare real Aperçus (and YouTube Studio « Tester et comparer »)
@@ -97,21 +97,23 @@ Generator **input** handles:
 
 There is no `face-in-b` / `logo-in-c`. Outputs (`result`, `result-b`, `result-c`) are for the canvas; you don't wire them.
 
-Iterate a chosen generation: new or existing `swipeFile` `kind: "reference"` with `image_source: "stored:gi_<id>"` on `ref-in` (or `ref-in-b` / `ref-in-c` if only that variant should see it).
+Iterate a chosen generation: new or existing `swipeFile` `kind: "reference"` with `image_source: "stored:gi_<id>"` on `ref-in` (or `ref-in-b` / `ref-in-c` if only that variant should see it). That is **ITERATE THIS IMAGE**: write a short change-only prompt (1–3 sentences), not a 7-sentence recreation. Keep the chain: original prompt + this generation + the requested change. The generate route sends that image first as the edit source. Short because you are iterating — A/B is only variant slots.
 
 ### After a successful apply
 
 Tool returns e.g. `Applied: X created, Y updated, Z removed (kept N untouched).` plus Created / Updated / Removed id lists, ignored unknown removes, and `Generator node id: <id> — l'utilisateur peut cliquer "Generate" dessus pour lancer.`
 
-Tell the user the workflow is ready. Then `finish_turn`: `summary` 1–2 sentences; `next_actions: [{ kind: "generate", node_id: "<that generator>" }]`. Don't dump JSON. Don't offer `ask_agent` that would start a paid generation.
+Tell the user the workflow is ready. Then `finish_turn`: `summary` 1–2 sentences; `next_actions: []`. Don't dump JSON.
 
 ## A-B
+
+A/B is **variant slots** on one generator — not a prompt-length rule. First gen: two complete 7-sentence prompts. Iterate on a generated aperçu: short deltas because that image is the source.
 
 YouTube Studio « Tester et comparer » tests **up to 3** thumbnails per video. One ThumbGen generator holds **at most 3** variants. Ship 2 or 3 packages as **one** test, not separate generators.
 
 1. **One generator.** `data.abTest = { variants: ["A","B"] }` or `{ variants: ["A","B","C"] }`. Variant A in your packages is canvas A, B is B, C is C. Never two generators "to compare".
 2. **Shared once.** Personnage `faceReference` → `face-in`. Each logo `swipeFile` `kind: "logo"` → `logo-in`. Do not clone face/logo per variant.
-3. **Own prompt every variant.** A's prompt → `prompt-in`, B → `prompt-in-b`, C → `prompt-in-c`. Unique ids (`prompt-a`, `prompt-b`, `prompt-c`). Always wire a prompt even if B/C would inherit A's — they should differ.
+3. **Own prompt every variant.** A's prompt → `prompt-in`, B → `prompt-in-b`, C → `prompt-in-c`. Unique ids (`prompt-a`, `prompt-b`, `prompt-c`). Always wire a prompt even if B/C would inherit A's — they should differ. A/B is variant slots, not a prompt-length rule. **First gen / from scratch** = full 7-sentence anatomy **each** (two complete alternative prompts is the normal first-gen A/B). **Iterate** (generated thumb on `ref-in`) = short deltas, because the aperçu is the source — not because A/B is on.
 4. **Per-variant sketch / ref only when they differ.** Sketch → `sketch-in` / `sketch-in-b` / `sketch-in-c`. A reference only one variant uses → `ref-in` / `ref-in-b` / `ref-in-c`.
 5. **Inheritance.** An unconnected prompt/sketch/ref handle on B or C reuses **A's** input on that slot (`inherited: true`). Wire only what differs — except prompts, which you always give.
 6. **Handles vs abTest.** `-b` needs `"B"` in `variants`; `-c` needs `"C"` (`["A","B","C"]`). Otherwise: `Edge to "prompt-in-c" needs variant C active on generator "<id>": set its data.abTest = { variants: ["A","B","C"] }, or connect to "prompt-in".` Variant handles on a non-generator: use the unsuffixed handle. Edges to `-b` on a canvas generator that **already** has B active are valid even if you don't resend `abTest`.
@@ -146,7 +148,7 @@ Nothing is written (no snapshot) on validation / conflict failure. Fix and retry
 3. New thumbnail: `thumbnail-packaging` for promise / title+thumb text / 1 focal, then this tool (not a 7-step script).
 4. Existing canvas: `existing-workflow` — precise edit → this tool with only targeted nodes; iterate a chosen image via `stored:gi_<id>` on `ref-in`.
 5. This call (one blueprint). Don't loop apply for each node — that's `place_node`'s job for `iv-*`.
-6. `finish_turn` last, alone: `kind: "generate"` + generator id. Optional `focus_node` on the same generator. Never `ask_agent` that starts generation.
+6. `finish_turn` last, alone: `next_actions: []`. They click « Générer » on the canvas generator.
 7. Conflict → `get_canvas_state` → retry once.
 
 ## Example
@@ -158,8 +160,8 @@ Two packages, shared face + logo, own prompts + sketches. `project_id` from `<pr
   "nodes": [
     { "id": "face-1", "type": "faceReference", "data": { "image_source": "stored:persona_abc" } },
     { "id": "logo-1", "type": "swipeFile", "data": { "kind": "logo", "image_source": "stored:lg_xyz" } },
-    { "id": "prompt-a", "type": "prompt", "data": { "prompt": "Close-up shock, red key light, 3 words of thumb text in white" } },
-    { "id": "prompt-b", "type": "prompt", "data": { "prompt": "Over-shoulder demo, cool daylight, different 3-word hook" } },
+    { "id": "prompt-a", "type": "prompt", "data": { "prompt": "<first-gen A: full 7-sentence anatomy — abbreviated here>" } },
+    { "id": "prompt-b", "type": "prompt", "data": { "prompt": "<first-gen B: a different complete 7-sentence anatomy>" } },
     { "id": "sketch-a", "type": "sketch", "data": { "image_source": "generated:sk_a" } },
     { "id": "sketch-b", "type": "sketch", "data": { "image_source": "generated:sk_b" } },
     {
@@ -186,15 +188,15 @@ Two packages, shared face + logo, own prompts + sketches. `project_id` from `<pr
 
 Three variants: add `prompt-c` (and sketch/ref if they differ), set `abTest.variants` to `["A","B","C"]`, wire `prompt-in-c` / `sketch-in-c` / `ref-in-c`.
 
-Targeted edit (existing `gen` + `prompt-1`; don't resend the face):
+Iterate an existing aperçu (`gen` + `prompt-1`; don't resend the face) — short delta, not a new scene:
 
 ```json
 {
-  "nodes": [{ "id": "prompt-1", "type": "prompt", "data": { "prompt": "Same scene, warmer light, text INSTANT" } }],
+  "nodes": [{ "id": "prompt-1", "type": "prompt", "data": { "prompt": "Change the overlay to INSTANT. Keep the rest of the thumbnail unchanged." } }],
   "edges": []
 }
 ```
 
 Turn A/B off or drop C: update that generator `{ "data": { "abTest": { "variants": ["A", "B"] } } }` — C's edges go; delete leftover nodes only if they asked.
 
-Then `finish_turn`: `next_actions: [{ "kind": "generate", "node_id": "gen" }]`.
+Then `finish_turn`: `next_actions: []`.

@@ -134,6 +134,7 @@ export function AgentRunsProvider({ children }: { children: ReactNode }) {
       toast({
         id: `agent-run-${entry.conversationId}-${entry.endedAt}`,
         title: attentionToastTitle(entry),
+        timeout: 10_000,
         action: { label: "Ouvrir", onClick: () => routerRef.current.push(`/m/${entry.projectId}`) },
       });
     }

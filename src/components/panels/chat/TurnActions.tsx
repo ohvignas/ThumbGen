@@ -10,7 +10,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import type { NextAction } from "./turn-model";
 
 /** Selects a canvas node and centers the view on it; disabled when the node is gone. */
-function FocusNodeButton({ label, nodeId }: { label: string; nodeId: string }) {
+export function FocusNodeButton({ label, nodeId }: { label: string; nodeId: string }) {
   const exists = useCanvasStore((s) => s.nodes.some((node) => node.id === nodeId));
   const { fitView } = useReactFlow();
 
@@ -99,13 +99,14 @@ function GenerateNodeButton({ nodeId }: { nodeId: string }) {
   );
 }
 
-/** « Et maintenant » : the 1 to 3 follow-ups the agent offered at the end of the last turn. */
+/** Follow-up buttons. « Et maintenant » only when the agent asked a question (ask_agent). */
 export default function TurnActions({ actions, onAskAgent }: { actions: NextAction[]; onAskAgent: (message: string) => void }) {
   if (actions.length === 0) return null;
+  const asksQuestion = actions.some((action) => action.kind === "ask_agent");
 
   return (
-    <div role="group" aria-label="Et maintenant" className="flex flex-col gap-1.5">
-      <p className="text-xs font-medium text-muted-foreground">Et maintenant</p>
+    <div role="group" aria-label={asksQuestion ? "Et maintenant" : "Actions"} className="flex flex-col gap-1.5">
+      {asksQuestion ? <p className="text-xs font-medium text-muted-foreground">Et maintenant</p> : null}
       <div className="flex flex-wrap gap-1.5">
         {actions.map((action, index) => {
           if (action.kind === "ask_agent") {

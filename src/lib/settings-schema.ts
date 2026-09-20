@@ -33,7 +33,15 @@ export const THEMES = ["dark", "light", "system"] as const;
 export type Theme = (typeof THEMES)[number];
 
 /** Settings holding credentials: never sent to the browser, only their status. */
-export const SECRET_KEYS = ["openrouterApiKey", "openaiApiKey", "youtubeApiKey", "mcpApiKey", "brandfetchApiKey"] as const;
+export const SECRET_KEYS = [
+  "openrouterApiKey",
+  "openaiApiKey",
+  "youtubeApiKey",
+  "mcpApiKey",
+  "brandfetchApiKey",
+  "perplexityApiKey",
+  "typesafeApiKey",
+] as const;
 export type SecretKey = (typeof SECRET_KEYS)[number];
 
 export function isSecretKey(key: string): key is SecretKey {
@@ -47,6 +55,8 @@ export const ENV_FALLBACK: Record<SecretKey, string> = {
   youtubeApiKey: "YOUTUBE_API_KEY",
   mcpApiKey: "MCP_API_KEY",
   brandfetchApiKey: "BRANDFETCH_API_KEY",
+  perplexityApiKey: "PERPLEXITY_API_KEY",
+  typesafeApiKey: "TYPESAFE_API_KEY",
 };
 
 export const BRAND_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -104,6 +114,8 @@ export const SettingsSchema = z.object({
   mcpApiKey: secret(),
   // Brandfetch « Client ID » (sent as ?c=), optional: adds Brandfetch to the logo search.
   brandfetchApiKey: secret(),
+  perplexityApiKey: secret(),
+  typesafeApiKey: secret(),
   agentModel: z.enum(AGENT_MODEL_IDS, { error: "Modèle d'agent inconnu" }).default(DEFAULT_AGENT_MODEL),
   agentWebSearch: flag(true),
   agentReasoningEffort: z.enum(REASONING_EFFORTS, { error: "Effort de réflexion inconnu" }).default("medium"),

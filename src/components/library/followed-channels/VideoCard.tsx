@@ -14,29 +14,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ThumbType } from "@/lib/youtube/thumb-types";
+import { classifyVideoFormat, videoFormatLabel } from "@/lib/youtube/video-formats";
 import { youtubeWatchUrl, type VideoListItem } from "@/lib/youtube/types";
-import ThumbTypeMenu from "./ThumbTypeMenu";
 import { PERFORMANCE_BADGE_CLASSES, formatPublishedDate, formatViews, performanceBadge } from "./view";
 
 type Props = {
   video: VideoListItem;
-  onTypeChanged: (videoId: string, thumbType: ThumbType) => void;
+  onOpen: (video: VideoListItem) => void;
   onUse: (video: VideoListItem) => void;
 };
 
-export default function VideoCard({ video, onTypeChanged, onUse }: Props) {
+export default function VideoCard({ video, onOpen, onUse }: Props) {
   const badge = performanceBadge(video.performance);
   const watchUrl = youtubeWatchUrl(video.videoId);
+  const format = videoFormatLabel(classifyVideoFormat(video.title, video.description, video.durationSeconds));
 
   return (
     <Card className="gap-0 py-0">
-      <a
-        href={watchUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="relative block aspect-video overflow-hidden bg-muted"
-        aria-label={`Voir « ${video.title} » sur YouTube`}
+      <button
+        type="button"
+        onClick={() => onOpen(video)}
+        className="relative block aspect-video w-full overflow-hidden bg-muted"
+        aria-label={`Détails de « ${video.title} »`}
       >
         <img src={video.thumbnailUrl} alt="" loading="lazy" className="size-full object-cover" />
         {badge && (
@@ -44,7 +43,7 @@ export default function VideoCard({ video, onTypeChanged, onUse }: Props) {
             {badge.label}
           </Badge>
         )}
-      </a>
+      </button>
       <div className="grid gap-2 p-3">
         <p className="line-clamp-2 min-h-10 text-sm font-medium" title={video.title}>
           {video.title}
@@ -53,7 +52,7 @@ export default function VideoCard({ video, onTypeChanged, onUse }: Props) {
           {video.channelTitle} · {formatPublishedDate(video.publishedAt)} · {formatViews(video.viewCount)}
         </p>
         <div className="flex items-center justify-between gap-2">
-          <ThumbTypeMenu video={video} onChanged={onTypeChanged} />
+          <span className="text-xs text-muted-foreground">{format}</span>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={

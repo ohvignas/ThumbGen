@@ -49,12 +49,18 @@ describe("generate_sketch", () => {
 
   it("returns error when API key is missing", async () => {
     getDb().prepare("DELETE FROM settings WHERE key = ?").run("openrouterApiKey");
-    const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
-    const r = await generateSketchTool.handler({ prompt: "x" });
-    expect(r.isError).toBe(true);
-    expect((r.content[0] as { text: string }).text).toMatch(/API key|Clé API/i);
-    expect(r.requestNotSent).toBe(true);
-    expect(fetchMock).not.toHaveBeenCalled();
+    const previousEnv = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    try {
+      const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
+      const r = await generateSketchTool.handler({ prompt: "x" });
+      expect(r.isError).toBe(true);
+      expect((r.content[0] as { text: string }).text).toMatch(/API key|Clé API/i);
+      expect(r.requestNotSent).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      if (previousEnv !== undefined) process.env.OPENROUTER_API_KEY = previousEnv;
+    }
   });
 
   it("marks an unreadable image source and a network failure as never sent", async () => {
@@ -143,5 +149,8 @@ describe("generate_sketch", () => {
     expect(callBody.input_references).toHaveLength(1);
     expect(callBody.input_references[0]).toMatchObject({ type: "image_url" });
     expect(callBody.input_references[0].image_url.url).toMatch(/^data:image\/png;base64,/);
+    expect(callBody.prompt).toContain("IDENTITY / AVATAR");
+    expect(callBody.prompt).toContain("Do not invent a new head");
+    expect(callBody.prompt).toContain("STRICT reference");
   });
 });

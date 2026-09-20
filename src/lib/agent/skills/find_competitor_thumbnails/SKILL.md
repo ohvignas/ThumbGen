@@ -35,7 +35,7 @@ Do not:
 
 - Call this when they **forbid** looking at competitors — skip competitors, say so in one sentence.
 - Call it before you know the topic. Ask what **this** video is about.
-- Call it when `<thumbnail_brief>.usage.competitorSearches` is already **2**.
+- Call it when this conversation already used **2** competitor searches.
 - Call `search_youtube` in the same turn to “also rank” the same niche.
 - Import 8–12 competitor thumbs “just in case”.
 - Dump old public hits when they start a **new** video.
@@ -123,7 +123,7 @@ Do not call this twice in one turn. A second call in the conversation is only if
 
 User: « Miniature pour mon test de Cursor 2.0 — vois ce qui marche dans la niche. »
 
-`<thumbnail_brief>.usage.competitorSearches` is 0. Topic is clear.
+No prior competitor search this conversation. Topic is clear.
 
 ```
 find_competitor_thumbnails

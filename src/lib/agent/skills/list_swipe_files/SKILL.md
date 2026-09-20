@@ -108,8 +108,6 @@ place_node with `libraryUrls` stores `imageUrl` `/api/swipe-files/image?f=<id>` 
 
 **generate_sketch** (optional composition cue, paid): `reference_sources: ["stored:sf_<id>"]`. Face still `face_source: stored:persona_<id>` only.
 
-**update_brief `references`**: max 3. `source` must match `^stored:sf_[\w-]+$`. The rest of the object is YouTube metadata (`videoId`, `title`, `channel`, `lang`, `views`, `score`, `ageDays`). Use this only for thumbs that came from a video (import / competitors). A random PNG the user uploaded has no `videoId`; wire it on the canvas, do not fake a brief reference.
-
 **ask_user option.image**: `stored:sf_<id>` → `/api/swipe-files/image?f=<id>`, shape wide.
 
 ## Errors
@@ -122,7 +120,6 @@ Downstream, if you pass a ref that is not in `swipe_files`:
 - `place_node` iv-ref-* with kind logo: `Node "iv-ref-1" is a reference swipeFile: its kind cannot be "logo"`
 - New swipeFile without `image_source`: validation fails (`image_source` required when the node does not already exist)
 - `generate_sketch`: `Cannot resolve image_source stored:sf_<id>: Image not found: stored:sf_<id>` (`requestNotSent`)
-- `update_brief` with a logo or persona as `references[].source`: `Référence au format stored:sf_<id>`
 
 Do not invent ids. Do not strip the `stored:sf_` prefix. Do not pass `/api/swipe-files/image?f=` as `image_source` (tools want the stored ref; the canvas URL is an implementation detail).
 

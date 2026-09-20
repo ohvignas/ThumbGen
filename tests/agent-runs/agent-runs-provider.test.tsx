@@ -75,8 +75,14 @@ describe("AgentRunsProvider", () => {
     pathname = "/bibliotheque";
     await mount();
     await vi.waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
-    const options = toastMock.mock.calls[0][0] as { id: string; title: string; action: { label: string; onClick: () => void } };
+    const options = toastMock.mock.calls[0][0] as {
+      id: string;
+      title: string;
+      timeout: number;
+      action: { label: string; onClick: () => void };
+    };
     expect(options.title).toBe("L'agent a fini — Vidéo F1");
+    expect(options.timeout).toBe(10_000);
     expect(options.action.label).toBe("Ouvrir");
     options.action.onClick();
     expect(pushMock).toHaveBeenCalledWith("/m/p1");

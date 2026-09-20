@@ -28,6 +28,9 @@ describe("resolveInvokedSkill", () => {
     expect(invoked?.body).not.toMatch(/^---/);
     expect(invoked?.body).not.toContain("Étape n/7");
     expect(invoked?.body).toContain("no numbered interview");
+    expect(invoked?.body).toContain("next_actions: []");
+    expect(invoked?.body).toContain("No `ask_user` after placing");
+    expect(invoked?.body).not.toContain("Optional `ask_agent`");
     expect(resolveInvokedSkill("/create-propt")?.skill).toBe("create-prompt");
     const block = buildInvokedSkillBlock(invoked!);
     expect(block.startsWith('<invoked_skill name="create-prompt" slash="create-prompt">')).toBe(true);

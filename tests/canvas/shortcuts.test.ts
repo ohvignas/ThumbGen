@@ -37,6 +37,13 @@ describe("matchCanvasShortcut", () => {
     expect(matchCanvasShortcut(key({ key: "x" }))).toBeNull();
     expect(matchCanvasShortcut(key({ key: "z", metaKey: true }))).toBeNull();
   });
+
+  it("Backspace and Delete delete the selection, not while holding modifiers", () => {
+    expect(matchCanvasShortcut(key({ key: "Backspace" }))).toBe("delete");
+    expect(matchCanvasShortcut(key({ key: "Delete" }))).toBe("delete");
+    expect(matchCanvasShortcut(key({ key: "Backspace", metaKey: true }))).toBeNull();
+    expect(matchCanvasShortcut(key({ key: "Delete", altKey: true }))).toBeNull();
+  });
 });
 
 describe("isEditableTarget", () => {
@@ -140,5 +147,7 @@ describe("resolveShortcutAction", () => {
     expect(resolveShortcutAction("auto-layout", ctx())).toBe("run");
     expect(resolveShortcutAction("select-all", ctx())).toBe("run");
     expect(resolveShortcutAction("duplicate", ctx())).toBe("run");
+    expect(resolveShortcutAction("delete", ctx())).toBe("run");
+    expect(resolveShortcutAction("delete", ctx({ editableTarget: true }))).toBe("ignore");
   });
 });

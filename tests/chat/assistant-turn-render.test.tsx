@@ -109,23 +109,62 @@ describe("AssistantTurn — finish_turn", () => {
     ],
   } as unknown as UIMessage;
 
-  it("shows the summary, both sketches and the actions of the last turn", () => {
+  it("shows the summary, both sketches and no chat action chips", () => {
     const html = render(<AssistantTurn turn={splitAssistantTurn(message)} error={null} showActions onRetry={null} onAskAgent={noop} />);
     expect(html).toContain("12 s · 3 étapes");
     expect(html).toContain("<strong>A</strong>");
     expect(count(html, "<img")).toBe(2);
-    expect(html).toContain("Et maintenant");
-    expect(html).toContain("Angle A");
-    expect(html).toContain("Ancien nœud");
-    // A node missing from the canvas disables its button (the found case is checked in the browser:
-    // zustand renders its initial, empty canvas on the server).
-    expect(count(html, 'aria-disabled="true"')).toBe(1);
+    expect(html).not.toContain("Et maintenant");
+    expect(html).not.toContain("Angle A");
+    expect(html).not.toContain("Ancien nœud");
+    expect(html).not.toContain("Voir sur le canvas");
+    expect(html).not.toContain("Générer");
   });
 
   it("hides the actions on an older turn", () => {
     const html = render(<AssistantTurn turn={splitAssistantTurn(message)} error={null} showActions={false} onRetry={null} onAskAgent={noop} />);
     expect(html).toContain("Deux angles prêts");
     expect(html).not.toContain("Et maintenant");
+  });
+
+  it("keeps the prompt card on an older turn and does not offer Générer after create-prompt", () => {
+    const prompt = "OpenClaw mascot on fire. Text OPENCLAW EST MORT.";
+    const message = {
+      id: "a-prompt",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-apply_workflow",
+          toolCallId: "c1",
+          state: "output-available",
+          input: {
+            blueprint: JSON.stringify({ nodes: [{ id: "prompt-1", type: "prompt", data: { prompt } }], edges: [] }),
+          },
+          output: { content: [{ type: "text", text: "Applied: 1 created." }] },
+        },
+        {
+          type: "tool-finish_turn",
+          toolCallId: "c2",
+          state: "output-available",
+          input: {
+            summary: "Prompt adapté : OpenClaw en flammes.",
+            results: [],
+            next_actions: [
+              { label: "Voir le prompt", kind: "focus_node", node_id: "prompt-1" },
+              { kind: "generate", node_id: "gen-1" },
+            ],
+          },
+          output: { content: [{ type: "text", text: '{"ok":true}' }] },
+        },
+      ],
+    } as unknown as UIMessage;
+    const html = render(
+      <AssistantTurn turn={splitAssistantTurn(message)} error={null} showActions={false} onRetry={null} onAskAgent={noop} />,
+    );
+    expect(html).toContain(prompt);
+    expect(html).not.toContain("Voir sur le canvas");
+    expect(html).not.toContain("Et maintenant");
+    expect(html).not.toContain("Générer");
   });
 });
 

@@ -30,7 +30,7 @@ export const requestUserImageClientTool = aiTool({
  */
 export const askUserClientTool = aiTool({
   description:
-    "Asks the user ONE clickable question (0–12 options, images via stored:persona_/sf_/lg_, youtube:, generated:sk_, logo-candidate:). The chat adds « Autre » and, when allow_skip, « Passer ». Pause until { selected }, { other } or { skipped }. Call it alone in its model step (never with place_node or finish_turn). Skip the question if you can deduce the answer.",
+    "Asks the user ONE clickable question (0–12 text options: full label + one-line description). The card never shows photos — omit image / image_url; persona, logo, canvas, YouTube and sketch refs are ignored. The chat adds « Autre » and, when allow_skip, « Passer ». Pause until { selected }, { other } or { skipped }. Call it alone in its model step (never with place_node or finish_turn). Skip the question if you can deduce the answer.",
   inputSchema: askUserToolInputSchema,
 });
 

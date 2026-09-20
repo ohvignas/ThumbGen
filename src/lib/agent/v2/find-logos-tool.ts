@@ -75,8 +75,8 @@ export async function executeFindLogos(context: FindLogosContext, input: FindLog
 export function buildFindLogosTool(context: FindLogosContext): Tool {
   return aiTool({
     description: [
-      "Searches logo candidates for named brands/tools. Use after research_topic entities or names the user cited that are not already in list_logos. Pass names (max 12). Returns logo-candidate:<id> | name | source — never a URL. Then add_logo, or ask_user with those images (max_selected 3).",
-      "Returns lines logo-candidate:<id> | name | source — never a URL or image. Use those ids as ask_user option images, then add_logo with the chosen id.",
+      "Searches logo candidates for named brands/tools. Use after research_topic entities or names the user cited that are not already in list_logos. Pass names (max 12). Returns logo-candidate:<id> | name | source — never a URL. Then add_logo, or ask_user with those names as text options (max_selected 3).",
+      "Returns lines logo-candidate:<id> | name | source — never a URL or image. Use those ids as ask_user option ids, label = name, description = source — no photos. Then add_logo with the chosen id.",
       "At most 3 candidates per name. If each name has one obvious hit, keep it with add_logo and say so in one line; else ask_user multiple \"Quels logos garder ?\" (max_selected 3).",
     ].join("\n"),
     inputSchema: findLogosInputSchema,

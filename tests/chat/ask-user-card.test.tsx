@@ -49,15 +49,14 @@ const videos = ["v1", "v2", "v3", "v4", "v5"].map((id) => ({
   image: `youtube:${id}`,
 }));
 
-describe("AskUserCard — image grid", () => {
-  it("shows the question and a 16:9 grid; one click answers once", async () => {
+describe("AskUserCard — text only options", () => {
+  it("shows the full question and full labels; one click answers once", async () => {
     const onAnswer = await render({ question: "De quoi parle la vidéo ?", step: 1, options: videos });
     expect(container.textContent).toContain("De quoi parle la vidéo ?");
+    expect(container.textContent).toContain("Description v2");
     expect(container.textContent).not.toContain("Étape");
-    expect(container.querySelector(".grid-cols-2")).not.toBeNull();
-    const images = Array.from(container.querySelectorAll("img")).map((img) => img.getAttribute("src"));
-    expect(images).toEqual(videos.map((v) => `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`));
-    expect(container.querySelector(".aspect-video")).not.toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".aspect-video, .aspect-square, .grid-cols-3")).toBeNull();
 
     await click(button("Vidéo v2"));
     await click(button("Vidéo v3"));
@@ -65,28 +64,56 @@ describe("AskUserCard — image grid", () => {
     expect(onAnswer).toHaveBeenCalledWith({ selected: ["v2"] });
   });
 
-  it("uses square tiles in three columns for personas", async () => {
+  it("ignores image and image_url, including persona and logo refs", async () => {
+    const question =
+      "La miniature actuelle a une superbe énergie. Quelle variable veux-tu tester en priorité pour ta variante B ?";
+    await render({
+      question,
+      options: [
+        {
+          id: "text",
+          label: "Le texte de la miniature",
+          description: "Remplacer « C'EST FINI » par un autre hook, garder le reste.",
+          image: "stored:lg_broken",
+          image_url: "https://example.com/x.png",
+        },
+        {
+          id: "emotion",
+          label: "L'émotion du regard",
+          description: "Changer l'expression du personnage, garder texte et composition.",
+          image: "stored:persona_p1",
+        },
+        {
+          id: "visual",
+          label: "Le sujet visuel",
+          description: "Remplacer le visuel (Pierre / mascotte), garder texte et émotion.",
+          image: "stored:lg_mascot",
+        },
+      ],
+    });
+    expect(container.textContent).toContain(question);
+    expect(container.textContent).toContain("Le texte de la miniature");
+    expect(container.textContent).toContain("Remplacer « C'EST FINI » par un autre hook, garder le reste.");
+    expect(container.textContent).toContain("L'émotion du regard");
+    expect(container.textContent).toContain("Le sujet visuel");
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("[data-slot='ask-user-placeholder']")).toBeNull();
+    expect(container.querySelector(".aspect-square, .aspect-video, .grid-cols-3")).toBeNull();
+  });
+
+  it("still lists personas and logos as text rows", async () => {
     await render({
       question: "Quel personnage ?",
       step: 3,
       options: [
-        { id: "p1", label: "Antoine", image: "stored:persona_p1" },
-        { id: "p2", label: "Florence", image: "stored:persona_p2" },
+        { id: "p1", label: "Antoine", description: "Personnage par défaut.", image: "stored:persona_p1" },
+        { id: "p2", label: "Florence", description: "Autre Personnage.", image: "stored:persona_p2" },
       ],
     });
-    expect(container.querySelector(".grid-cols-3")).not.toBeNull();
-    expect(container.querySelector(".aspect-square")).not.toBeNull();
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/personas/image?id=p1&angle=front");
-  });
-
-  it("swaps a broken image for a placeholder", async () => {
-    await render({ question: "Quel logo ?", step: 5, options: [{ id: "l1", label: "Claude", image: "stored:lg_l1" }] });
-    const img = container.querySelector("img")!;
-    await act(async () => {
-      img.dispatchEvent(new Event("error"));
-    });
+    expect(container.textContent).toContain("Antoine");
+    expect(container.textContent).toContain("Personnage par défaut.");
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector("[data-slot='ask-user-placeholder']")).not.toBeNull();
+    expect(container.querySelector(".grid-cols-3, .aspect-square")).toBeNull();
   });
 
   it("limits a multiple choice and validates in option order", async () => {
@@ -320,14 +347,17 @@ describe("AskUserCard — thumbnail journey", () => {
     expect(container.textContent).toContain("Jusqu'à 5 choix");
   });
 
-  it("shows generated sketches as 16:9 images", async () => {
+  it("ignores generated sketch images and keeps the question as text", async () => {
     await render({
       question: "Variante A : valider l'esquisse ?",
       step: 7,
-      options: [{ id: "ok", label: "Valider", image: "generated:sk_abc123" }],
+      options: [{ id: "ok", label: "Valider l'esquisse", description: "Garder cette composition pour la variante A.", image: "generated:sk_abc123" }],
     });
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/generated-sketches/sk_abc123");
-    expect(container.querySelector(".aspect-video")).not.toBeNull();
+    expect(container.textContent).toContain("Variante A : valider l'esquisse ?");
+    expect(container.textContent).toContain("Valider l'esquisse");
+    expect(container.textContent).toContain("Garder cette composition pour la variante A.");
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".aspect-video")).toBeNull();
   });
 });
 

@@ -52,6 +52,7 @@ export function softDeleteConversation(id: string): void {
     db.prepare("UPDATE conversations SET deleted_at = datetime('now') WHERE id = ?").run(id);
     // Its thumbnail brief (chantier F3) goes with it.
     db.prepare("DELETE FROM thumbnail_briefs WHERE conversation_id = ?").run(id);
+    db.prepare("DELETE FROM competitor_search_results WHERE conversation_id = ?").run(id);
   })();
 }
 

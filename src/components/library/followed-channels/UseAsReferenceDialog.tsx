@@ -18,7 +18,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { referenceLinkFor } from "@/lib/canvas/pending-reference";
 import type { UseVideoResponse, VideoListItem } from "@/lib/youtube/types";
-import { ApiError, channelsApi } from "./api";
+import { ApiError } from "./api";
 
 type CopyState = { status: "copying" } | { status: "copied"; copy: UseVideoResponse } | { status: "error"; message: string };
 type ProjectOption = { id: string; name: string };
@@ -43,13 +43,28 @@ export default function UseAsReferenceDialog({ video, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    channelsApi
-      .use(video.videoId)
+    fetch("/api/youtube/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId: video.videoId, title: video.title }),
+    })
+      .then(async (res) => {
+        const body = (await res.json().catch(() => null)) as (UseVideoResponse & { error?: string }) | null;
+        if (!res.ok || !body?.swipeFileId) {
+          throw new Error(body?.error || (res.ok ? "Copie impossible" : `HTTP ${res.status}`));
+        }
+        return { swipeFileId: body.swipeFileId, imageUrl: body.imageUrl, label: body.label };
+      })
       .then((copy) => {
         if (!cancelled) setState({ status: "copied", copy });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setState({ status: "error", message: err instanceof ApiError ? err.message : "Copie impossible" });
+        if (!cancelled) {
+          setState({
+            status: "error",
+            message: err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Copie impossible",
+          });
+        }
       });
     fetch("/api/miniatures", { cache: "no-store" })
       .then((res) => (res.ok ? (res.json() as Promise<ProjectOption[]>) : []))

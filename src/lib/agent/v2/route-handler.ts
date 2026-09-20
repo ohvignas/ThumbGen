@@ -11,22 +11,21 @@ import {
 import { FAKE_AGENT_WARNING, resolveAgentLanguageModel } from "./agent-model";
 import { buildAiSdkTools } from "./tool-adapter";
 import { V2_CLIENT_TOOLS } from "./browser-client-tools";
-import { holdsResolvedAskUser, trimToolResultImages } from "./history-images";
+import { GEMINI_OPENROUTER_PROVIDER, omitGeminiThoughtSignatures } from "./gemini-thought-signatures";
+import { trimToolResultImages } from "./history-images";
 import { webSearchProviderOptions } from "./web-search-tool";
 import { persistAssistantTurn } from "./persist-turn";
 import { PLACE_NODE_TOOL_NAME, buildPlaceNodeTool } from "./place-node-tool";
-import { UPDATE_BRIEF_TOOL_NAME, buildUpdateBriefTool } from "./update-brief-tool";
+import { broadcastApplyWorkflow } from "./apply-workflow-broadcast";
+import { CANVAS_PATCH_PART, CANVAS_WORKFLOW_PATCH_PART } from "@/lib/canvas/canvas-patch";
+import { debugLog } from "@/lib/debug-log";
 import { RESEARCH_TOPIC_TOOL_NAME, buildResearchTopicTool } from "./research-topic-tool";
 import { FIND_LOGOS_TOOL_NAME, buildFindLogosTool } from "./find-logos-tool";
 import { ADD_LOGO_TOOL_NAME, buildAddLogoTool } from "./add-logo-tool";
 import { FIND_COMPETITOR_THUMBNAILS_TOOL_NAME, buildFindCompetitorThumbnailsTool } from "./find-competitor-thumbnails-tool";
 import { ANALYZE_THUMBNAILS_TOOL_NAME, buildAnalyzeThumbnailsTool } from "./analyze-thumbnails-tool";
-import { getBrief } from "@/lib/brief/store";
 import { guardSketchHandler } from "@/lib/brief/sketch-guard";
-import { BRIEF_UPDATED_PART } from "@/lib/brief/brief-updated";
-import type { ThumbnailBrief } from "@/lib/brief/schema";
 import { CLIENT_TOOL_NAME_SET, clientToolNameOfPartType } from "@/lib/agent/client-tools";
-import { CANVAS_PATCH_PART } from "@/lib/canvas/canvas-patch";
 import { discardRun, pumpRunStream, runStatusForOutcome, startRun, subscribe } from "./run-registry";
 import { AGENT_BUSY_MESSAGE, type EndedRunStatus } from "./run-types";
 import { FINISH_TURN_TOOL_NAME } from "@/lib/agent/finish-turn";
@@ -37,9 +36,15 @@ import {
 } from "@/lib/agent/skills/invoked-skill";
 import { slashRemainderAfterInvoke } from "@/lib/agent/skills/slash-query";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
+import {
+  catalogMentionableImagesFromSnapshot,
+  resolveMentionedImages,
+  type MentionableImage,
+} from "@/lib/canvas/mentionable-images";
 import { appendMessage, getConversation, listMessages } from "@/lib/agent/conversation/store";
 import { generateAndPersistTitle } from "@/lib/agent/conversation/auto-title";
 import { resolveImageSource } from "@/lib/agent/tools/_helpers/image-source";
+import { buildTurnImageFileParts, selectTurnImageSources } from "./attach-turn-images";
 import { getTypedSettings } from "@/lib/settings";
 import { getModelById } from "@/lib/agent/models";
 import { loadAgentPromptPrefs } from "@/lib/agent/prompt-prefs";
@@ -283,6 +288,7 @@ type ChatRequestBody = {
   }>;
   attachments?: Array<{ type: "image"; source: string }>;
   canvas_snapshot?: unknown;
+  mentioned_images?: Array<Partial<MentionableImage>>;
 };
 
 export async function postV2(req: NextRequest): Promise<Response> {
@@ -333,11 +339,9 @@ export async function postV2(req: NextRequest): Promise<Response> {
   }
 
   let priorMessages: unknown[];
-  // The conversation's thumbnail brief, read once per turn (chantier F3): sent
-  // to the model, and it switches the cost reductions below on.
-  let brief: ThumbnailBrief | null = null;
   let systemText: string;
   let invokedSkillBlock: string | null = null;
+  let mentionedImages: MentionableImage[] = [];
   let ideaEmpty = false;
   let emptyModelUserText: string | null = null;
   let userParts: Array<
@@ -356,7 +360,6 @@ export async function postV2(req: NextRequest): Promise<Response> {
   let retriedUserRowIndex = -1;
 
   try {
-    brief = getBrief(conversationId)?.brief ?? null;
     userParts = [];
     modelUserParts = [];
     if (isNewUserTurn) {
@@ -368,6 +371,11 @@ export async function postV2(req: NextRequest): Promise<Response> {
       const invoked = resolveInvokedSkill(lastMessageText);
       ideaEmpty = Boolean(invoked && slashRemainderAfterInvoke(lastMessageText).length === 0);
       invokedSkillBlock = invoked ? buildInvokedSkillBlock(invoked, { ideaEmpty }) : null;
+      mentionedImages = resolveMentionedImages(
+        lastMessageText,
+        catalogMentionableImagesFromSnapshot(body.canvas_snapshot),
+        body.mentioned_images,
+      );
       if (ideaEmpty && invoked) emptyModelUserText = emptyInvokedUserMessage(invoked);
 
       if (lastMessageText) userParts.push({ type: "text", text: lastMessageText });
@@ -375,6 +383,15 @@ export async function postV2(req: NextRequest): Promise<Response> {
         if (a.type !== "image") continue;
         const img = await resolveImageSource(a.source);
         userParts.push({ type: "file", mediaType: img.mimeType, data: img.bytes.toString("base64") });
+      }
+      for (const part of await buildTurnImageFileParts(
+        selectTurnImageSources({
+          userText: lastMessageText,
+          mentionedImages,
+          canvasSnapshot: body.canvas_snapshot,
+        }),
+      )) {
+        userParts.push(part);
       }
       modelUserParts =
         emptyModelUserText
@@ -497,17 +514,9 @@ export async function postV2(req: NextRequest): Promise<Response> {
       isNewUserTurn && retriedUserRowIndex === -1
         ? priorRows.length
         : Math.max(0, priorRows.map((row) => row.role).lastIndexOf("user"));
-    // Each row is parsed once: the checks, the journey's trim start and the model input share it.
+    // Each row is parsed once: the checks, the trim start and the model input share it.
     const parsedRows: unknown[] = priorRows.map((row) => JSON.parse(row.content_json));
-    // During a thumbnail journey every answer is a continuation: images older
-    // than the last answered question are not re-sent either.
-    let lastAnsweredRow = -1;
-    if (brief) {
-      for (let index = parsedRows.length - 1; index >= 0 && lastAnsweredRow === -1; index--) {
-        if (holdsResolvedAskUser(parsedRows[index])) lastAnsweredRow = index;
-      }
-    }
-    const currentTurnStart = Math.max(turnStart, lastAnsweredRow);
+    const currentTurnStart = turnStart;
     priorMessages = [];
     for (const [rowIndex, parsed] of parsedRows.entries()) {
       const looksMigrated =
@@ -530,8 +539,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
       body.canvas_snapshot,
       projectId,
       loadAgentPromptPrefs(),
-      brief,
       invokedSkillBlock,
+      mentionedImages,
     );
     systemText = systemBlocks.map((b) => b.text).join("\n\n");
   } catch (e) {
@@ -548,48 +557,81 @@ export async function postV2(req: NextRequest): Promise<Response> {
   // throw (tools, provider options, streamText, the UI stream) frees the run.
   try {
     if (agentModel.fake) console.warn(FAKE_AGENT_WARNING);
-    // place_node and update_brief broadcast to the open chat as transient chunks
-    // of this turn's stream (`data-canvas-patch`, `data-brief-updated`) —
+    // place_node and apply_workflow broadcast to the open chat as transient chunks
+    // of this turn's stream (`data-canvas-patch`, `data-canvas-workflow-patch`) —
     // the same stream the run buffers and replays. The writer exists as soon as
     // the composed stream below is built, before any tool can run.
     let uiWriter: UIMessageStreamWriter | null = null;
+    const writeCanvasPatch: Parameters<typeof buildPlaceNodeTool>[0]["writePatch"] = (patch) => {
+      if (!uiWriter) throw new Error("canvas patch stream not ready");
+      uiWriter.write({ type: CANVAS_PATCH_PART, id: patch.node.id, transient: true, data: patch });
+    };
     const placeNode = buildPlaceNodeTool({
       projectId: run.projectId,
-      writePatch: (patch) => {
-        if (!uiWriter) throw new Error("canvas patch stream not ready");
-        uiWriter.write({ type: CANVAS_PATCH_PART, id: patch.node.id, transient: true, data: patch });
-      },
-    });
-    // update_brief (thumbnail journey) tells the open chat the brief changed, on the same stream.
-    const updateBriefTool = buildUpdateBriefTool({
-      conversationId,
-      projectId: run.projectId,
-      writeBriefUpdated: (data) => {
-        if (!uiWriter) throw new Error("brief stream not ready");
-        uiWriter.write({ type: BRIEF_UPDATED_PART, id: data.conversationId, transient: true, data });
-      },
+      writePatch: writeCanvasPatch,
     });
     const researchTopic = buildResearchTopicTool({ conversationId });
     const findLogos = buildFindLogosTool({ conversationId });
     const addLogo = buildAddLogoTool({ conversationId });
     const findCompetitors = buildFindCompetitorThumbnailsTool({ conversationId });
     const analyzeThumbnails = buildAnalyzeThumbnailsTool({ conversationId });
+    const isGemini = modelInfo?.provider === "google";
+    const rawMessages = (isNewUserTurn && retriedUserRowIndex === -1
+      ? [...priorMessages, { role: "user", content: modelUserParts }]
+      : emptyModelUserText
+        ? replaceLastUserText(priorMessages, emptyModelUserText)
+        : [...priorMessages]) as ModelMessage[];
     const result = streamText({
       model: agentModel.model,
       system: systemText,
-      messages: (isNewUserTurn && retriedUserRowIndex === -1
-        ? [...priorMessages, { role: "user", content: modelUserParts }]
-        : emptyModelUserText
-          ? replaceLastUserText(priorMessages, emptyModelUserText)
-          : [...priorMessages]) as ModelMessage[],
+      messages: isGemini ? (omitGeminiThoughtSignatures(rawMessages) as ModelMessage[]) : rawMessages,
       tools: {
-        // generate_sketch is guarded by the thumbnail brief when there is one (usage cap).
+        // generate_sketch is guarded by live canvas sketch nodes when a brief exists.
+        // apply_workflow broadcasts a live canvas patch so a stale autosave cannot
+        // wipe the write (same class of bug as place_node without data-canvas-patch).
         ...buildAiSdkTools({
-          wrapHandler: (name, handler) => (name === "generate_sketch" ? guardSketchHandler(conversationId, handler) : handler),
+          wrapHandler: (name, handler) => {
+            let next = name === "generate_sketch" ? guardSketchHandler(conversationId, handler) : handler;
+            if (name === "apply_workflow") {
+              next = broadcastApplyWorkflow((patch) => {
+                if (!uiWriter) throw new Error("canvas patch stream not ready");
+                uiWriter.write({
+                  type: CANVAS_WORKFLOW_PATCH_PART,
+                  id: patch.updatedAt,
+                  transient: true,
+                  data: patch,
+                });
+              });
+            }
+            return async (input) => {
+              const t0 = Date.now();
+              debugLog("agent", "tool start", { name, conversationId, projectId: run.projectId });
+              try {
+                const result = await next(input);
+                const errorText =
+                  result.isError === true
+                    ? result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+                    : undefined;
+                debugLog("agent", "tool end", {
+                  name,
+                  ms: Date.now() - t0,
+                  isError: Boolean(result.isError),
+                  ...(errorText ? { error: errorText } : {}),
+                });
+                return result;
+              } catch (error) {
+                debugLog("agent", "tool throw", {
+                  name,
+                  ms: Date.now() - t0,
+                  error: error instanceof Error ? error.message : "error",
+                });
+                throw error;
+              }
+            };
+          },
         }),
         ...V2_CLIENT_TOOLS,
         [PLACE_NODE_TOOL_NAME]: placeNode,
-        [UPDATE_BRIEF_TOOL_NAME]: updateBriefTool,
         [RESEARCH_TOPIC_TOOL_NAME]: researchTopic,
         [FIND_LOGOS_TOOL_NAME]: findLogos,
         [ADD_LOGO_TOOL_NAME]: addLogo,
@@ -602,18 +644,30 @@ export async function postV2(req: NextRequest): Promise<Response> {
       // ONLY the run's own signal (« Arrêter » → POST …/stop). The request's
       // signal is deliberately not passed: leaving the page must not stop the turn.
       abortSignal: run.abort.signal,
+      // Gemini thought signatures are provider-scoped; a later streamText step
+      // that still carries reasoning_details from step 1 400s (see gemini-thought-signatures.ts).
+      prepareStep: isGemini
+        ? ({ messages }) => ({ messages: omitGeminiThoughtSignatures(messages) as ModelMessage[] })
+        : undefined,
       providerOptions: {
         openrouter: {
           ...(modelInfo?.supportsThinking ? { reasoning: { effort: settings.agentReasoningEffort } } : {}),
-          // With a brief the journey does its own research (research_topic): no web search on every call.
           // A bare `/croquis` must brainstorm (ask_user), not open a web-search step then die silent.
-          ...(brief || ideaEmpty ? {} : webSearchProviderOptions()),
+          ...(ideaEmpty ? {} : webSearchProviderOptions()),
+          ...(isGemini ? { provider: GEMINI_OPENROUTER_PROVIDER } : {}),
         },
       },
       // `responseMessages` is the aggregate across every step (not the deprecated
       // `response.messages`, last step only); `usage` is the whole-turn total.
       onEnd: async ({ responseMessages, usage, finishReason }) => {
         turnPersisted = true;
+        debugLog("agent", "streamText onEnd", {
+          conversationId,
+          projectId: run.projectId,
+          finishReason,
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+        });
         persistAssistantTurn({
           conversationId,
           responseMessages,

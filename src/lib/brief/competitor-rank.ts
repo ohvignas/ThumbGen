@@ -1,5 +1,6 @@
 import { SHORT_MAX_SECONDS } from "@/lib/youtube/sync";
 import { ageInDays, performanceScore } from "@/lib/youtube/performance";
+import { swipeRankKey } from "@/lib/youtube/swipe-rank";
 import type { CompetitorHit } from "./competitor-search-store";
 
 export const COMPETITOR_MIN_AGE_DAYS = 14;
@@ -44,12 +45,8 @@ export function scoreAgainstMedian(views: number, median: number | null, sampleC
   return { score, viral: score > COMPETITOR_SCORE_CAP };
 }
 
-export function rankingKey(score: number | null, searchRank: number, ageDays: number): number | null {
-  if (score === null || score <= 0) return null;
-  const sortScore = Math.min(score, COMPETITOR_SCORE_CAP);
-  const pertinence = searchRank < 10 ? 1 : 0.8;
-  const freshness = Math.max(0.5, 1 - ageDays / 30 / 36);
-  return Math.log2(Math.max(sortScore, 1e-9)) * pertinence * freshness;
+export function rankingKey(score: number | null, searchRank: number, ageDays: number, viewCount = 20_000): number | null {
+  return swipeRankKey({ score, searchRank, ageDays, viewCount });
 }
 
 function dedupe(videos: readonly ScoredVideo[]): ScoredVideo[] {
@@ -65,8 +62,8 @@ function dedupe(videos: readonly ScoredVideo[]): ScoredVideo[] {
 
 export function sortCompetitors(videos: readonly ScoredVideo[]): ScoredVideo[] {
   return [...videos].sort((a, b) => {
-    const ka = rankingKey(a.score, a.searchRank, a.ageDays);
-    const kb = rankingKey(b.score, b.searchRank, b.ageDays);
+    const ka = rankingKey(a.score, a.searchRank, a.ageDays, a.views);
+    const kb = rankingKey(b.score, b.searchRank, b.ageDays, b.views);
     if (ka === null && kb === null) return a.searchRank - b.searchRank;
     if (ka === null) return 1;
     if (kb === null) return -1;
