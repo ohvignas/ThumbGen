@@ -3,7 +3,16 @@ import { getDb } from "@/lib/db";
 import { getTypedSettings, setSetting } from "@/lib/settings";
 import { DELETE, GET, POST } from "@/app/api/settings/route";
 
-const ENV_NAMES = ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "YOUTUBE_API_KEY", "MCP_API_KEY", "PERPLEXITY_API_KEY", "SITE_PASSWORD"];
+const ENV_NAMES = [
+  "OPENROUTER_API_KEY",
+  "OPENAI_API_KEY",
+  "YOUTUBE_API_KEY",
+  "MCP_API_KEY",
+  "PERPLEXITY_API_KEY",
+  "TYPESAFE_API_KEY",
+  "SITE_PASSWORD",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+];
 const savedEnv: Record<string, string | undefined> = {};
 
 function post(body: unknown) {

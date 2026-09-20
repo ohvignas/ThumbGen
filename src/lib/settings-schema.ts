@@ -41,6 +41,7 @@ export const SECRET_KEYS = [
   "brandfetchApiKey",
   "perplexityApiKey",
   "typesafeApiKey",
+  "googleOAuthClientSecret",
 ] as const;
 export type SecretKey = (typeof SECRET_KEYS)[number];
 
@@ -57,6 +58,7 @@ export const ENV_FALLBACK: Record<SecretKey, string> = {
   brandfetchApiKey: "BRANDFETCH_API_KEY",
   perplexityApiKey: "PERPLEXITY_API_KEY",
   typesafeApiKey: "TYPESAFE_API_KEY",
+  googleOAuthClientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
 };
 
 export const BRAND_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -116,6 +118,8 @@ export const SettingsSchema = z.object({
   brandfetchApiKey: secret(),
   perplexityApiKey: secret(),
   typesafeApiKey: secret(),
+  googleOAuthClientId: z.string().trim().max(200, "200 caractères maximum").default(""),
+  googleOAuthClientSecret: secret(),
   agentModel: z.enum(AGENT_MODEL_IDS, { error: "Modèle d'agent inconnu" }).default(DEFAULT_AGENT_MODEL),
   agentWebSearch: flag(true),
   agentReasoningEffort: z.enum(REASONING_EFFORTS, { error: "Effort de réflexion inconnu" }).default("medium"),

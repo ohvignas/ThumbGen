@@ -16,5 +16,8 @@ import "./search-youtube-channel";
 import "./get-channel-videos";
 import "./import-youtube-thumbnail";
 import "./list-followed-videos";
+import "./get-my-channel-knowledge";
+import "./search-my-channel";
+import "./get-my-video";
 import "./finish-turn";
 import "./read-skill";

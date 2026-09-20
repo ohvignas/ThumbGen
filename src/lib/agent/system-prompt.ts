@@ -69,6 +69,8 @@ export type AgentPromptPrefs = {
   channelProfile: ChannelProfile;
   /** The profile's default persona; null when unset or deleted since. */
   defaultPersona: { id: string; label: string } | null;
+  /** Compact bible from the YouTube ingest; null until analysed. */
+  channelKnowledge: string | null;
 };
 
 export const DEFAULT_AGENT_PROMPT_PREFS: AgentPromptPrefs = {
@@ -77,6 +79,7 @@ export const DEFAULT_AGENT_PROMPT_PREFS: AgentPromptPrefs = {
   youtubeChannel: "",
   channelProfile: EMPTY_CHANNEL_PROFILE,
   defaultPersona: null,
+  channelKnowledge: null,
 };
 
 function languageName(code: LanguageCode): string {
@@ -136,6 +139,16 @@ export function buildChannelProfileBlock(
   ].join("\n");
 }
 
+export function buildChannelKnowledgeBlock(prefs: Pick<AgentPromptPrefs, "channelKnowledge">): string | null {
+  if (!prefs.channelKnowledge) return null;
+  return [
+    "<channel_knowledge>",
+    "Analysed from the creator's connected YouTube channel (Réglages → Ma chaîne). Ground thumbnails in this. For a specific video, a transcript or a search, call get_my_channel_knowledge, search_my_channel or get_my_video — do not invent stats. Explicit requests in the conversation take precedence.",
+    neutralizeTags(prefs.channelKnowledge),
+    "</channel_knowledge>",
+  ].join("\n");
+}
+
 /**
  * Returns the "system" parameter as an array of blocks. The first block is the
  * static persona+rules with cache_control set, so it's cached across turns.
@@ -164,6 +177,8 @@ export function buildSystemMessages(
   ];
   const channelProfile = buildChannelProfileBlock(prefs);
   if (channelProfile) blocks.push({ type: "text", text: channelProfile });
+  const channelKnowledge = buildChannelKnowledgeBlock(prefs);
+  if (channelKnowledge) blocks.push({ type: "text", text: channelKnowledge });
   if (projectId) {
     blocks.push({
       type: "text",

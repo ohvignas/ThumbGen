@@ -1,6 +1,17 @@
 import { getDb } from "@/lib/db";
 import { getTypedSettings } from "@/lib/settings";
 import type { AgentPromptPrefs } from "@/lib/agent/system-prompt";
+import { compactKnowledgeBlock } from "@/lib/youtube/knowledge";
+import { getKnowledge, mineChannelId, parseKnowledgeJson } from "@/lib/youtube/knowledge-store";
+
+function loadChannelKnowledge(): string | null {
+  const channelId = mineChannelId();
+  if (!channelId) return null;
+  const row = getKnowledge(channelId);
+  if (!row) return null;
+  const compact = compactKnowledgeBlock(parseKnowledgeJson(row.json));
+  return compact || row.document_md.slice(0, 4000);
+}
 
 /** Reads the Réglages values that shape the agent's per-turn system blocks. */
 export function loadAgentPromptPrefs(): AgentPromptPrefs {
@@ -18,5 +29,6 @@ export function loadAgentPromptPrefs(): AgentPromptPrefs {
     channelProfile: settings.channelProfile,
     // A persona deleted since it was chosen is left out of the prompt.
     defaultPersona: persona ?? null,
+    channelKnowledge: loadChannelKnowledge(),
   };
 }

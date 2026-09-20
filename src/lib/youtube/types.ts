@@ -51,6 +51,7 @@ export type ChannelDetails = {
   avatarUrl: string | null;
   subscriberCount: number | null;
   videoCount: number | null;
+  description?: string | null;
 };
 
 export type ChannelPreview = ChannelDetails & { alreadyFollowed: boolean };

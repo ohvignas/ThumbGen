@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import SecretKeyCard, { type ProviderKeyConfig } from "./SecretKeyCard";
+import GoogleOauthCard from "./GoogleOauthCard";
 import { useSettings } from "./use-settings";
 
 const PROVIDERS: ProviderKeyConfig[] = [
@@ -63,12 +65,30 @@ const PROVIDERS: ProviderKeyConfig[] = [
 
 export default function ConnexionsSection() {
   const { settings, loadError, reload } = useSettings();
+  const [needClient, setNeedClient] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("youtube") !== "need-client") return;
+    setNeedClient(true);
+    params.delete("youtube");
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", next);
+  }, []);
 
   return (
     <>
       {loadError && (
         <Alert variant="destructive">
           <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      )}
+      {needClient && (
+        <Alert>
+          <AlertDescription>
+            Pour connecter ta chaîne, enregistre d&apos;abord l&apos;ID client et le secret Google ci-dessous, puis
+            reviens dans Réglages → Ma chaîne.
+          </AlertDescription>
         </Alert>
       )}
       {PROVIDERS.map((config) => (
@@ -79,6 +99,11 @@ export default function ConnexionsSection() {
           onChanged={reload}
         />
       ))}
+      <GoogleOauthCard
+        clientId={settings?.googleOAuthClientId ?? ""}
+        secretStatus={settings ? settings.googleOAuthClientSecret : null}
+        onChanged={reload}
+      />
     </>
   );
 }

@@ -2,7 +2,7 @@ import { v4 as uuid } from "uuid";
 import { getDb } from "./db";
 import { getCostPerImage } from "./model-costs";
 
-export type LogEndpoint = "generate" | "edit" | "remix" | "classify-thumbnail" | "research";
+export type LogEndpoint = "generate" | "edit" | "remix" | "classify-thumbnail" | "research" | "channel-knowledge";
 
 export type LogInput = {
   provider: string;

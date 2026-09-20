@@ -31,6 +31,8 @@ export type ChannelRuntime = {
   thumbnailCopies: Map<string, Promise<string | null>>;
   snapshotPoll: Promise<void> | null;
   lastSnapshotPollAt: number;
+  /** Background ingest of « Ma chaîne » (OAuth → videos → analytics → transcripts → bible). */
+  ingest: Promise<void> | null;
 };
 
 declare global {
@@ -53,6 +55,7 @@ function createRuntime(): ChannelRuntime {
     thumbnailCopies: new Map(),
     snapshotPoll: null,
     lastSnapshotPollAt: 0,
+    ingest: null,
   };
 }
 

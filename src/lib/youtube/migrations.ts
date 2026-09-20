@@ -57,6 +57,95 @@ export const CHANNEL_TABLES_DDL = `
 
   CREATE INDEX IF NOT EXISTS idx_video_stat_snapshots_video    ON video_stat_snapshots(video_id, captured_at);
   CREATE INDEX IF NOT EXISTS idx_video_stat_snapshots_captured ON video_stat_snapshots(captured_at);
+
+  CREATE TABLE IF NOT EXISTS youtube_oauth (
+    id                       TEXT PRIMARY KEY,
+    channel_youtube_id       TEXT,
+    channel_title            TEXT,
+    channel_handle           TEXT,
+    refresh_token            TEXT NOT NULL,
+    access_token             TEXT,
+    access_token_expires_at  INTEGER,
+    scopes                   TEXT NOT NULL,
+    connected_at             TEXT NOT NULL,
+    last_ingest_at           TEXT,
+    ingest_status            TEXT NOT NULL DEFAULT 'idle',
+    ingest_error             TEXT,
+    ingest_step              TEXT,
+    videos_total             INTEGER NOT NULL DEFAULT 0,
+    videos_done              INTEGER NOT NULL DEFAULT 0,
+    transcripts_done         INTEGER NOT NULL DEFAULT 0,
+    transcripts_failed       INTEGER NOT NULL DEFAULT 0,
+    analysis_done            INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS youtube_oauth_state (
+    state           TEXT PRIMARY KEY,
+    origin          TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS channel_video_analytics (
+    video_id                    TEXT PRIMARY KEY REFERENCES channel_videos(video_id) ON DELETE CASCADE,
+    period_start                TEXT NOT NULL,
+    period_end                  TEXT NOT NULL,
+    views                       INTEGER,
+    engaged_views               INTEGER,
+    estimated_minutes_watched   REAL,
+    average_view_duration       INTEGER,
+    average_view_percentage     REAL,
+    likes                       INTEGER,
+    comments                    INTEGER,
+    shares                      INTEGER,
+    subscribers_gained          INTEGER,
+    fetched_at                  TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS channel_analytics_summary (
+    channel_id                  TEXT NOT NULL REFERENCES followed_channels(id) ON DELETE CASCADE,
+    period                      TEXT NOT NULL,
+    period_start                TEXT NOT NULL,
+    period_end                  TEXT NOT NULL,
+    views                       INTEGER,
+    estimated_minutes_watched   REAL,
+    average_view_duration       INTEGER,
+    average_view_percentage     REAL,
+    subscribers_gained          INTEGER,
+    subscribers_lost            INTEGER,
+    fetched_at                  TEXT NOT NULL,
+    PRIMARY KEY (channel_id, period)
+  );
+
+  CREATE TABLE IF NOT EXISTS video_transcripts (
+    video_id       TEXT PRIMARY KEY REFERENCES channel_videos(video_id) ON DELETE CASCADE,
+    source         TEXT NOT NULL,
+    language       TEXT,
+    text           TEXT NOT NULL,
+    char_count     INTEGER NOT NULL,
+    summary        TEXT,
+    topics         TEXT,
+    hook           TEXT,
+    fetched_at     TEXT NOT NULL,
+    summarized_at  TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS channel_knowledge (
+    channel_id         TEXT PRIMARY KEY REFERENCES followed_channels(id) ON DELETE CASCADE,
+    generated_at       TEXT NOT NULL,
+    document_md        TEXT NOT NULL,
+    json               TEXT NOT NULL,
+    video_count        INTEGER NOT NULL,
+    transcript_count   INTEGER NOT NULL
+  );
+`;
+
+const KNOWLEDGE_FTS_DDL = `
+  CREATE VIRTUAL TABLE IF NOT EXISTS video_knowledge_fts USING fts5(
+    video_id UNINDEXED,
+    title,
+    summary,
+    body
+  );
 `;
 
 // Columns the plan added on top of the spec's list (sync resume, classification
@@ -70,6 +159,7 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; definition: 
   { table: "channel_videos", column: "classify_attempts", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "channel_videos", column: "classify_approved", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "channel_videos", column: "swipe_file_id", definition: "TEXT" },
+  { table: "followed_channels", column: "about", definition: "TEXT" },
   { table: "channel_videos", column: "description", definition: "TEXT" },
 ];
 
@@ -86,6 +176,11 @@ export function backfillVideoStatSnapshots(database: Database.Database): void {
 
 export function migrateChannelTables(database: Database.Database): void {
   database.exec(CHANNEL_TABLES_DDL);
+  try {
+    database.exec(KNOWLEDGE_FTS_DDL);
+  } catch (err) {
+    console.warn("[channels] FTS5 indisponible, la recherche plein texte utilisera LIKE :", err);
+  }
   for (const { table, column, definition } of ADDED_COLUMNS) {
     const existing = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
     if (!existing.some((entry) => entry.name === column)) {

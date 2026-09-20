@@ -1,9 +1,11 @@
 import { getTypedSettings } from "@/lib/settings";
 import * as store from "./channel-store";
 import { buildClassificationStatus, runClassificationQueue } from "./classify";
+import { getOauth } from "./oauth-store";
 import { channelRuntime, isChannelLocked, isQuotaBlocked } from "./runtime";
 import { pollFollowedSnapshots } from "./snapshot-poll";
 import { syncChannel } from "./sync";
+import { getValidAccessToken } from "./tokens";
 import type { ClassificationStatus } from "./types";
 
 /**
@@ -41,9 +43,22 @@ export function kickClassification(): void {
     });
 }
 
+async function accessTokenFor(channelId: string): Promise<string | null> {
+  const channel = store.getChannel(channelId);
+  if (channel?.is_mine !== 1) return null;
+  try {
+    return await getValidAccessToken();
+  } catch (err) {
+    logFailure("oauth refresh", err);
+    return null;
+  }
+}
+
 function runSync(channelId: string): Promise<void> {
   const runtime = channelRuntime();
-  const job: Promise<void> = syncChannel(channelId)
+  store.setSyncState(channelId, { status: "syncing", error: null });
+  const job: Promise<void> = accessTokenFor(channelId)
+    .then((token) => syncChannel(channelId, () => new Date(), token))
     .then((outcome) => {
       if (outcome.status === "quota" || isQuotaBlocked(new Date())) runtime.staleQueue.length = 0;
     })
@@ -60,7 +75,7 @@ function runSync(channelId: string): Promise<void> {
 
 /** Starts a background sync; false when this channel is already syncing. */
 export function startChannelSync(channelId: string): boolean {
-  if (isChannelLocked(channelId)) return false;
+  if (isChannelLocked(channelId) || channelRuntime().running.has(channelId)) return false;
   void runSync(channelId);
   return true;
 }
@@ -89,7 +104,7 @@ function drainQueue(): void {
 export function queueChannelSyncs(options: { all?: boolean; now?: Date } = {}): { queued: number; throttled: boolean } {
   const runtime = channelRuntime();
   const now = options.now ?? new Date();
-  if (!getTypedSettings().youtubeApiKey) return { queued: 0, throttled: false };
+  if (!getTypedSettings().youtubeApiKey && !getOauth()) return { queued: 0, throttled: false };
   if (!options.all) {
     if (now.getTime() - runtime.lastStaleTriggerAt < STALE_TRIGGER_THROTTLE_MS || isQuotaBlocked(now)) {
       return { queued: 0, throttled: true };
@@ -99,7 +114,10 @@ export function queueChannelSyncs(options: { all?: boolean; now?: Date } = {}): 
   const candidates = options.all
     ? store.allChannelIds()
     : store.staleChannelIds(new Date(now.getTime() - STALE_AFTER_MS).toISOString());
-  const added = candidates.filter((channelId) => !isChannelLocked(channelId) && !runtime.staleQueue.includes(channelId));
+  const added = candidates.filter(
+    (channelId) =>
+      !isChannelLocked(channelId) && !runtime.running.has(channelId) && !runtime.staleQueue.includes(channelId),
+  );
   runtime.staleQueue.push(...added);
   if (added.length > 0) drainQueue();
   return { queued: added.length, throttled: false };
@@ -153,6 +171,7 @@ export async function waitForChannelJobs(): Promise<void> {
     if (runtime.staleDrain) pending.push(runtime.staleDrain);
     if (runtime.classification) pending.push(runtime.classification);
     if (runtime.snapshotPoll) pending.push(runtime.snapshotPoll);
+    if (runtime.ingest) pending.push(runtime.ingest);
     if (pending.length === 0) return;
     await Promise.allSettled(pending);
   }

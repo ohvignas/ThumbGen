@@ -39,6 +39,7 @@ describe("channel tables", () => {
         "view_count",
         "like_count",
         "thumbnail_url",
+        "description",
         "stats_updated_at",
         "thumb_type",
         "thumb_type_source",
@@ -48,6 +49,9 @@ describe("channel tables", () => {
         "created_at",
       ]),
     );
+    expect(columns(db, "youtube_oauth")).toEqual(expect.arrayContaining(["refresh_token", "ingest_status"]));
+    expect(columns(db, "video_transcripts")).toEqual(expect.arrayContaining(["video_id", "source", "text"]));
+    expect(columns(db, "channel_knowledge")).toEqual(expect.arrayContaining(["document_md", "json"]));
     const indexes = (db.prepare("PRAGMA index_list(channel_videos)").all() as { name: string }[]).map((index) => index.name);
     expect(indexes).toEqual(
       expect.arrayContaining(["idx_channel_videos_channel_id", "idx_channel_videos_published_at", "idx_channel_videos_thumb_type"]),
@@ -73,7 +77,7 @@ describe("channel tables", () => {
       );
     `);
     migrateChannelTables(db);
-    expect(columns(db, "followed_channels")).toEqual(expect.arrayContaining(["playlist_id", "backfill_page_token", "backfill_done", "sync_page_token"]));
+    expect(columns(db, "followed_channels")).toEqual(expect.arrayContaining(["playlist_id", "backfill_page_token", "backfill_done", "sync_page_token", "about"]));
     expect(columns(db, "channel_videos")).toEqual(expect.arrayContaining(["classify_attempts", "classify_approved", "swipe_file_id"]));
     db.close();
   });

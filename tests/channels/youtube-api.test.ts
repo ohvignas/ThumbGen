@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchChannelDetails,
+  fetchMineChannel,
   fetchPlaylistPage,
   fetchVideos,
   localChannelId,
@@ -96,6 +97,7 @@ describe("resolveChannelInput", () => {
         avatarUrl: `https://yt3.example/${MINE}.jpg`,
         subscriberCount: 12_500,
         videoCount: 2,
+        description: null,
       },
     });
   });
@@ -176,6 +178,23 @@ describe("fetchChannelDetails", () => {
   });
 });
 
+describe("fetchMineChannel", () => {
+  it("asks YouTube for mine=true with a bearer token and no API key", async () => {
+    install(
+      createFakeYouTube({
+        channels: [{ id: MINE, handle: "@MaChaine", title: "Ma chaîne" }],
+      }),
+    );
+    const mine = await fetchMineChannel("ya29.access-token");
+    expect(mine?.youtubeChannelId).toBe(MINE);
+    expect(mine?.title).toBe("Ma chaîne");
+    const call = fake.calls.find((entry) => entry.resource === "channels");
+    expect(call?.params.get("mine")).toBe("true");
+    expect(call?.params.get("key")).toBeNull();
+    expect(call?.params.get("part")).toContain("brandingSettings");
+  });
+});
+
 describe("fetchPlaylistPage", () => {
   it("pages through a playlist 50 items at a time, newest first", async () => {
     install(
@@ -229,6 +248,7 @@ describe("fetchVideos", () => {
       likeCount: 30,
       thumbnailUrl: "https://i.ytimg.com/vi/long0000001/mqdefault.jpg",
       liveBroadcastContent: "none",
+      description: "",
     });
     expect(batch.videos[1].likeCount).toBeNull();
     const call = fake.calls.find((entry) => entry.resource === "videos");
