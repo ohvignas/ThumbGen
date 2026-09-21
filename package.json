@@ -9,7 +9,8 @@
     "lint": "eslint",
     "migrate": "tsx scripts/migrate-to-sqlite.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "where-env": "sh scripts/where-env.sh"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.102",
