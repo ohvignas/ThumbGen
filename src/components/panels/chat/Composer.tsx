@@ -13,6 +13,8 @@ import type { SlashSkill } from "@/lib/agent/skills/slash-catalog";
 import { applySlashPick, composerSlashQuery, filterSlashSkills, slashQueryAtCursor } from "@/lib/agent/skills/slash-query";
 import { applyMentionPick, composerMentionQuery, filterMentionableImages, mentionQueryAtCursor } from "@/lib/agent/mentions/mention-query";
 import { catalogMentionableImages, type MentionableImage } from "@/lib/canvas/mentionable-images";
+import type { AgentSurface } from "@/lib/studio/agent-surface";
+import { STUDIO_EMPTY_DESCRIPTION } from "./ChatEmptyState";
 
 function assignRef(ref: Ref<HTMLTextAreaElement> | undefined, el: HTMLTextAreaElement | null) {
   if (!ref) return;
@@ -25,12 +27,14 @@ export default function Composer({
   status,
   onStop,
   inputRef,
+  surface = "canvas",
 }: {
   onSend: () => void;
   status: ChatStatus;
   onStop: () => void;
   /** The message field, so the panel can give it focus back (e.g. after answering a question). */
   inputRef?: Ref<HTMLTextAreaElement>;
+  surface?: AgentSurface;
 }) {
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
@@ -55,7 +59,7 @@ export default function Composer({
   const mentionQuery = composerMentionQuery(draft, cursor);
   const slashOpen = slashQuery !== null && slashQuery.start !== dismissedSlashStart;
   const mentionOpen = mentionQuery !== null && mentionQuery.start !== dismissedMentionStart && !slashOpen;
-  const slashItems = slashOpen && slashQuery ? filterSlashSkills(slashQuery.query) : [];
+  const slashItems = slashOpen && slashQuery ? filterSlashSkills(slashQuery.query, surface) : [];
   const mentionItems = mentionOpen && mentionQuery ? filterMentionableImages(mentionCatalog, mentionQuery.query) : [];
   const pickerKind = mentionOpen ? "mention" : slashOpen ? "slash" : null;
   const items = pickerKind === "mention" ? mentionItems : slashItems;
@@ -174,7 +178,11 @@ export default function Composer({
           onSelect={(e) => syncCursor(e.currentTarget)}
           onKeyUp={(e) => syncCursor(e.currentTarget)}
           onKeyDown={onComposerKeyDown}
-          placeholder="Décris ta miniature, tape / pour une skill, @ pour une miniature…"
+          placeholder={
+            surface === "studio"
+              ? STUDIO_EMPTY_DESCRIPTION
+              : "Décris ta miniature, tape / pour une skill, @ pour une miniature…"
+          }
           className="h-14 min-h-14 px-3 py-2.5 text-foreground"
           rows={2}
           role="combobox"

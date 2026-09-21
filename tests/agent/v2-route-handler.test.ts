@@ -78,6 +78,21 @@ describe("postV2", () => {
     persistAssistantTurnMock.mockClear();
   });
 
+  it("refuses a conversation that belongs to another miniature", async () => {
+    setSetting("openrouterApiKey", "test-key");
+    const { postV2 } = await import("@/lib/agent/v2/route-handler");
+    const res = await postV2(
+      chatRequest({
+        conversation_id: "c1",
+        project_id: "proj-other",
+        messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.text()).toBe("Cette conversation appartient à une autre miniature");
+    expect(streamTextMock).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when conversation_id is missing", async () => {
     const { postV2 } = await import("@/lib/agent/v2/route-handler");
     const res = await postV2(

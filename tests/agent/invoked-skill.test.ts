@@ -3,10 +3,26 @@ import {
   buildInvokedSkillBlock,
   emptyInvokedUserMessage,
   resolveInvokedSkill,
+  skillHasOpenSubject,
 } from "@/lib/agent/skills/invoked-skill";
 import { AGENT_SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
 
 const BODY_MARKER = "graphite-on-paper";
+
+describe("skillHasOpenSubject", () => {
+  it("is true for all five writing skills and false for generate_sketch", () => {
+    for (const skill of [
+      "write_video",
+      "studio_format",
+      "studio_titles",
+      "studio_description",
+      "studio_script",
+    ]) {
+      expect(skillHasOpenSubject(skill), skill).toBe(true);
+    }
+    expect(skillHasOpenSubject("generate_sketch")).toBe(false);
+  });
+});
 
 describe("resolveInvokedSkill", () => {
   it("loads generate_sketch body for /croquis and not for unknown slashes", () => {
@@ -48,6 +64,27 @@ describe("buildInvokedSkillBlock", () => {
     expect(block).toContain("brainstorm");
     expect(block).not.toContain("Étape n/7");
     expect(block.endsWith("</invoked_skill>")).toBe(true);
+  });
+
+  it("lets /ecrire follow write_video even when the remainder is empty", () => {
+    const invoked = resolveInvokedSkill("/ecrire")!;
+    expect(invoked.skill).toBe("write_video");
+    const block = buildInvokedSkillBlock(invoked, { ideaEmpty: true });
+    expect(block).toContain('<invoked_skill name="write_video" slash="ecrire">');
+    expect(block).not.toContain("The idea is EMPTY");
+    expect(block).not.toContain("Do NOT call write_video this turn");
+  });
+
+  it("treats studio writing slashes as already having an open fiche", () => {
+    for (const slash of ["/ecrire", "/format", "/titres", "/desc", "/scenario"]) {
+      const invoked = resolveInvokedSkill(slash)!;
+      expect(invoked, slash).toBeTruthy();
+      const block = buildInvokedSkillBlock(invoked, { ideaEmpty: true });
+      expect(block).not.toContain("The idea is EMPTY");
+      expect(block).toMatch(/Vidéos|studio|write_video|format de tournage/i);
+      expect(block).not.toMatch(/Étape\s+\d/);
+      expect(block).not.toContain("generate_sketch");
+    }
   });
 
   it("when the idea is empty, forbids generate_sketch and finish_turn this step", () => {

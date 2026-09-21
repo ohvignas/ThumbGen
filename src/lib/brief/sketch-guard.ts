@@ -1,5 +1,5 @@
 import type { ToolHandler, ToolResult } from "@/lib/agent/tools/types";
-import { countLiveSketchNodes } from "@/lib/canvas/live-sketches";
+import { listLiveSketchNodeIds } from "@/lib/canvas/live-sketches";
 import type { ThumbnailBrief } from "./schema";
 import { getBrief, releaseBriefUsage, reserveBriefUsage } from "./store";
 
@@ -14,22 +14,22 @@ export function sketchLimit(brief: ThumbnailBrief): number {
   return 2 * Math.max(1, brief.variants.length) + 3;
 }
 
-export function liveSketchRefusal(limit: number, liveSketchCount: number): string | null {
-  if (liveSketchCount >= limit) {
-    return `Esquisse refusée : limite de ${limit} croquis visibles atteinte sur le canvas.`;
+export function liveSketchRefusal(limit: number, liveSketchIds: readonly string[]): string | null {
+  if (liveSketchIds.length >= limit) {
+    return `Esquisse refusée : limite de ${limit} croquis visibles atteinte sur le canvas (${liveSketchIds.join(", ")}).`;
   }
   return null;
 }
 
-export function sketchRefusal(brief: ThumbnailBrief, liveSketchCount: number): string | null {
-  return liveSketchRefusal(sketchLimit(brief), liveSketchCount);
+export function sketchRefusal(brief: ThumbnailBrief, liveSketchIds: readonly string[]): string | null {
+  return liveSketchRefusal(sketchLimit(brief), liveSketchIds);
 }
 
 export function guardSketchHandler(conversationId: string, handler: ToolHandler<unknown>): ToolHandler<unknown> {
   return async (input) => {
     const existing = getBrief(conversationId);
     if (!existing) return handler(input);
-    const reason = sketchRefusal(existing.brief, countLiveSketchNodes(existing.projectId));
+    const reason = sketchRefusal(existing.brief, listLiveSketchNodeIds(existing.projectId));
     if (reason) return { isError: true, content: [{ type: "text", text: reason }] };
     const reservation = reserveBriefUsage(conversationId, "sketches", () => null);
     if (reservation.status === "no-brief") return handler(input);

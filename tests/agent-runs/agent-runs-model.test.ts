@@ -10,6 +10,7 @@ import {
   nextPollDelay,
   openProjectIdFromPath,
   parseRunsMemory,
+  nextActiveConversationId,
   pickConversationId,
   pruneRunsMemory,
   runIndicatorState,
@@ -105,6 +106,16 @@ describe("agent runs model", () => {
     expect(pickConversationId(list, ended, [], "p1")).toBe("recent");
     expect(pickConversationId(list, EMPTY_RUNS, [], "p1")).toBe("recent");
     expect(pickConversationId([], s, s.attention, "p1")).toBeNull();
+  });
+
+  it("does not keep another miniature's conversation when this project's list arrives", () => {
+    const ended = snapshot({ attention: [attention("ended", "p1", 7)] });
+    // Empty new miniature: never reuse the previous project's pointer.
+    expect(nextActiveConversationId([], ended, [], "p-new", "conv-old")).toBeNull();
+    // This miniature's own list: keep the one already open if it belongs here.
+    expect(nextActiveConversationId([{ id: "ended" }, { id: "recent" }], ended, [], "p1", "ended")).toBe("ended");
+    // Foreign pointer on a miniature that already has chats: pick this project's.
+    expect(nextActiveConversationId([{ id: "recent" }], EMPTY_RUNS, [], "p1", "conv-old")).toBe("recent");
   });
 
   it("merges two tabs' memories, keeping the latest endedAt per conversation", () => {

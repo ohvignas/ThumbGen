@@ -46,7 +46,6 @@ export type VideoRow = {
   classify_attempts: number;
   classify_approved: number;
   swipe_file_id: string | null;
-  description: string | null;
   created_at: string;
 };
 

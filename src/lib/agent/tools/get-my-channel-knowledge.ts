@@ -7,7 +7,7 @@ import { registerTool } from "./index";
 
 const InputSchema = z.object({});
 
-function format(): string {
+export function formatMyChannelKnowledge(): string {
   const channelId = mineChannelId();
   if (!channelId) {
     return "Aucune chaîne n'est marquée « Ma chaîne ». Connecte YouTube dans Réglages → Ma chaîne.";
@@ -39,9 +39,9 @@ function format(): string {
 export const getMyChannelKnowledgeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "get_my_channel_knowledge",
   description:
-    "Returns the connected YouTube channel bible: identity, audience, content pillars, thumbnail language, performance summary and Studio analytics already stored locally (no YouTube quota). Use this to ground thumbnail ideas in the creator's real channel.",
+    "Returns the connected YouTube channel bible: identity, audience, content pillars, thumbnail language, performance summary and Studio analytics already stored locally (no YouTube quota). Use this to ground thumbnail ideas and writing (scripts, titles) in the creator's real channel.",
   inputSchema: InputSchema,
-  handler: async () => ({ content: [{ type: "text", text: format() }] }),
+  handler: async () => ({ content: [{ type: "text", text: formatMyChannelKnowledge() }] }),
 };
 
 registerTool(getMyChannelKnowledgeTool);

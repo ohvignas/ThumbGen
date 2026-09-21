@@ -17,9 +17,9 @@ const controls = (overrides: Partial<ChatTurnControls> = {}): ChatTurnControls =
   ...overrides,
 });
 
-const list = (messages: UIMessage[], c: ChatTurnControls) => (
+const list = (messages: UIMessage[], c: ChatTurnControls, surface?: "canvas" | "studio") => (
   <ReactFlowProvider>
-    <MessageList messages={messages} controls={c} />
+    <MessageList messages={messages} controls={c} surface={surface} />
   </ReactFlowProvider>
 );
 
@@ -35,6 +35,15 @@ describe("chat empty state", () => {
     expect(html).not.toContain("Étape");
     expect(html).not.toContain("n/7");
     expect(INTERVIEW_START_MESSAGE).toBe("Aide-moi à construire la miniature de ma vidéo.");
+  });
+
+  it("on studio asks only for the video idea, never /ecrire as the path", () => {
+    const html = renderToStaticMarkup(list([], controls(), "studio"));
+    expect(html).toContain("On commence par quoi ?");
+    expect(html).toContain("Décris l’idée de la vidéo");
+    expect(html).not.toContain("/ecrire");
+    expect(html).not.toContain("/croquis");
+    expect(html).not.toMatch(/miniature/i);
   });
 
   it("is not shown once the conversation has messages", () => {

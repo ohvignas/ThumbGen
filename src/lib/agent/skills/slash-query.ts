@@ -1,4 +1,10 @@
-import { lookupSlashToken, SLASH_SKILLS, type SlashSkill } from "./slash-catalog";
+import {
+  lookupSlashToken,
+  slashSkillsForSurface,
+  SLASH_SKILLS,
+  type SlashSkill,
+} from "./slash-catalog";
+import type { AgentSurface } from "@/lib/studio/agent-surface";
 
 const QUERY_AT_CURSOR = /(?:^|\s)\/([a-z0-9_-]*)$/i;
 const TOKEN_IN_TEXT = /(^|\s)\/([a-z0-9][a-z0-9_-]{0,80})(?=\s|$)/gi;
@@ -30,10 +36,11 @@ export function composerSlashQuery(text: string, cursor: number): SlashQuery | n
   return null;
 }
 
-export function filterSlashSkills(query: string): SlashSkill[] {
+export function filterSlashSkills(query: string, surface?: AgentSurface): SlashSkill[] {
+  const pool = surface ? slashSkillsForSurface(surface) : [...SLASH_SKILLS];
   const needle = query.trim().toLowerCase();
-  if (!needle) return [...SLASH_SKILLS];
-  return SLASH_SKILLS.filter((row) => {
+  if (!needle) return [...pool];
+  return pool.filter((row) => {
     return (
       row.slash.includes(needle) ||
       row.skill.toLowerCase().includes(needle) ||

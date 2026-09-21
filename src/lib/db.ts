@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { AGENT_TABLES_DDL } from "./agent/migrations";
+import { migrateStudioTables } from "./studio/migrations";
 import { migrateChannelTables } from "./youtube/migrations";
 
 const DB_FILE = process.env.THUMBGEN_DB_PATH || path.join(process.cwd(), "data", "thumbgen.db");
@@ -124,6 +125,7 @@ function init(database: Database.Database) {
   `);
   database.exec(AGENT_TABLES_DDL);
   migrateChannelTables(database);
+  migrateStudioTables(database);
 
   // `CREATE TABLE IF NOT EXISTS` never alters a table that already exists —
   // a face_reactions table created before the `tags` column was added above
@@ -153,6 +155,10 @@ function init(database: Database.Database) {
   // Gallery card cover (« miniature gagnante »): one generated image per project.
   if (!projectMetaColumns.some((c) => c.name === "cover_image_id")) {
     database.exec("ALTER TABLE projects_meta ADD COLUMN cover_image_id TEXT");
+  }
+  if (!projectMetaColumns.some((c) => c.name === "studio_video_id")) {
+    database.exec("ALTER TABLE projects_meta ADD COLUMN studio_video_id TEXT");
+    database.exec("CREATE INDEX IF NOT EXISTS idx_projects_meta_studio ON projects_meta(studio_video_id)");
   }
 
   pruneRemovedSettingsKeys(database);

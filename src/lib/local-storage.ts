@@ -4,6 +4,7 @@ import { generatedImageIdFromUrl, generatedImageUrl } from "./canvas/image-refs"
 import { persistCanvasEqual, persistNodesForSave } from "./canvas/persist-snapshot";
 import { asDeletedIds, filterTombstonedCanvas, type TombstoneIds } from "./canvas/tombstones";
 import { debugLog } from "./debug-log";
+import { isWritingProjectId } from "./studio/types";
 
 export type FlowNode = {
   id: string;
@@ -77,14 +78,16 @@ export function listProjects(): ProjectMeta[] {
     updated_at: string;
     cover_image_id: string | null;
   }>;
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    description: r.description,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-    coverImageUrl: coverUrlFromId(r.cover_image_id),
-  }));
+  return rows
+    .filter((r) => !isWritingProjectId(r.id))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      coverImageUrl: coverUrlFromId(r.cover_image_id),
+    }));
 }
 
 /** The project's gallery cover URL, or null when unset / the project does not exist. */

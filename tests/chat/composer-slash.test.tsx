@@ -22,8 +22,10 @@ afterEach(async () => {
   container.remove();
 });
 
-async function render(onSend = vi.fn()) {
-  await act(async () => root.render(<Composer onSend={onSend} status="ready" onStop={() => {}} />));
+async function render(onSend = vi.fn(), surface?: "canvas" | "studio") {
+  await act(async () =>
+    root.render(<Composer onSend={onSend} status="ready" onStop={() => {}} surface={surface} />),
+  );
   return onSend;
 }
 
@@ -49,6 +51,14 @@ async function key(name: string, init: KeyboardEventInit = {}) {
 }
 
 describe("composer slash picker", () => {
+  it("uses writing-studio placeholder on studio, never miniature or croquis", async () => {
+    await render(vi.fn(), "studio");
+    const placeholder = textarea().getAttribute("placeholder") ?? "";
+    expect(placeholder).toContain("Décris l’idée de la vidéo");
+    expect(placeholder).not.toMatch(/\/ecrire|envoie/i);
+    expect(placeholder).not.toMatch(/miniature|croquis/i);
+  });
+
   it("opens on / even when selectionStart is still 0 (stale cursor after insert)", async () => {
     await render();
     const el = textarea();

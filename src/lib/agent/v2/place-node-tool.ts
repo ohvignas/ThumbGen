@@ -3,6 +3,7 @@ import { placeInterviewNode, placeNodeInputSchema, type PlaceNodeInput } from "@
 import type { ToolResult } from "@/lib/agent/tools/types";
 import type { CanvasPatch } from "@/lib/canvas/canvas-patch";
 import { debugLog } from "@/lib/debug-log";
+import { refuseWrongSurface } from "@/lib/studio/agent-surface";
 import { toolResultToModelOutput } from "./tool-adapter";
 
 export const PLACE_NODE_TOOL_NAME = "place_node";
@@ -12,6 +13,9 @@ export type WritePatch = (patch: CanvasPatch) => void;
 
 /** Places the node, broadcasts the patch, and answers the model in the app's ToolResult shape. */
 export async function executePlaceNode(projectId: string, input: PlaceNodeInput, writePatch: WritePatch): Promise<ToolResult> {
+  const refused = refuseWrongSurface(PLACE_NODE_TOOL_NAME, projectId);
+  if (refused) return refused;
+
   debugLog("agent", "place_node start", { projectId, nodeId: input.node?.id, type: input.node?.type });
   const outcome = await placeInterviewNode(projectId, input);
   if (!outcome.ok) {

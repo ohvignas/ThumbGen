@@ -3,7 +3,7 @@ import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { createAutoContinueGuard } from "./chat/should-auto-continue";
-import { useChatStore, type ChatAttachment } from "@/store/chat-store";
+import { useChatStore, conversationIdForProject, type ChatAttachment } from "@/store/chat-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import ChatHeader from "./chat/ChatHeader";
 import AgentAvatar from "./chat/AgentAvatar";
@@ -41,6 +41,12 @@ import {
 import { isBusyStatus } from "./chat/turn-model";
 import { applyAgentCanvasStreamPart } from "./chat/canvas-patch-part";
 import { clientToolNameOfPartType } from "@/lib/agent/client-tools";
+import { STUDIO_DRAFT_PATCH_PART, isStudioDraftPatch } from "@/lib/studio/draft-patch";
+import { agentSurfaceFromProjectId } from "@/lib/studio/agent-surface";
+import { toolNameFromPart } from "@/lib/studio/agent-phase";
+import { useStudioLiveStore } from "@/store/studio-live-store";
+import { consumePendingSend } from "@/lib/studio/pending-send";
+import { cn } from "cn";
 
 // Per-browser UI preference, so a minimised agent stays minimised on reload.
 const OPEN_STORAGE_KEY = "thumbgen.chat.open";
@@ -60,7 +66,8 @@ async function loadHistoryMessages(conversationId: string): Promise<UIMessage[]>
   return rowsToUIMessages(rows);
 }
 
-const isActiveConversation = (conversationId: string) => useChatStore.getState().activeConversationId === conversationId;
+const isActiveConversation = (conversationId: string, projectId: string) =>
+  conversationIdForProject(useChatStore.getState(), projectId) === conversationId;
 
 /**
  * Right-side chat panel. Mounted from Canvas, on the miniature page only.
@@ -73,7 +80,22 @@ const isActiveConversation = (conversationId: string) => useChatStore.getState()
  *   - At the end of any turn: canonical refetch of the history (skipped when
  *     the turn failed, so the failed message and its error stay visible).
  */
-export default function ChatPanel({ projectId }: { projectId: string }) {
+export default function ChatPanel({
+  projectId,
+  layout = "dock",
+  onToolName,
+  pendingSend = null,
+  onPendingSendConsumed,
+}: {
+  projectId: string;
+  layout?: "dock" | "overlay";
+  onToolName?: (name: string) => void;
+  pendingSend?: string | null;
+  onPendingSendConsumed?: () => void;
+}) {
+  const overlay = layout === "overlay";
+  const stagedPendingSendRef = useRef<string | null>(null);
+  const sentPendingSendRef = useRef<string | null>(null);
   const [open, setOpenState] = useState(readStoredOpen);
   const setOpen = useCallback((next: boolean) => {
     setOpenState(next);
@@ -84,7 +106,10 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     }
   }, []);
 
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const boundProjectId = useChatStore((s) => s.activeProjectId);
+  const storedActiveId = useChatStore((s) => s.activeConversationId);
+  if (boundProjectId !== projectId) useChatStore.getState().bindProject(projectId);
+  const activeConversationId = boundProjectId === projectId ? storedActiveId : null;
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
   const attachments = useChatStore((s) => s.attachments);
@@ -142,7 +167,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         read: () => lastStatus,
       },
       transport: createAgentChatTransport({
-        getConversationId: () => useChatStore.getState().activeConversationId,
+        getConversationId: () => conversationIdForProject(useChatStore.getState(), projectId),
         onReconnectStatus: (status) => {
           lastStatus = status;
         },
@@ -175,6 +200,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       applyAgentCanvasStreamPart(dataPart, {
         openProjectId: projectId,
       });
+      if (dataPart.type === STUDIO_DRAFT_PATCH_PART && isStudioDraftPatch(dataPart.data)) {
+        useStudioLiveStore.getState().applyPatch(dataPart.data);
+      }
     },
     onError: (turnError) => {
       turnFailedRef.current = true;
@@ -185,16 +213,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   const annotateImageUrl = useChatStore((s) => s.annotateImageUrl);
   const closeAnnotate = useChatStore((s) => s.closeAnnotate);
 
-  // When project changes, clear active conv so useConversations picks the new project's conversation.
-  useEffect(() => {
-    useChatStore.getState().setActive(null);
-  }, [projectId]);
-
   // Reconnects to the turn the server may be running for this conversation.
   // Never starts one: a GET that answers 204 when nothing runs.
   const resumeConversation = useCallback(
     async (conversationId: string, history: UIMessage[]) => {
-      if (!isActiveConversation(conversationId)) return;
+      if (!isActiveConversation(conversationId, projectId)) return;
       const listedRun = runsSnapshotRef.current.running.find((run) => run.conversationId === conversationId) ?? null;
       setStoppedConversationId(null);
       setOrphanConversationId(null);
@@ -209,19 +232,19 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
         return;
       }
       resumedConversationIdRef.current = null;
-      if (reconnectStatus.read() !== 204 || !isActiveConversation(conversationId)) return;
+      if (reconnectStatus.read() !== 204 || !isActiveConversation(conversationId, projectId)) return;
       const runsNow = await refreshRuns();
-      if (!isActiveConversation(conversationId)) return;
+      if (!isActiveConversation(conversationId, projectId)) return;
       const outcome = resumeWithoutStreamOutcome({ conversationId, listedRunningBefore: listedRun !== null, runsNow });
       let messages = history;
       if (outcome.refetch) {
         messages = await loadHistoryMessages(conversationId);
-        if (!isActiveConversation(conversationId)) return;
+        if (!isActiveConversation(conversationId, projectId)) return;
         setMessages(messages);
       }
       if (isOrphanUserTurn(messages, outcome.runningNow)) setOrphanConversationId(conversationId);
     },
-    [resumeStream, refreshRuns, setMessages, reconnectStatus],
+    [resumeStream, refreshRuns, setMessages, reconnectStatus, projectId],
   );
 
   // Load the persisted history when the active conversation changes, then
@@ -253,7 +276,7 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, setMessages, clearError, stop, resumeConversation]);
+  }, [activeConversationId, projectId, setMessages, clearError, stop, resumeConversation]);
 
   // The last message's pending client request, only in state "input-available"
   // (offering a resolution in any other state is unsafe — see chantier E), and
@@ -263,6 +286,18 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     () => pendingClientToolPart(chatMessages, { stoppedLive }),
     [chatMessages, stoppedLive],
   );
+
+  useEffect(() => {
+    for (const message of chatMessages) {
+      for (const part of message.parts ?? []) {
+        const name = toolNameFromPart(part);
+        if (name) {
+          useStudioLiveStore.getState().noteTool(name);
+          onToolName?.(name);
+        }
+      }
+    }
+  }, [chatMessages, onToolName]);
 
   // Resolves PendingUiAction's pending part via useChat's addToolOutput. `options.body`
   // is required: the auto-continuation goes through the same transport as a send.
@@ -328,12 +363,12 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     autoContinueGuard.release(answering.toolCallId);
     void (async () => {
       const messages = await loadHistoryMessages(conversationId);
-      if (!isActiveConversation(conversationId)) return;
+      if (!isActiveConversation(conversationId, projectId)) return;
       clearError();
       setMessages(messages);
       toast({ title: "La réponse n'a pas pu être envoyée" });
     })();
-  }, [status, clearError, setMessages, autoContinueGuard]);
+  }, [status, clearError, setMessages, autoContinueGuard, projectId]);
 
   // Canonical refetch for a resumed turn (client-request answer or reconnection),
   // once its status goes from busy back to ready (runTurn does it for the others).
@@ -354,11 +389,11 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     if (!refetch || conversationId === null) return;
     void (async () => {
       const messages = await loadHistoryMessages(conversationId);
-      if (!isActiveConversation(conversationId)) return;
+      if (!isActiveConversation(conversationId, projectId)) return;
       setMessages(messages);
       useChatStore.getState().bumpConversationListVersion();
     })();
-  }, [status, setMessages]);
+  }, [status, setMessages, projectId]);
 
   // Indicators elsewhere follow this page's turns without waiting for the next poll.
   // Not on the first render: the provider and useConversations already fetch then.
@@ -418,7 +453,8 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
 
   // Auto-create a conversation if none is active, so a send never needs a second click.
   const ensureConversation = useCallback(async (): Promise<string | null> => {
-    if (activeConversationId) return activeConversationId;
+    const existing = conversationIdForProject(useChatStore.getState(), projectId);
+    if (existing) return existing;
     const r = await fetch("/api/agent/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -427,9 +463,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
     if (!r.ok) return null;
     const conv = (await r.json()) as { id: string };
     createdConversationIdRef.current = conv.id;
-    useChatStore.getState().setActive(conv.id);
+    useChatStore.getState().setActive(conv.id, projectId);
     return conv.id;
-  }, [activeConversationId, projectId]);
+  }, [projectId]);
 
   // Attachments go as a sibling `attachments` field (stored:<id> references), not AI SDK file parts.
   const requestBody = useCallback(
@@ -458,13 +494,13 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       answeredToolCallIdsRef.current.clear();
       autoContinueGuard.clear();
       toast({ title: AGENT_BUSY_MESSAGE });
-      if (!isActiveConversation(conversationId)) return;
+      if (!isActiveConversation(conversationId, projectId)) return;
       const history = await loadHistoryMessages(conversationId);
-      if (!isActiveConversation(conversationId)) return;
+      if (!isActiveConversation(conversationId, projectId)) return;
       setMessages(history);
       await resumeConversation(conversationId, history);
     },
-    [clearError, setMessages, resumeConversation, autoContinueGuard],
+    [clearError, setMessages, resumeConversation, autoContinueGuard, projectId],
   );
 
   const runTurn = useCallback(
@@ -491,12 +527,12 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       if (turnFailedRef.current) return;
 
       const messages = await loadHistoryMessages(conversationId);
-      if (!isActiveConversation(conversationId)) return;
+      if (!isActiveConversation(conversationId, projectId)) return;
       setMessages(messages);
       // Picks up an auto-generated title (fire-and-forget on the first turn).
       useChatStore.getState().bumpConversationListVersion();
     },
-    [chatMessages, setMessages, recoverFromBusyConflict],
+    [chatMessages, setMessages, recoverFromBusyConflict, projectId],
   );
 
   // A 409 on a client-request answer (its automatic continuation, not a runTurn):
@@ -505,9 +541,9 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (status !== "error" || !busyConflictRef.current || sendInFlightRef.current) return;
     busyConflictRef.current = false;
-    const conversationId = useChatStore.getState().activeConversationId;
+    const conversationId = conversationIdForProject(useChatStore.getState(), projectId);
     if (conversationId) void recoverFromBusyConflict(conversationId);
-  }, [status, recoverFromBusyConflict]);
+  }, [status, recoverFromBusyConflict, projectId]);
 
   const onSend = useCallback(async () => {
     // Two send events before React re-renders (a double click, Enter + click)
@@ -534,6 +570,29 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       sendInFlightRef.current = false;
     }
   }, [ensureConversation, draft, attachments, setDraft, clearAttachments, runTurn, sendMessage, requestBody]);
+
+  useEffect(() => {
+    const consumed = consumePendingSend(pendingSend);
+    if (!consumed) {
+      stagedPendingSendRef.current = null;
+      sentPendingSendRef.current = null;
+      return;
+    }
+
+    // Stage the command in the store first so onSend's next render sees the
+    // same draft the Composer would send.
+    if (stagedPendingSendRef.current !== consumed.draft) {
+      stagedPendingSendRef.current = consumed.draft;
+      sentPendingSendRef.current = null;
+      setDraft(consumed.draft);
+      return;
+    }
+    if (sentPendingSendRef.current === consumed.draft) return;
+
+    sentPendingSendRef.current = consumed.draft;
+    void onSend();
+    onPendingSendConsumed?.();
+  }, [pendingSend, onPendingSendConsumed, onSend, setDraft]);
 
   const busy = isBusyStatus(status);
 
@@ -606,14 +665,23 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
       {/* Kept mounted while minimised so scroll position and any in-flight
           stream survive a minimise/reopen; `hidden` only removes it from view. */}
       <aside
-        hidden={!open}
-        className="fixed right-4 bottom-4 z-40 h-[min(640px,calc(100vh-2rem))] w-[400px] max-w-[calc(100vw-2rem)] origin-bottom-right animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
+        hidden={!overlay && !open}
+        className={cn(
+          overlay
+            ? "relative z-10 h-full min-h-0 w-full max-w-none origin-bottom-right"
+            : "fixed right-4 bottom-4 z-40 h-[min(640px,calc(100vh-2rem))] w-[400px] max-w-[calc(100vw-2rem)] origin-bottom-right",
+          "animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none",
+        )}
       >
         <Card className="flex h-full flex-col gap-0 overflow-hidden py-0 shadow-2xl">
           <ChatHeader projectId={projectId} status={status} onMinimize={() => setOpen(false)} />
 
           <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-            <MessageList messages={chatMessages} controls={controls} />
+            <MessageList
+              messages={chatMessages}
+              controls={controls}
+              surface={agentSurfaceFromProjectId(projectId)}
+            />
 
             {/* A pending client request stays visible, outside the folded steps, right above the composer. */}
             {pendingToolPart && (
@@ -622,12 +690,18 @@ export default function ChatPanel({ projectId }: { projectId: string }) {
           </CardContent>
 
           <CardFooter className="relative z-10 shrink-0 overflow-visible p-0">
-            <Composer onSend={onSend} status={status} onStop={onStop} inputRef={composerInputRef} />
+            <Composer
+              onSend={onSend}
+              status={status}
+              onStop={onStop}
+              inputRef={composerInputRef}
+              surface={agentSurfaceFromProjectId(projectId)}
+            />
           </CardFooter>
         </Card>
       </aside>
 
-      {!open && (
+      {!open && !overlay && (
         <Tooltip>
           <TooltipTrigger
             render={
