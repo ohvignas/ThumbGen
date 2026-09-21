@@ -248,7 +248,6 @@ describe("fetchVideos", () => {
       likeCount: 30,
       thumbnailUrl: "https://i.ytimg.com/vi/long0000001/mqdefault.jpg",
       liveBroadcastContent: "none",
-      description: "",
     });
     expect(batch.videos[1].likeCount).toBeNull();
     const call = fake.calls.find((entry) => entry.resource === "videos");

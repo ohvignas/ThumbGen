@@ -224,10 +224,20 @@ One process, one URL: **http://localhost:3000**. Do not run a second Next.js or 
 
 **Nouvelle machine:**
 
+Comments live on their own lines so the block pastes cleanly into zsh (a `#` after `cp` is parsed as extra arguments).
+
 ```bash
 git clone https://github.com/ohvignas/ThumbGen.git
 cd ThumbGen
-cp .env.example .env          # placeholders vides ; les clés se collent dans Réglages
+cp .env.example .env
+docker compose up -d --build
+```
+
+Empty placeholders; paste keys later in **Réglages**. If `git clone` fails because `ThumbGen` already exists, skip clone:
+
+```bash
+cd ThumbGen
+git pull
 docker compose up -d --build
 ```
 
@@ -265,8 +275,10 @@ Use **Réglages → Données & sauvegardes** to create and download a consistent
 git clone https://github.com/ohvignas/ThumbGen.git
 cd ThumbGen
 npm install
-npm run dev          # http://localhost:3000
+npm run dev
 ```
+
+Then open **http://localhost:3000**.
 
 Put keys in `.env.local` (same variable names as the [Configuration](#configuration) table) or in Réglages. The dev server uses `data/thumbgen.db` by default. Set `THUMBGEN_DB_PATH=/some/other/file.db` to work on a separate database.
 

@@ -305,11 +305,12 @@ export async function fetchVideos(
     if (Number.isNaN(published)) continue;
     const channelId = item.snippet?.channelId?.trim();
     if (!channelId) continue;
+    const description = (item.snippet?.description ?? "").trim().slice(0, 4000);
     videos.push({
       videoId: item.id,
       channelId,
       title: item.snippet?.title?.trim() || item.id,
-      description: (item.snippet?.description ?? "").trim().slice(0, 4000),
+      description,
       publishedAt: new Date(published).toISOString(),
       durationSeconds: parseIsoDuration(item.contentDetails?.duration),
       viewCount: toCount(item.statistics?.viewCount) ?? 0,
