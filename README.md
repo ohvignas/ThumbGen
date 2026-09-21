@@ -18,13 +18,14 @@ Wire a character, reference images, logos and prompts into a generator on an inf
 </div>
 
 > [!NOTE]
-> The interface is in French (« Mes miniatures », « Bibliothèque », « Réglages »…). The agent can answer in French, English, Spanish, German, Portuguese or Italian (Réglages → Agent IA).
+> The interface is in French (« Mes miniatures », « Vidéos », « Bibliothèque », « Réglages »…). The agent can answer in French, English, Spanish, German, Portuguese or Italian (Réglages → Agent IA).
 >
 > All screenshots use demo data: an illustrated character and generated placeholder thumbnails.
 
 ## Contents
 
 - [Features](#features)
+  - [In the app](#in-the-app)
   - [Canvas and nodes](#canvas-and-nodes)
   - [Generator and A/B/C tests](#generator-and-abc-tests)
   - [AI agent (Brainstorm)](#ai-agent-brainstorm)
@@ -44,9 +45,17 @@ Wire a character, reference images, logos and prompts into a generator on an inf
 
 ## Features
 
+### In the app
+
+- **Miniatures** (`/miniatures`) — thumbnail projects; each opens a node canvas. This is the home page.
+- **Vidéos** (`/videos`) — writing studio: script, titles, YouTube description, kanban/list. `/ecrire` in that chat.
+- **Inspirations** (`/bibliotheque?onglet=inspirations`) — YouTube search and followed-channel thumbnails (a Bibliothèque tab, not its own sidebar item).
+- **Bibliothèque** (`/bibliotheque`) — characters, logos, reference images.
+- **Réglages** (`/reglages`) — API keys under **Connexions des modèles**, plus agent, generation, channel, backups.
+
 ### Canvas and nodes
 
-Each video is a project (« miniature ») with its own canvas. The gallery lists them, most recently edited first, with the number of thumbnails each has produced.
+Each **Miniatures** project has its own canvas. The gallery lists them, most recently edited first, with the number of thumbnails each has produced.
 
 <img src="docs/screenshots/gallery.png" alt="Mes miniatures gallery with six projects" width="100%">
 
@@ -91,11 +100,14 @@ Open the chat from the button at the bottom right of a canvas. The agent runs on
 | `/create-prompt` | `create-prompt` | Write an image prompt and place it on the prompt node. `/create-propt` is the same command. |
 | `/miniature` | `thumbnail-packaging` | New thumbnail from scratch: promise, titles, overlay text, A/B packs. |
 | `/canvas` | `existing-workflow` | Analyse or change the open canvas. |
-| `/recherche` | `research_topic` | Brief the video topic (Perplexity Sonar Pro via OpenRouter, paid). |
+| `/ecrire` | `write_video` | **Vidéos only.** Fill the writing fiche (corpus, format, script, titles, description). |
+| `/recherche` | `research_topic` | Brief the video topic (Perplexity Sonar Pro, paid; Perplexity key or OpenRouter). |
 | `/concurrents` | `find_competitor_thumbnails` | Thumbnails that perform in the niche. |
 | `/script` | `extract_youtube_script` | Transcript of a pasted YouTube video. |
 | `/youtube` | `search_youtube` | Public YouTube search. |
 | `/logos` | `find_logos` | Find brands to place on the thumbnail. |
+
+On **Vidéos**, `/` also lists `/format`, `/titres`, `/desc`, `/scenario`. Canvas commands stay on the miniature canvas.
 
 You can still talk without a slash: « Aide-moi à construire la miniature de ma vidéo. » loads `thumbnail-packaging` the same way a natural request does.
 
@@ -129,7 +141,7 @@ Tools available to the agent:
 | `extract_youtube_script` | Fetch a video transcript |
 | `import_youtube_thumbnail` | Copy a video's thumbnail into the library as a reference |
 | `list_followed_videos` *(chat only)* | Followed-channel videos ranked by date or performance score |
-| `research_topic` *(chat only)* | Topic brief via Perplexity Sonar Pro on OpenRouter (paid) |
+| `research_topic` *(chat only)* | Topic brief via Perplexity Sonar Pro (Perplexity key, else OpenRouter; paid) |
 | `find_logos`, `add_logo` *(chat only)* | Search logo candidates, then save one into the library |
 | `find_competitor_thumbnails`, `analyze_thumbnails` *(chat only)* | Find and analyse competing thumbnails |
 
@@ -141,7 +153,7 @@ Brainstorm skills follow [progressive disclosure](https://docs.claude.com/en/doc
 
 This is **not** Cursor's personal `/` skills. Cursor `AGENTS.md` is for people (and coding agents) who edit this repository; it is never injected into Brainstorm.
 
-Skills live in `src/lib/agent/skills/`: one folder per tool (`generate_sketch`, `apply_workflow`, …) plus workflow skills (`thumbnail-packaging`, `existing-workflow`, `create-prompt`). The index is built at runtime from those folders — there is no hand-maintained list of `SKILL.md` files.
+Skills live in `src/lib/agent/skills/`: one folder per tool (`generate_sketch`, `apply_workflow`, …) plus workflow skills (`thumbnail-packaging`, `existing-workflow`, `create-prompt`, `write_video`). The index is built at runtime from those folders — there is no hand-maintained list of `SKILL.md` files.
 
 **Add a skill**
 
@@ -188,7 +200,7 @@ Filter by channel, type and period, sort by score, views or date, and use « Uti
 
 | Section | What you set |
 |---------|--------------|
-| Connexions des modèles | OpenRouter, OpenAI, YouTube Data API and Brandfetch keys, each with a « Tester » button |
+| Connexions des modèles | OpenRouter, OpenAI, YouTube Data API, Brandfetch, Perplexity, TypeSafe, and Google OAuth for « Ma chaîne ». Keys have a « Tester » button |
 | Agent IA | Model, web search, reasoning effort, max steps, auto titles, response language |
 | Génération d'images | Favourite model, default format, image count and resolution, automatic thumbnail classification |
 | Ma chaîne | Channel name, niche, audience, tone, brand colours, default character, extra instructions for the agent |
@@ -206,30 +218,26 @@ ThumbGen exposes its agent tools over the [Model Context Protocol](https://model
 
 ## Quick start with Docker
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose, Git, and an [OpenRouter API key](https://openrouter.ai/keys). The key is needed for generation, the agent and prompt enhancement, and you can add it after starting.
+**Prérequis / Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Compose, and Git. No API key is required to boot. OpenRouter (generation, agent, « Améliorer le prompt ») is pasted later in **Réglages → Connexions des modèles**.
 
 One process, one URL: **http://localhost:3000**. Do not run a second Next.js or Docker stack against the same `data/thumbgen.db`.
+
+**Nouvelle machine:**
 
 ```bash
 git clone https://github.com/ohvignas/ThumbGen.git
 cd ThumbGen
-
-# Optional: put your keys in .env (or leave them empty and use Réglages later)
-cat > .env <<'EOF'
-OPENROUTER_API_KEY=
-OPENAI_API_KEY=
-YOUTUBE_API_KEY=
-MCP_API_KEY=
-SITE_PASSWORD=
-EOF
-
+cp .env.example .env          # placeholders vides ; les clés se collent dans Réglages
 docker compose up -d --build
 ```
 
-Open **http://localhost:3000**. You land on « Mes miniatures ». If you left `.env` empty, go to **Réglages → Connexions des modèles**, paste your OpenRouter key, then click « Enregistrer » and « Tester ».
+Open **http://localhost:3000**. You land on « Mes miniatures ». Keys are optional at boot: **Réglages → Connexions des modèles**, then « Enregistrer » and « Tester ». Never commit the real `.env`; `.env.example` (empty placeholders) is tracked.
 
+**Retrouver le `.env` / Find `.env`:** from the repo that contains `docker-compose.yml`, run `npm run where-env` (or `sh scripts/where-env.sh` if Node isn’t installed). It prints the absolute paths of `.env` and `.env.example` and whether each file exists. Compose auto-loads `.env` from that directory; it does not require the file to boot.
+
+- **Worktrees:** if you use git worktrees, run Compose from the **main** repo (`git worktree list`), not a linked worktree. `./data` is relative to that directory.
 - **Port:** the container listens on `127.0.0.1:3000` only, so other machines can't reach it. Edit `ports` in `docker-compose.yml` to change that.
-- **Data:** everything (projects, library, generated images, chats, settings, keys saved in Réglages) lives in `./data/thumbgen.db`, bind-mounted into the container. In-app backups go to `./data/backups/`.
+- **Data:** everything (projects, library, generated images, chats, settings, keys saved in Réglages) lives in `./data/thumbgen.db`, bind-mounted into the container. `docker compose down` keeps `./data`. In-app backups go to `./data/backups/`.
 - **Logs:** `docker logs -f thumbgen`
 - **Stop:** `docker compose down` (your data stays in `./data`)
 
@@ -273,6 +281,7 @@ Do not run `npm run dev` on port 3000 while Docker already serves that port with
 | `npm run lint` | ESLint (`eslint-config-next`) |
 | `npx tsc --noEmit` | Type check (no dedicated script) |
 | `npm run migrate` | One-off import of the legacy JSON storage into SQLite |
+| `npm run where-env` | Absolute paths of `.env` / `.env.example` next to `docker-compose.yml` |
 
 ## Configuration
 
@@ -280,18 +289,20 @@ You only need OpenRouter to generate. Every secret can be set **either** as an e
 
 | Variable | Réglages | Required | Enables | Where to get it |
 |----------|----------|----------|---------|-----------------|
-| `OPENROUTER_API_KEY` | Connexions → OpenRouter | **Yes** (to generate) | Image generation, AI agent, « Améliorer le prompt », thumbnail classification, `research_topic` (Perplexity Sonar Pro) | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `OPENROUTER_API_KEY` | Connexions → OpenRouter | **Yes** (to generate) | Image generation, AI agent, « Améliorer le prompt », thumbnail classification, and `research_topic` when Perplexity is unset | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `OPENAI_API_KEY` | Connexions → OpenAI | No | Voice dictation in the chat (`gpt-4o-mini-transcribe`) | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | `YOUTUBE_API_KEY` | Connexions → YouTube Data API | No | Followed channels, performance scores, agent YouTube research | Google Cloud Console → enable **YouTube Data API v3** → Credentials → API key ([guide](https://developers.google.com/youtube/v3/getting-started)) |
+| `PERPLEXITY_API_KEY` | Connexions → Perplexity | No | `research_topic` (Sonar Pro). If unset, the same tool uses OpenRouter | [perplexity.ai/account/api/keys](https://www.perplexity.ai/account/api/keys) |
+| `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | Connexions (Google) then Ma chaîne | No | Connect « Ma chaîne » | Google Cloud Console OAuth client |
 | `BRANDFETCH_API_KEY` | Connexions → Brandfetch | No | Brandfetch results in the logo search | Free developer account at [brandfetch.com/developers](https://brandfetch.com/developers) (« Client ID ») |
 | `MCP_API_KEY` | Intégrations → Serveur MCP | No | Bearer token for `/api/mcp`. Generated on first use if unset; can be regenerated in Réglages | Any long random string |
 | `SITE_PASSWORD` | *(env only)* | No | Password gate for the whole app (except `/api/mcp`, which uses its bearer token) | Choose one |
 | `THUMBGEN_PUBLIC_HOST` | *(env only)* | No | Extra hostname allowed by the MCP server's Origin check (default: localhost only) | Your domain, without scheme or port |
 | `THUMBGEN_DB_PATH` | *(env only)* | No | Alternative SQLite file (default `data/thumbgen.db`) | A file path |
 
-`docker-compose.yml` passes `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `YOUTUBE_API_KEY`, `MCP_API_KEY` and `SITE_PASSWORD` into the container. With Docker, set the Brandfetch key in Réglages, or add `BRANDFETCH_API_KEY` / `THUMBGEN_PUBLIC_HOST` to the `environment:` list.
+`docker-compose.yml` interpolates `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `YOUTUBE_API_KEY`, `MCP_API_KEY`, `PERPLEXITY_API_KEY`, `SITE_PASSWORD`, `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` from the compose-directory `.env` (empty values are fine). Brandfetch and TypeSafe are set in Réglages, or add `BRANDFETCH_API_KEY` / `TYPESAFE_API_KEY` / `THUMBGEN_PUBLIC_HOST` to `environment:` if you need them in Docker.
 
-There is no separate Perplexity key: `research_topic` uses your OpenRouter key.
+`research_topic` uses the Perplexity key when set; otherwise OpenRouter.
 
 ## Costs
 
@@ -309,7 +320,7 @@ ThumbGen is free and self-hosted. The providers you connect bill you directly.
 
 A/B tests multiply by variants × images; the generator button shows the total before you click.
 
-**Paid when you send a message to the agent:** each turn uses tokens on the model you chose. Prices per million input/output tokens: Gemini 3.8 Flash $0.75/$3.75, Gemini 3.1 Pro $2/$12, Claude Sonnet 4.6 $3/$15, GPT-5 $5/$15, Claude Opus 4.7 $15/$75. A turn may also call `generate_sketch` (≈ $0.02 per draft), `research_topic` (Perplexity Sonar Pro via OpenRouter), and web search. The agent never starts a final generation on its own.
+**Paid when you send a message to the agent:** each turn uses tokens on the model you chose. Prices per million input/output tokens: Gemini 3.8 Flash $0.75/$3.75, Gemini 3.1 Pro $2/$12, Claude Sonnet 4.6 $3/$15, GPT-5 $5/$15, Claude Opus 4.7 $15/$75. A turn may also call `generate_sketch` (≈ $0.02 per draft), `research_topic` (Perplexity Sonar Pro via Perplexity or OpenRouter), and web search. The agent never starts a final generation on its own.
 
 **Other small costs:**
 
@@ -355,7 +366,7 @@ Every agent tool listed [above](#ai-agent-brainstorm) is exposed except the chat
 ```mermaid
 flowchart LR
   subgraph Browser
-    UI["Next.js pages<br/>miniatures · canvas · bibliothèque · réglages"]
+    UI["Next.js pages<br/>miniatures · vidéos · bibliothèque · réglages"]
     RF["React Flow canvas<br/>(Zustand store)"]
     Chat["Brainstorm chat<br/>slash picker · Fiche"]
   end
@@ -401,7 +412,7 @@ flowchart LR
 
 ```
 src/
-├── app/                  # Pages (miniatures, m/[id], bibliotheque, reglages/*, usage) and API routes
+├── app/                  # Pages (miniatures, m/[id], videos, bibliotheque, reglages/*, usage) and API routes
 ├── components/
 │   ├── Canvas.tsx        # React Flow canvas
 │   ├── nodes/            # Prompt, Personnage, image/logo, Croquis, Générateur, Aperçu, Texte overlay
@@ -432,6 +443,8 @@ docs/superpowers/specs/   # Design notes for each feature
 
 **`/` does nothing in the chat.** Focus the message field at the bottom of Brainstorm (not the OS or Cursor command palette). Type `/` at the start of the line or after a space; the picker should list `/croquis`, `/create-prompt`, and the other commands above.
 
+**Can't find `.env` / `.env` introuvable.** It lives next to `docker-compose.yml`, not inside the container. From that repo: `npm run where-env` (or `sh scripts/where-env.sh`). If the file is missing: `cp .env.example .env`. On a git worktree, run Compose from the main checkout (`git worktree list`) so `./data` is the live database.
+
 **« Non configurée », or the generator or agent says a key is missing.** Add the key in Réglages → Connexions des modèles and click « Tester ». With Docker and `.env`, make sure you rebuilt (`docker compose up -d --build`). A key saved in Réglages overrides the environment one.
 
 **Followed channels ask for a YouTube key, or stop with « Quota YouTube atteint ».** Add a YouTube Data API v3 key. When the daily quota runs out, sync stops cleanly and resumes the next day.
@@ -444,8 +457,6 @@ docs/superpowers/specs/   # Design notes for each feature
 
 **An agent change went wrong.** Open « Historique de l'agent » (clock icon in the bottom toolbar) and click « Restaurer » on an earlier snapshot. <kbd>⌘Z</kbd> also undoes recent canvas edits.
 
-**Start over with empty data.** Stop the app, move the `data/` folder somewhere safe (keep it until you're sure), and start again. A fresh database is created on launch.
-
 ## Contributing
 
 Issues and pull requests are welcome.
@@ -455,7 +466,7 @@ Issues and pull requests are welcome.
 3. Before opening a PR, run `npm test`, `npm run lint` and `npx tsc --noEmit`.
 4. Feature design notes live in `docs/superpowers/specs/`. Describe any user-visible change in the PR.
 
-Never commit `.env*` files or anything from `data/`: they hold API keys and your images.
+Never commit `.env`, `.env.local`, or anything from `data/`: they hold API keys and your images. Keep `.env.example` (empty placeholders) tracked.
 
 ## License
 
