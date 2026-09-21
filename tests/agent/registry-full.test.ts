@@ -32,6 +32,12 @@ describe("full registry", () => {
       "get_my_channel_knowledge",
       "search_my_channel",
       "get_my_video",
+      "list_studio_videos",
+      "get_studio_video",
+      "retrieve_own_corpus",
+      "upsert_studio_script",
+      "create_studio_video",
+      "link_studio_miniature",
     ];
     for (const name of expected) {
       expect(names, `tool "${name}" should be registered`).toContain(name);

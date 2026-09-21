@@ -49,15 +49,17 @@ describe("system prompt", () => {
     expect(AGENT_SYSTEM_PROMPT).not.toContain("French is the user's preferred language");
   });
 
-  it("returns the cached persona block, the language block, then the canvas block", () => {
+  it("returns the cached persona block, then language, agent_surface, and canvas", () => {
     const blocks = buildSystemMessages({ nodes: [], edges: [] });
-    expect(blocks).toHaveLength(3);
+    expect(blocks).toHaveLength(4);
     expect(blocks[0].cache_control).toEqual({ type: "ephemeral" });
     expect(blocks[1].text.startsWith("<response_language>")).toBe(true);
     expect(blocks[1].cache_control).toBeUndefined();
+    expect(blocks[2].text.startsWith("<agent_surface>")).toBe(true);
     expect(blocks[2].cache_control).toBeUndefined();
-    expect(blocks[2].text).toContain("<canvas_state>");
-    expect(blocks[2].text).toContain('"nodes": []');
+    expect(blocks[3].cache_control).toBeUndefined();
+    expect(blocks[3].text).toContain("<canvas_state>");
+    expect(blocks[3].text).toContain('"nodes": []');
   });
 
   it("snapshot serialization preserves node ids", () => {
@@ -68,13 +70,14 @@ describe("system prompt", () => {
     expect(blocks.at(-1)!.text).toContain('"id": "p-1"');
   });
 
-  it("injects project_id between the language block and canvas_state", () => {
+  it("injects project_id between agent_surface and canvas_state", () => {
     const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc");
-    expect(blocks).toHaveLength(4);
+    expect(blocks).toHaveLength(5);
     expect(blocks[1].text.startsWith("<response_language>")).toBe(true);
-    expect(blocks[2].text).toContain("<project_id>proj-abc</project_id>");
-    expect(blocks[2].text).toMatch(/Pass it as the `project_id` argument/);
-    expect(blocks[3].text).toContain("<canvas_state>");
+    expect(blockIndex(blocks, "<agent_surface>")).toBeLessThan(blockIndex(blocks, "<project_id>"));
+    expect(blocks[3].text).toContain("<project_id>proj-abc</project_id>");
+    expect(blocks[3].text).toMatch(/Pass it as the `project_id` argument/);
+    expect(blocks[4].text).toContain("<canvas_state>");
   });
 
   it("omits the project_id block when no projectId given", () => {
@@ -127,11 +130,12 @@ describe("<channel_profile>", () => {
 
   it("sits after the cached prompt and the language block, before project_id and canvas_state", () => {
     const blocks = buildSystemMessages({ nodes: [], edges: [] }, "proj-abc", PROFILE_PREFS);
-    expect(blocks).toHaveLength(5);
+    expect(blocks).toHaveLength(6);
     expect(blocks[0].cache_control).toEqual({ type: "ephemeral" });
     const profile = blockIndex(blocks, "<channel_profile>");
     expect(profile).toBeGreaterThan(blockIndex(blocks, "<response_language>"));
-    expect(profile).toBeLessThan(blockIndex(blocks, "<project_id>"));
+    expect(profile).toBeLessThan(blockIndex(blocks, "<agent_surface>"));
+    expect(blockIndex(blocks, "<agent_surface>")).toBeLessThan(blockIndex(blocks, "<project_id>"));
     expect(blockIndex(blocks, "<project_id>")).toBeLessThan(blockIndex(blocks, "<canvas_state>"));
   });
 

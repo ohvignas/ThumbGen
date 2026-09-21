@@ -137,3 +137,19 @@ export function pickConversationId(
   if (ended) return ended.conversationId;
   return conversations[0]?.id ?? null;
 }
+
+/**
+ * Conversation to show once this miniature's list arrived. A pointer from
+ * another project is never kept — a new miniature must open empty (or its own
+ * chats), not the previous transcript.
+ */
+export function nextActiveConversationId(
+  conversations: { id: string }[],
+  snapshot: AgentRunsSnapshot,
+  unseen: AttentionEntry[],
+  projectId: string,
+  currentActiveId: string | null,
+): string | null {
+  if (currentActiveId && conversations.some((conversation) => conversation.id === currentActiveId)) return currentActiveId;
+  return pickConversationId(conversations, snapshot, unseen, projectId);
+}

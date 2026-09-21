@@ -5,6 +5,7 @@ import path from "path";
 // Paid-call guards on the panel's wiring (behaviour itself is tested on the
 // pure modules it uses and checked in the browser with the fake model).
 const source = fs.readFileSync(path.join(process.cwd(), "src/components/panels/ChatPanel.tsx"), "utf8");
+const canvas = fs.readFileSync(path.join(process.cwd(), "src/components/Canvas.tsx"), "utf8");
 
 describe("ChatPanel wiring", () => {
   it("never lets useChat resume or send on its own", () => {
@@ -42,5 +43,17 @@ describe("ChatPanel wiring", () => {
     // useChat already stops its chat on unmount (local stream only).
     expect(source).not.toMatch(/return \(\) => \{\s*void stop\(\);\s*\};/);
     expect(source).toContain("if (refreshedStatusRef.current === status) return;");
+  });
+
+  it("passes the writing surface into empty state and composer", () => {
+    expect(source).toContain("surface={agentSurfaceFromProjectId(projectId)}");
+    expect(source).toMatch(/MessageList[\s\S]*surface=\{agentSurfaceFromProjectId\(projectId\)\}/);
+  });
+
+  it("scopes the open conversation to the miniature, so a send cannot reuse another project's id", () => {
+    expect(source).toContain("bindProject(projectId)");
+    expect(source).toContain("conversationIdForProject");
+    expect(source).not.toMatch(/useEffect\(\(\) => \{\s*useChatStore\.getState\(\)\.setActive\(null\);\s*\}, \[projectId\]\)/);
+    expect(canvas).toContain("<ChatPanel key={currentProjectId} projectId={currentProjectId} />");
   });
 });

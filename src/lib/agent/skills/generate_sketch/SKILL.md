@@ -89,7 +89,7 @@ Quote / paraphrase in one sentence; do not dump JSON.
 | Signal | Meaning | Do |
 |---|---|---|
 | `Clé API OpenRouter non configurée. Ajoute-la dans Réglages.` | No OpenRouter key. `requestNotSent`. | Tell them to add it in Réglages. Do not retry. |
-| `Esquisse refusée : limite de N croquis visibles atteinte sur le canvas.` | Cap `N` live sketch nodes already on the canvas. Handler never ran. Deleted drafts do not trigger this. | One sentence. Offer to place / iterate **without** another sketch. If the user sees fewer live croquis than N, call `get_canvas_state` — do not invent a session total. |
+| `Esquisse refusée : limite de N croquis visibles atteinte sur le canvas (id, …).` | Cap `N` live sketch nodes already on the canvas (ids listed). Handler never ran. Deleted drafts do not trigger this. | Name those ids. Offer to place / iterate **without** another sketch, or to delete one listed croquis (including off-screen leftovers). If the user sees fewer live croquis than N, those ids are still on the canvas — do not invent a session total. |
 | `Cannot resolve image_source <ref>: …` | Bad/missing `face_source` or `reference_sources`. `requestNotSent`. | `list_personas` / `list_logos` / `list_swipe_files` and pass a real ref. Persona with no photos → `Persona not found or has no photos: stored:persona_<id>`. |
 | `Network error: …` | Fetch threw. `requestNotSent`. | Retry **once**. Still failing → say the network dropped, no image billed. |
 | `OpenRouter API error <status>` | Provider answered. **Counted.** | Do not hammer. One sentence, suggest later or continue without a sketch. |
@@ -127,4 +127,4 @@ Success text includes `Reference: generated:sk_…` and `result_id: call_7`.
 
 `finish_turn`: summary that this is a **croquis**, `results: ["call_7"]`, ask_agent "Garder cette compo" / "Sans le texte". Do **not** trigger generation.
 
-Only if the tool returns `Esquisse refusée : limite de N croquis visibles atteinte sur le canvas.` **and** `liveSketchCount` is already N → say the live-canvas limit is reached and offer to place A without a new sketch. If the canvas shows fewer live croquis, that refusal did not happen — call the tool.
+Only if the tool returns `Esquisse refusée : limite de N croquis visibles atteinte sur le canvas (id, …).` **and** `liveSketchCount` is already N → say the live-canvas limit is reached, quote the listed ids, and offer to place A without a new sketch or to delete one of those croquis. If the canvas shows fewer live croquis, those ids may be off-screen leftovers — still count; do not invent a session total.

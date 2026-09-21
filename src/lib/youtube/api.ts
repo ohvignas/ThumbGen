@@ -316,7 +316,6 @@ export async function fetchVideos(
       likeCount: toCount(item.statistics?.likeCount),
       thumbnailUrl: item.snippet?.thumbnails?.medium?.url ?? youtubeThumbnailUrl(item.id),
       liveBroadcastContent: item.snippet?.liveBroadcastContent ?? "none",
-      description: item.snippet?.description?.trim() || "",
     });
   }
   return { videos, foundIds };

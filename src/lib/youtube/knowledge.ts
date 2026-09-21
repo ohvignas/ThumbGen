@@ -268,16 +268,16 @@ export async function summarizePendingVideos(
   return summarized;
 }
 
-function buildAnalysisPrompt(channelId: string): string {
+async function buildAnalysisPrompt(channelId: string): Promise<string> {
   const channel = store.getChannel(channelId);
   const videos = store
     .viewSamples(channelId)
     .slice()
     .sort((a, b) => b.viewCount - a.viewCount);
   const median = channelMedianViews(store.viewSamples(channelId), new Date());
-  const types = typesSummary("mine")
+  const types = (await typesSummary("mine")).rows
     .filter((row) => row.totalCount > 0)
-    .map((row) => `${row.type}: ${row.totalCount} (médiane ×${row.medianScore ?? "n/a"})`);
+    .map((row) => `${row.label}: ${row.totalCount} (médiane ×${row.medianScore ?? "n/a"})`);
   const analytics = knowledge.listChannelAnalytics(channelId);
   const top = knowledge.topTranscripts(channelId, 12);
   const titles = (
@@ -324,7 +324,7 @@ export async function generateChannelKnowledge(
 ): Promise<ChannelKnowledgeJson> {
   if (!client) throw new Error("Ajoute ta clé OpenRouter pour analyser la chaîne");
   await summarizePendingVideos(channelId, client, now);
-  const user = buildAnalysisPrompt(channelId);
+  const user = await buildAnalysisPrompt(channelId);
   const result = await completeJson(client, {
     system:
       "Tu es stratège YouTube. À partir des données d'une chaîne (titres, types de miniatures, stats, extraits de transcripts), produis un document de marque pour un agent qui crée des miniatures. Réponds uniquement avec le JSON demandé, en français, concret, sans filler.",

@@ -2,9 +2,18 @@ import { create } from "zustand";
 
 export type ChatAttachment = { source: string; preview_url: string };
 
-type ChatState = {
-  isOpen: boolean;
+export type ChatConversationPointer = {
   activeConversationId: string | null;
+  activeProjectId: string | null;
+};
+
+/** The open conversation only if it belongs to this miniature. */
+export function conversationIdForProject(state: ChatConversationPointer, projectId: string): string | null {
+  return state.activeProjectId === projectId ? state.activeConversationId : null;
+}
+
+type ChatState = ChatConversationPointer & {
+  isOpen: boolean;
   draft: string;
   attachments: ChatAttachment[];
   /** Bump to signal that the conversation list should refetch (e.g. after auto-rename). */
@@ -15,7 +24,9 @@ type ChatState = {
   open: () => void;
   close: () => void;
   toggle: () => void;
-  setActive: (id: string | null) => void;
+  /** Binds the panel to a miniature; drops another project's conversation pointer. */
+  bindProject: (projectId: string) => void;
+  setActive: (id: string | null, forProjectId?: string) => void;
   setDraft: (s: string) => void;
   addAttachment: (a: ChatAttachment) => void;
   removeAttachment: (source: string) => void;
@@ -31,6 +42,7 @@ export const useChatStore = create<ChatState>((set) => ({
   // but defaults to true and toggle/close are effectively no-ops.
   isOpen: true,
   activeConversationId: null,
+  activeProjectId: null,
   draft: "",
   attachments: [],
   conversationListVersion: 0,
@@ -40,8 +52,24 @@ export const useChatStore = create<ChatState>((set) => ({
   close: () => set({ isOpen: false }),
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
 
+  bindProject: (projectId) =>
+    set((s) =>
+      s.activeProjectId === projectId
+        ? s
+        : { activeProjectId: projectId, activeConversationId: null, draft: "", attachments: [] },
+    ),
+
   /** Switching conversation clears draft & attachments to avoid bleed-over. */
-  setActive: (id) => set({ activeConversationId: id, draft: "", attachments: [] }),
+  setActive: (id, forProjectId) =>
+    set((s) => {
+      if (forProjectId != null && s.activeProjectId != null && forProjectId !== s.activeProjectId) return s;
+      return {
+        activeConversationId: id,
+        draft: "",
+        attachments: [],
+        ...(forProjectId != null ? { activeProjectId: forProjectId } : {}),
+      };
+    }),
 
   setDraft: (draft) => set({ draft }),
 
@@ -59,5 +87,13 @@ export const useChatStore = create<ChatState>((set) => ({
   closeAnnotate: () => set({ annotateImageUrl: null }),
 
   reset: () =>
-    set({ isOpen: true, activeConversationId: null, draft: "", attachments: [], conversationListVersion: 0, annotateImageUrl: null }),
+    set({
+      isOpen: true,
+      activeConversationId: null,
+      activeProjectId: null,
+      draft: "",
+      attachments: [],
+      conversationListVersion: 0,
+      annotateImageUrl: null,
+    }),
 }));

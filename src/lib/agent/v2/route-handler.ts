@@ -33,6 +33,7 @@ import {
   buildInvokedSkillBlock,
   emptyInvokedUserMessage,
   resolveInvokedSkill,
+  skillHasOpenSubject,
 } from "@/lib/agent/skills/invoked-skill";
 import { slashRemainderAfterInvoke } from "@/lib/agent/skills/slash-query";
 import { buildSystemMessages } from "@/lib/agent/system-prompt";
@@ -49,6 +50,10 @@ import { getTypedSettings } from "@/lib/settings";
 import { getModelById } from "@/lib/agent/models";
 import { loadAgentPromptPrefs } from "@/lib/agent/prompt-prefs";
 import { startGcLoop } from "@/lib/agent/gc";
+import { refuseWrongSurface } from "@/lib/studio/agent-surface";
+import { getStudioVideo } from "@/lib/studio/store";
+import { STUDIO_DRAFT_PATCH_PART } from "@/lib/studio/draft-patch";
+import { studioDraftPatchFromVideos } from "./studio-draft-broadcast";
 import { rejectNonJsonRequest } from "@/lib/youtube/route-errors";
 
 if (typeof window === "undefined") startGcLoop();
@@ -267,7 +272,7 @@ const MAX_CHAT_BODY_BYTES = 10 * 1024 * 1024;
 
 type ChatRequestBody = {
   conversation_id?: string;
-  /** Ignored: the project comes from the stored conversation. */
+  /** Must match the stored conversation's project when present. */
   project_id?: string;
   // The wire shape the chat transport sends: only the LAST UIMessage, trimmed to
   // what is read here (chat-transport.ts trimMessageForServer); prior history is
@@ -328,6 +333,9 @@ export async function postV2(req: NextRequest): Promise<Response> {
 
   const conversation = getConversation(conversationId);
   if (!conversation) return new Response("Conversation introuvable", { status: 404 });
+  if (typeof body.project_id === "string" && body.project_id && body.project_id !== conversation.project_id) {
+    return new Response("Cette conversation appartient à une autre miniature", { status: 409 });
+  }
   const projectId = conversation.project_id;
 
   // One turn per conversation. Checked and registered synchronously, BEFORE any
@@ -344,6 +352,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
   let mentionedImages: MentionableImage[] = [];
   let ideaEmpty = false;
   let emptyModelUserText: string | null = null;
+  let isFirstTurn = false;
+  let firstUserText = "";
   let userParts: Array<
     { type: "text"; text: string } | { type: "file"; mediaType: string; data: string }
   >;
@@ -369,7 +379,11 @@ export async function postV2(req: NextRequest): Promise<Response> {
         .join("");
 
       const invoked = resolveInvokedSkill(lastMessageText);
-      ideaEmpty = Boolean(invoked && slashRemainderAfterInvoke(lastMessageText).length === 0);
+      ideaEmpty = Boolean(
+        invoked &&
+          slashRemainderAfterInvoke(lastMessageText).length === 0 &&
+          !skillHasOpenSubject(invoked.skill),
+      );
       invokedSkillBlock = invoked ? buildInvokedSkillBlock(invoked, { ideaEmpty }) : null;
       mentionedImages = resolveMentionedImages(
         lastMessageText,
@@ -401,7 +415,8 @@ export async function postV2(req: NextRequest): Promise<Response> {
       // Checked BEFORE appending the new user row: an empty conversation gets
       // exactly one auto-title attempt, on its first turn.
       const priorRowsForThisTurn = listMessages(conversationId);
-      const isFirstTurn = priorRowsForThisTurn.length === 0;
+      isFirstTurn = priorRowsForThisTurn.length === 0;
+      firstUserText = lastMessageText;
       if ((body.attachments ?? []).length === 0) {
         retriedUserRowIndex = findRetriedUserRowIndex(priorRowsForThisTurn, lastMessageText);
       }
@@ -541,6 +556,7 @@ export async function postV2(req: NextRequest): Promise<Response> {
       loadAgentPromptPrefs(),
       invokedSkillBlock,
       mentionedImages,
+      { isFirstTurn, firstUserText },
     );
     systemText = systemBlocks.map((b) => b.text).join("\n\n");
   } catch (e) {
@@ -607,7 +623,25 @@ export async function postV2(req: NextRequest): Promise<Response> {
               const t0 = Date.now();
               debugLog("agent", "tool start", { name, conversationId, projectId: run.projectId });
               try {
+                const refused = refuseWrongSurface(name, run.projectId);
+                if (refused) return refused;
+                const before =
+                  name === "upsert_studio_script" && input && typeof input === "object" && "video_id" in input
+                    ? getStudioVideo(String((input as { video_id: string }).video_id).replace(/^studio:/, ""))
+                    : null;
                 const result = await next(input);
+                if (name === "upsert_studio_script" && result.isError !== true && before) {
+                  const after = getStudioVideo(before.videoId);
+                  if (after && uiWriter) {
+                    const patch = studioDraftPatchFromVideos(before, after);
+                    uiWriter.write({
+                      type: STUDIO_DRAFT_PATCH_PART,
+                      id: patch.updatedAt,
+                      transient: true,
+                      data: patch,
+                    });
+                  }
+                }
                 const errorText =
                   result.isError === true
                     ? result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")

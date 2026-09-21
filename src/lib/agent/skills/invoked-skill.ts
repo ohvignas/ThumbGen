@@ -25,8 +25,20 @@ export function emptyInvokedUserMessage(invoked: InvokedSkill): string {
   ].join(" ");
 }
 
+/** Writing skills already have the open fiche — a bare slash is not an empty idea. */
+export function skillHasOpenSubject(skill: string): boolean {
+  return (
+    skill === "write_video" ||
+    skill === "studio_format" ||
+    skill === "studio_titles" ||
+    skill === "studio_description" ||
+    skill === "studio_script"
+  );
+}
+
 export function buildInvokedSkillBlock(invoked: InvokedSkill, options?: { ideaEmpty?: boolean }): string {
-  const ideaLines = options?.ideaEmpty
+  const ideaEmpty = Boolean(options?.ideaEmpty) && !skillHasOpenSubject(invoked.skill);
+  const ideaLines = ideaEmpty
     ? [
         "The user sent only the slash command with no extra description. The idea is EMPTY.",
         `You MUST call ask_user this turn to brainstorm (topic, subject, angle). Do NOT call ${invoked.skill} this turn. Do NOT call finish_turn in the same step as ask_user. Do not use web search.`,

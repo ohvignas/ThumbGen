@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getSetting } from "@/lib/settings";
+import { youtubeSearchLanguage } from "@/lib/youtube/search-regions";
 import { ToolDefinition, ToolContent } from "./types";
 import { registerTool } from "./index";
 
@@ -83,7 +84,7 @@ export const searchYoutubeTool: ToolDefinition<z.infer<typeof InputSchema>> = {
         limit: wantedLimit,
         duration: wantedDuration,
         region: wantedRegion === "any" ? null : wantedRegion,
-        language: wantedRegion === "any" ? null : wantedRegion.toLowerCase(),
+        language: wantedRegion === "FR" || wantedRegion === "US" ? youtubeSearchLanguage(wantedRegion) : null,
       });
       // Fallback ladder when FR is too sparse (typical for niche / new topics):
       //   1. drop region but keep relevanceLanguage=fr → French content from any country

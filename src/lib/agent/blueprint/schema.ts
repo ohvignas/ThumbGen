@@ -199,8 +199,9 @@ function checkVariantHandles(edges: EdgeInput[], nodesById: Map<string, NodeLike
 
 export const BlueprintSchema = z
   .object({
-    nodes: z.array(NodeSchema),
-    edges: z.array(EdgeSchema),
+    nodes: z.array(NodeSchema).default([]),
+    // Omit = add no edges. Updating nodes without touching the graph is valid.
+    edges: z.array(EdgeSchema).default([]),
   })
   .superRefine((bp, ctx) => {
     const seen = new Set<string>();
@@ -252,8 +253,9 @@ export function mergeBlueprintSchema(canvasNodes: CanvasNodeRef[], removeNodeIds
   return z
     .object({
       // `data` may be left out: an existing node given as { id, type } changes nothing.
-      nodes: z.array(z.preprocess(normalizeNode, NodeShape.extend({ data: NodeShape.shape.data.default({}) }))),
-      edges: z.array(EdgeSchema),
+      // Omit nodes/edges = []: update-only (or remove-only) calls need not resend the graph.
+      nodes: z.array(z.preprocess(normalizeNode, NodeShape.extend({ data: NodeShape.shape.data.default({}) }))).default([]),
+      edges: z.array(EdgeSchema).default([]),
     })
     .superRefine((bp, ctx) => {
       const seen = new Set<string>();

@@ -44,8 +44,15 @@ describe("MCP server (in-memory)", () => {
     expect(names).toContain("get_my_channel_knowledge");
     expect(names).toContain("search_my_channel");
     expect(names).toContain("get_my_video");
+    expect(names).toContain("list_studio_videos");
+    expect(names).toContain("get_studio_video");
+    expect(names).toContain("retrieve_own_corpus");
+    expect(names).toContain("upsert_studio_script");
+    expect(names).toContain("create_studio_video");
+    expect(names).toContain("link_studio_miniature");
     expect(names).not.toContain("list_face_reactions");
     expect(names).not.toContain("list_followed_videos");
+
   });
 
   it("calls list_logos through the transport (returns text content)", async () => {

@@ -111,6 +111,73 @@ describe("apply_workflow — non-destructive merge", () => {
     expect(snapshotRows()).toHaveLength(0);
   });
 
+  it("accepts node updates with no edges field (omitted = keep the graph)", async () => {
+    seed(
+      [
+        node("prompt-trophy-a", "prompt", 0, 0, { prompt: "old A" }),
+        node("prompt-trophy-b", "prompt", 0, 300, { prompt: "old B" }),
+        node("g-1", "generator", 400, 0, { model: "openai", aspectRatio: "16x9" }),
+      ],
+      [edge("prompt-trophy-a", "g-1", "prompt-in"), edge("prompt-trophy-b", "g-1", "prompt-in-b")],
+    );
+    const r = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: {
+        nodes: [
+          { id: "prompt-trophy-a", type: "prompt", data: { prompt: "new A" } },
+          { id: "prompt-trophy-b", type: "prompt", data: { prompt: "new B" } },
+        ],
+      },
+    });
+    expect(r.isError).toBeFalsy();
+    expect(text(r)).toContain("Applied: 0 created, 2 updated, 0 removed (kept 1 untouched).");
+    const { nodes, edges } = persisted();
+    expect(nodes.find((n) => n.id === "prompt-trophy-a")!.data.prompt).toBe("new A");
+    expect(nodes.find((n) => n.id === "prompt-trophy-b")!.data.prompt).toBe("new B");
+    expect(edges.map((e) => `${e.source}>${e.target}:${e.targetHandle}`).sort()).toEqual([
+      "prompt-trophy-a>g-1:prompt-in",
+      "prompt-trophy-b>g-1:prompt-in-b",
+    ]);
+  });
+
+  it("still accepts an explicit empty edges array when only updating nodes", async () => {
+    seed([node("p-1", "prompt", 0, 0, { prompt: "old" })], []);
+    const r = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [{ id: "p-1", type: "prompt", data: { prompt: "new" } }], edges: [] },
+    });
+    expect(r.isError).toBeFalsy();
+    expect(persisted().nodes[0].data.prompt).toBe("new");
+  });
+
+  it("still rejects a non-array edges field and other invalid blueprint shapes", async () => {
+    seed([node("p-1", "prompt", 0, 0, { prompt: "old" })], []);
+    const notArray = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: { nodes: [{ id: "p-1", type: "prompt", data: { prompt: "new" } }], edges: { source: "p-1" } },
+    });
+    expect(notArray.isError).toBe(true);
+    expect(text(notArray)).toMatch(/invalid blueprint/i);
+    expect(persisted().nodes[0].data.prompt).toBe("old");
+
+    const badEdge = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: {
+        nodes: [{ id: "p-1", type: "prompt", data: { prompt: "new" } }],
+        edges: [{ source: "p-1", target: "ghost" }],
+      },
+    });
+    expect(badEdge.isError).toBe(true);
+    expect(persisted().nodes[0].data.prompt).toBe("old");
+
+    const notObject = await applyWorkflowTool.handler({
+      project_id: projectId,
+      blueprint: [{ id: "p-1", type: "prompt" }],
+    });
+    expect(notObject.isError).toBe(true);
+    expect(persisted().nodes[0].data.prompt).toBe("old");
+  });
+
   it("updates an existing node in place: keeps position, imported image and generated images", async () => {
     seed(
       [

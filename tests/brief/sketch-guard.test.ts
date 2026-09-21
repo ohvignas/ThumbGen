@@ -4,7 +4,7 @@ import { createConversation } from "@/lib/agent/conversation/store";
 import { briefUpdateInputSchema } from "@/lib/brief/merge";
 import { emptyBrief } from "@/lib/brief/schema";
 import { getBrief, replaceBrief, updateBrief } from "@/lib/brief/store";
-import { countLiveSketchNodes } from "@/lib/canvas/live-sketches";
+import { countLiveSketchNodes, listLiveSketchNodeIds } from "@/lib/canvas/live-sketches";
 import { guardSketchHandler, sketchLimit, sketchRefusal } from "@/lib/brief/sketch-guard";
 import { getDb } from "@/lib/db";
 import { pkg } from "./fixtures";
@@ -38,11 +38,23 @@ describe("sketch guard", () => {
   it("computes the limit from variants and refuses only on live canvas count", () => {
     expect(sketchLimit(emptyBrief())).toBe(5);
     expect(sketchLimit({ ...emptyBrief(), variants: [{ key: "A", ...pkg() }, { key: "B", ...pkg() }] })).toBe(7);
-    expect(sketchRefusal({ ...emptyBrief(), step: 4 }, 0)).toBeNull();
-    expect(sketchRefusal({ ...emptyBrief(), step: 7 }, 4)).toBeNull();
-    expect(sketchRefusal({ ...emptyBrief(), step: 7, usage: { research: 0, competitorSearches: 0, analyses: 0, sketches: 5 } }, 1)).toBeNull();
-    expect(sketchRefusal({ ...emptyBrief(), step: 7, usage: { research: 0, competitorSearches: 0, analyses: 0, sketches: 5 } }, 5)).toBe(
-      "Esquisse refusée : limite de 5 croquis visibles atteinte sur le canvas.",
+    expect(sketchRefusal({ ...emptyBrief(), step: 4 }, [])).toBeNull();
+    expect(sketchRefusal({ ...emptyBrief(), step: 7 }, ["s1", "s2", "s3", "s4"])).toBeNull();
+    expect(
+      sketchRefusal({ ...emptyBrief(), step: 7, usage: { research: 0, competitorSearches: 0, analyses: 0, sketches: 5 } }, [
+        "only-live",
+      ]),
+    ).toBeNull();
+    expect(
+      sketchRefusal({ ...emptyBrief(), step: 7, usage: { research: 0, competitorSearches: 0, analyses: 0, sketches: 5 } }, [
+        "sketch-a",
+        "sketch-b",
+        "sketch-c",
+        "sketch-fire",
+        "sketch-desk",
+      ]),
+    ).toBe(
+      "Esquisse refusée : limite de 5 croquis visibles atteinte sur le canvas (sketch-a, sketch-b, sketch-c, sketch-fire, sketch-desk).",
     );
   });
 
@@ -50,7 +62,20 @@ describe("sketch guard", () => {
     const projectId = `proj-live-sketches-${uuid()}`;
     seedSketches(projectId, ["sketch-live"], ["sketch-dead-1", "sketch-dead-2", "sketch-dead-3", "sketch-dead-4"]);
     expect(countLiveSketchNodes(projectId)).toBe(1);
+    expect(listLiveSketchNodeIds(projectId)).toEqual(["sketch-live"]);
     expect(countLiveSketchNodes(`missing-${uuid()}`)).toBe(0);
+  });
+
+  it("does not count a deleted sketch id listed in deletedNodeIds", async () => {
+    const projectId = `proj-deleted-lab-${uuid()}`;
+    seedSketches(projectId, ["sketch-a", "sketch-b", "sketch-c", "sketch-fire"], ["sketch-lab"]);
+    expect(listLiveSketchNodeIds(projectId)).toEqual(["sketch-a", "sketch-b", "sketch-c", "sketch-fire"]);
+    expect(countLiveSketchNodes(projectId)).toBe(4);
+    const { conversationId } = briefAt(7, ["A"], projectId);
+    const handler = vi.fn(async () => ok);
+    const result = await guardSketchHandler(conversationId, handler)({ prompt: "variante bureau" });
+    expect(result).toBe(ok);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a conversation without a brief alone", async () => {
@@ -74,7 +99,7 @@ describe("sketch guard", () => {
     const result = await guardSketchHandler(conversationId, handler)({ prompt: "one too many" });
     expect(result.isError).toBe(true);
     expect((result.content[0] as { text: string }).text).toBe(
-      "Esquisse refusée : limite de 7 croquis visibles atteinte sur le canvas.",
+      "Esquisse refusée : limite de 7 croquis visibles atteinte sur le canvas (s1, s2, s3, s4, s5, s6, s7).",
     );
     expect(handler).not.toHaveBeenCalled();
   });

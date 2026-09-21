@@ -266,7 +266,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
 
       <CanvasEmptyState />
 
-      <ChatPanel projectId={currentProjectId} />
+      <ChatPanel key={currentProjectId} projectId={currentProjectId} />
 
       {menu && (
         <ContextMenu

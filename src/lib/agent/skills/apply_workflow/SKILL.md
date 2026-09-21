@@ -30,7 +30,7 @@ How you **ship** a design. MERGES into the open canvas; never replaces it. Snaps
 
 ## How
 
-`project_id` from `<project_id>`. `blueprint` is `{ nodes, edges }` (object; a JSON string is accepted if valid). Optional `remove_node_ids: string[]`, `remove_edges: { source, target, targetHandle }[]`.
+`project_id` from `<project_id>`. `blueprint` is `{ nodes, edges? }` (object; a JSON string is accepted if valid). Omit `edges` (or send `[]`) when you only update existing nodes — the graph is kept. Optional `remove_node_ids: string[]`, `remove_edges: { source, target, targetHandle }[]`.
 
 ### Merge
 
@@ -38,7 +38,7 @@ How you **ship** a design. MERGES into the open canvas; never replaces it. Snaps
 2. New id → CREATE. Needs **full** data (`image_source` on faceReference / swipeFile / sketch). New nodes are auto-laid out left-to-right among themselves, then placed **200px to the right** of the existing canvas. Existing nodes are never moved. Don't send `position`.
 3. Canvas nodes **not** in the blueprint are **kept** untouched. Send only what you add or change.
 4. `remove_node_ids`: delete those ids and their edges — **only** if the user asked. Unknown ids are ignored and reported. A node cannot be in both the blueprint and `remove_node_ids`.
-5. Existing edges stay. Blueprint edges are added, **deduped** on `source + target + targetHandle`, and may connect new nodes to existing canvas nodes. Disconnect with `remove_edges`. Duplicate edges in the same call are collapsed.
+5. Existing edges stay. **Omit `edges` (or send `[]`) when you are only updating nodes** — that is not an error; the graph is untouched. Blueprint edges are added, **deduped** on `source + target + targetHandle`, and may connect new nodes to existing canvas nodes. Disconnect with `remove_edges`. Duplicate edges in the same call are collapsed.
 
 Existing node given as `{ id, type }` (no `data`) is a no-op update — valid for wiring a new edge onto it. A **new** node still needs full data.
 
@@ -130,7 +130,7 @@ Nothing is written (no snapshot) on validation / conflict failure. Fix and retry
 | symptom | fix |
 | --- | --- |
 | `Invalid blueprint: received a string that is not valid JSON` | send the object, not a broken string |
-| `Invalid blueprint:` + Zod `format()` | missing `model` / `aspectRatio` / `image_source`; `count` > 4; bad `abTest`; duplicate node id |
+| `Invalid blueprint:` + Zod `format()` | missing `model` / `aspectRatio` / `image_source`; `count` > 4; bad `abTest`; duplicate node id. **Not** a missing `edges` field — omit `edges` when you only update nodes |
 | `Image source not found on node <id>: …` | `list_personas` / `list_logos` / `generate_sketch` first; use a real id |
 | `faceReference only accepts a Personnage` | `stored:persona_<id>`, never `stored:fr_*` |
 | `Unknown node id: <id> (not in the blueprint, and not on the canvas or removed…)` | both ends must exist after this call; don't edge to a removed id |
@@ -188,12 +188,11 @@ Two packages, shared face + logo, own prompts + sketches. `project_id` from `<pr
 
 Three variants: add `prompt-c` (and sketch/ref if they differ), set `abTest.variants` to `["A","B","C"]`, wire `prompt-in-c` / `sketch-in-c` / `ref-in-c`.
 
-Iterate an existing aperçu (`gen` + `prompt-1`; don't resend the face) — short delta, not a new scene:
+Iterate an existing aperçu (`gen` + `prompt-1`; don't resend the face) — short delta, not a new scene. `edges` omitted: existing wiring stays.
 
 ```json
 {
-  "nodes": [{ "id": "prompt-1", "type": "prompt", "data": { "prompt": "Change the overlay to INSTANT. Keep the rest of the thumbnail unchanged." } }],
-  "edges": []
+  "nodes": [{ "id": "prompt-1", "type": "prompt", "data": { "prompt": "Change the overlay to INSTANT. Keep the rest of the thumbnail unchanged." } }]
 }
 ```
 

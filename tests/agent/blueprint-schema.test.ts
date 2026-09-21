@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BlueprintSchema, ImageSourceSchema } from "@/lib/agent/blueprint/schema";
+import { BlueprintSchema, ImageSourceSchema, mergeBlueprintSchema } from "@/lib/agent/blueprint/schema";
 
 describe("ImageSource", () => {
   it.each([
@@ -129,6 +129,28 @@ describe("Blueprint", () => {
     }
   });
 
+  it("defaults omitted edges to an empty array", () => {
+    const result = BlueprintSchema.safeParse({
+      nodes: [{ id: "p-1", type: "prompt", data: { prompt: "hi" } }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.edges).toEqual([]);
+  });
+
+  it("defaults omitted nodes to an empty array", () => {
+    const result = BlueprintSchema.safeParse({ edges: [] });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.nodes).toEqual([]);
+  });
+
+  it("still rejects a non-array edges field", () => {
+    const result = BlueprintSchema.safeParse({
+      nodes: [{ id: "p-1", type: "prompt", data: { prompt: "hi" } }],
+      edges: { source: "p-1" },
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects duplicate node ids", () => {
     const bp = {
       nodes: [
@@ -142,5 +164,39 @@ describe("Blueprint", () => {
     if (!result.success) {
       expect(result.error.issues.some((i) => i.message.includes("Duplicate node id"))).toBe(true);
     }
+  });
+});
+
+describe("mergeBlueprintSchema", () => {
+  const canvas = [{ id: "p-1", type: "prompt", data: { prompt: "old" } }];
+
+  it("accepts node updates with no edges field", () => {
+    const result = mergeBlueprintSchema(canvas, new Set()).safeParse({
+      nodes: [{ id: "p-1", type: "prompt", data: { prompt: "new" } }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.edges).toEqual([]);
+  });
+
+  it("accepts an explicit empty edges array", () => {
+    const result = mergeBlueprintSchema(canvas, new Set()).safeParse({
+      nodes: [{ id: "p-1", type: "prompt", data: { prompt: "new" } }],
+      edges: [],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.edges).toEqual([]);
+  });
+
+  it("still rejects a non-array edges field and a malformed edge", () => {
+    const schema = mergeBlueprintSchema(canvas, new Set());
+    expect(schema.safeParse({ nodes: [{ id: "p-1", type: "prompt", data: { prompt: "new" } }], edges: {} }).success).toBe(
+      false,
+    );
+    expect(
+      schema.safeParse({
+        nodes: [{ id: "p-1", type: "prompt", data: { prompt: "new" } }],
+        edges: [{ source: "p-1" }],
+      }).success,
+    ).toBe(false);
   });
 });

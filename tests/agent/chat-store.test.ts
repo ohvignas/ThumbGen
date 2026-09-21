@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useChatStore } from "@/store/chat-store";
+import { conversationIdForProject, useChatStore } from "@/store/chat-store";
 
 beforeEach(() => useChatStore.getState().reset());
 
@@ -8,6 +8,7 @@ describe("chat store", () => {
     const s = useChatStore.getState();
     expect(s.isOpen).toBe(true);
     expect(s.activeConversationId).toBeNull();
+    expect(s.activeProjectId).toBeNull();
     expect(s.draft).toBe("");
     expect(s.attachments).toEqual([]);
   });
@@ -47,5 +48,24 @@ describe("chat store", () => {
     useChatStore.getState().clearAttachments();
     expect(useChatStore.getState().attachments).toEqual([]);
     expect(useChatStore.getState().draft).toBe("keep me");
+  });
+
+  it("bindProject drops another miniature's conversation so a send cannot reuse it", () => {
+    useChatStore.getState().setActive("conv-old", "proj-a");
+    useChatStore.getState().bindProject("proj-b");
+    const s = useChatStore.getState();
+    expect(s.activeProjectId).toBe("proj-b");
+    expect(s.activeConversationId).toBeNull();
+    expect(conversationIdForProject(s, "proj-b")).toBeNull();
+    expect(conversationIdForProject(s, "proj-a")).toBeNull();
+  });
+
+  it("ignores setActive for a miniature that is no longer open", () => {
+    useChatStore.getState().bindProject("proj-b");
+    useChatStore.getState().setActive("conv-old", "proj-a");
+    expect(useChatStore.getState().activeConversationId).toBeNull();
+    useChatStore.getState().setActive("conv-new", "proj-b");
+    expect(useChatStore.getState().activeConversationId).toBe("conv-new");
+    expect(conversationIdForProject(useChatStore.getState(), "proj-b")).toBe("conv-new");
   });
 });

@@ -13,8 +13,14 @@ export function loadLiveProjectCanvas(projectId: string): { nodes: FlowNode[]; e
   });
 }
 
+/** Live `type: "sketch"` node ids on the current canvas. Tombstones do not appear. */
+export function listLiveSketchNodeIds(projectId: string): string[] {
+  const live = loadLiveProjectCanvas(projectId);
+  if (!live) return [];
+  return live.nodes.filter((node) => node.type === "sketch").map((node) => node.id);
+}
+
 /** Visible `type: "sketch"` nodes on the current canvas. Tombstones do not count. */
 export function countLiveSketchNodes(projectId: string): number {
-  const live = loadLiveProjectCanvas(projectId);
-  return live ? countSketchNodes(live.nodes) : 0;
+  return listLiveSketchNodeIds(projectId).length;
 }

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/message-scroller";
 import AssistantTurn from "./AssistantTurn";
 import ChatEmptyState from "./ChatEmptyState";
+import type { AgentSurface } from "@/lib/studio/agent-surface";
 import Message, { AssistantRow, type ChatTurnControls } from "./Message";
 import TurnProgress from "./TurnProgress";
 import {
@@ -38,14 +39,22 @@ function PinChatToBottom({ lastUserId, turnActive }: { lastUserId: string; turnA
   return null;
 }
 
-export default function MessageList({ messages, controls }: { messages: UIMessage[]; controls: ChatTurnControls }) {
+export default function MessageList({
+  messages,
+  controls,
+  surface = "canvas",
+}: {
+  messages: UIMessage[];
+  controls: ChatTurnControls;
+  surface?: AgentSurface;
+}) {
   const stopped = stoppedTurnPlacement(messages, controls.stoppedLive, controls.liveTurnStart);
   const trailing = trailingAssistantRow(messages, controls.status, stopped, controls.orphanUserTurn ?? false);
 
   // Empty state only when nothing is going on: a first send that failed or is
   // running before its message shows still gets its trailing row.
   if (messages.length === 0 && !trailing) {
-    return <ChatEmptyState />;
+    return <ChatEmptyState surface={surface} />;
   }
 
   const groups = groupConsecutiveMessages(messages);

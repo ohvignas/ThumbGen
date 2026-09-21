@@ -13,7 +13,7 @@ export const listProjectsTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   handler: async () => {
     const rows = getDb()
       .prepare(
-        "SELECT id, name, created_at, updated_at FROM projects_meta ORDER BY updated_at DESC"
+        "SELECT id, name, created_at, updated_at FROM projects_meta WHERE id NOT LIKE 'studio:%' ORDER BY updated_at DESC"
       )
       .all() as { id: string; name: string; created_at: string; updated_at: string }[];
     if (rows.length === 0) {

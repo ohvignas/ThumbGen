@@ -52,7 +52,6 @@ const streamArgs = () => streamTextMock.mock.calls.at(-1)![0] as StreamArgs;
 
 const userTurn = (conversationId: string, text = "Salut", extra: Record<string, unknown> = {}) => ({
   conversation_id: conversationId,
-  project_id: "ignored-by-the-server",
   messages: [{ role: "user", parts: [{ type: "text", text }] }],
   canvas_snapshot: { nodes: [], edges: [] },
   ...extra,

@@ -39,6 +39,7 @@ describe("system prompt — finish_turn", () => {
     expect(blocks.slice(1).map((block) => block.text.split("\n")[0].replace(/>.*$/, ">"))).toEqual([
       "<response_language>",
       "<channel_profile>",
+      "<agent_surface>",
       "<project_id>",
       "<canvas_state>",
     ]);

@@ -4,7 +4,8 @@ vi.mock("youtube-transcript", () => ({
   YoutubeTranscript: { fetchTranscript: vi.fn(async () => []) },
 }));
 
-import { SLASH_SKILLS, lookupSlashToken } from "@/lib/agent/skills/slash-catalog";
+import { SLASH_SKILLS, lookupSlashToken, slashSkillsForSurface } from "@/lib/agent/skills/slash-catalog";
+import { filterSlashSkills } from "@/lib/agent/skills/slash-query";
 import { listSkillCatalog } from "@/lib/agent/skills/catalog";
 
 describe("slash catalog", () => {
@@ -56,5 +57,44 @@ describe("slash catalog", () => {
     expect(SLASH_SKILLS.some((entry) => entry.slash === "create-propt")).toBe(false);
     expect(lookupSlashToken("create-prompt")?.skill).toBe("create-prompt");
     expect(lookupSlashToken("create-propt")?.slash).toBe("create-prompt");
+  });
+
+  it("exposes /ecrire mapped to write_video", () => {
+    const row = SLASH_SKILLS.find((entry) => entry.slash === "ecrire");
+    expect(row).toEqual(
+      expect.objectContaining({
+        slash: "ecrire",
+        skill: "write_video",
+        title: "Écrire une vidéo",
+        aliases: ["write"],
+      }),
+    );
+    expect(lookupSlashToken("ecrire")?.skill).toBe("write_video");
+    expect(lookupSlashToken("write")?.slash).toBe("ecrire");
+  });
+
+  it("keeps /ecrire studio-only and never offers croquis on Vidéos", () => {
+    const studio = slashSkillsForSurface("studio");
+    const canvas = slashSkillsForSurface("canvas");
+    expect(studio.map((row) => row.slash)).toEqual(
+      expect.arrayContaining(["ecrire", "format", "titres", "desc", "scenario"]),
+    );
+    expect(studio.some((row) => row.skill === "generate_sketch")).toBe(false);
+    expect(studio.some((row) => row.slash === "croquis")).toBe(false);
+    expect(studio.some((row) => row.slash === "canvas")).toBe(false);
+    expect(canvas.some((row) => row.slash === "ecrire")).toBe(false);
+    expect(canvas.some((row) => row.slash === "croquis")).toBe(true);
+    expect(filterSlashSkills("", "studio").some((row) => row.slash === "croquis")).toBe(false);
+    expect(filterSlashSkills("cro", "studio")).toHaveLength(0);
+  });
+
+  it("marks writing slashes as Vidéos / studio, never miniatures", () => {
+    for (const slash of ["ecrire", "format", "titres", "desc", "scenario"]) {
+      const row = SLASH_SKILLS.find((entry) => entry.slash === slash);
+      expect(row, slash).toBeTruthy();
+      expect(row!.description).toMatch(/Vidéos|studio/i);
+      expect(row!.description).not.toMatch(/croquis|\bcanvas\b/i);
+      expect(row!.surfaces).toEqual(["studio"]);
+    }
   });
 });

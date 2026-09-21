@@ -17,6 +17,9 @@ import { imageModelLabel } from "@/lib/image-models";
 import { MODEL_COSTS } from "@/lib/model-costs";
 import { buildSkillsCatalogBlock } from "@/lib/agent/skills/catalog";
 import { buildMentionedImagesBlock, type MentionableImage } from "@/lib/canvas/mentionable-images";
+import { getStudioVideo } from "@/lib/studio/store";
+import { isWritingProjectId, videoIdFromWritingProject } from "@/lib/studio/types";
+import { buildStudioFirstTurnBlock } from "@/lib/studio/first-turn";
 
 /**
  * Prices of generator models (16x9, one image per variant), for skills and tests.
@@ -143,9 +146,58 @@ export function buildChannelKnowledgeBlock(prefs: Pick<AgentPromptPrefs, "channe
   if (!prefs.channelKnowledge) return null;
   return [
     "<channel_knowledge>",
-    "Analysed from the creator's connected YouTube channel (Réglages → Ma chaîne). Ground thumbnails in this. For a specific video, a transcript or a search, call get_my_channel_knowledge, search_my_channel or get_my_video — do not invent stats. Explicit requests in the conversation take precedence.",
+    "Analysed from the creator's connected YouTube channel (Réglages → Ma chaîne / Document de chaîne). Ground writing (hooks, titles, descriptions, spoken rhythm) and thumbnails in this. For a specific video, a transcript or a search, call get_my_channel_knowledge, search_my_channel, get_my_video or retrieve_own_corpus — do not invent stats or old videos. Explicit requests in the conversation take precedence.",
     neutralizeTags(prefs.channelKnowledge),
     "</channel_knowledge>",
+  ].join("\n");
+}
+
+export function buildStudioVideoBlock(projectId?: string): string | null {
+  if (!projectId || !isWritingProjectId(projectId)) return null;
+  const videoId = videoIdFromWritingProject(projectId);
+  if (!videoId) return null;
+  const video = getStudioVideo(videoId);
+  if (!video) {
+    return [
+      "<studio_video>",
+      `Open writing project ${neutralizeTags(projectId)} has no fiche. Call list_studio_videos or create_studio_video. Do not invent videos.`,
+      "You are the writing coach for this conversation. Do not run thumbnail-packaging unless they ask for a thumbnail. No 7-step journey.",
+      "Prefer write_video over create_studio_video when video_id is present.",
+      "</studio_video>",
+    ].join("\n");
+  }
+  return [
+    "<studio_video>",
+    `video_id: ${video.videoId}`,
+    `title: ${neutralizeTags(video.title)}`,
+    `etiquette: ${video.etiquette ?? "—"}`,
+    `youtube_url: ${neutralizeTags(video.youtubeUrl ?? "")}`,
+    `script_chars: ${video.draft.script.length}`,
+    `description_chars: ${video.draft.description.length}`,
+    "Follow write_video: use <studio_first_turn> on the first writing turn (already retrieved); otherwise retrieve_own_corpus before drafting. upsert_studio_script to save. Do not paste the full script into finish_turn.summary.",
+    "You are the writing coach for this fiche. Do not run thumbnail-packaging unless they ask for a thumbnail. No 7-step journey.",
+    "Prefer write_video over create_studio_video when video_id is present.",
+    "</studio_video>",
+  ].join("\n");
+}
+
+export function buildAgentSurfaceBlock(projectId?: string): string {
+  if (projectId && isWritingProjectId(projectId)) {
+    return [
+      "<agent_surface>",
+      "surface: studio (ThumbGen Vidéos / writing fiche).",
+      "Forbidden: generate_sketch, apply_workflow, place_node, get_canvas_state, view_canvas_images, list_past_generations, thumbnail-packaging, existing-workflow, create-prompt, /croquis.",
+      "Required loose arc via write_video: on the first writing turn, <studio_first_turn> already contains Document de chaîne + last videos/transcripts (get_my_channel_knowledge, retrieve_own_corpus, list_studio_videos). Treat those tools as already retrieved. Do not announce that you will go read them. Quote the hits, then ask production format with ask_user (studio_format). Then studio_titles / studio_description / studio_script with incremental upsert_studio_script. Same conversation after reveal: upsert any fiche field; link_studio_miniature for canvas A/B. Never generate_sketch.",
+      "Do not offer a 7-step journey. Do not mention Notion.",
+      "</agent_surface>",
+    ].join("\n");
+  }
+  return [
+    "<agent_surface>",
+    "surface: canvas (ThumbGen miniatures).",
+    "Forbidden: upsert_studio_script, create_studio_video. Do not fill a Vidéos fiche from this conversation.",
+    "Thumbnail skills (generate_sketch, apply_workflow, /croquis) are OK here.",
+    "</agent_surface>",
   ].join("\n");
 }
 
@@ -162,6 +214,7 @@ export function buildSystemMessages(
   prefs: AgentPromptPrefs = DEFAULT_AGENT_PROMPT_PREFS,
   invokedSkillBlock?: string | null,
   mentionedImages?: readonly MentionableImage[] | null,
+  options?: { isFirstTurn?: boolean; firstUserText?: string },
 ): Array<{
   type: "text";
   text: string;
@@ -179,10 +232,20 @@ export function buildSystemMessages(
   if (channelProfile) blocks.push({ type: "text", text: channelProfile });
   const channelKnowledge = buildChannelKnowledgeBlock(prefs);
   if (channelKnowledge) blocks.push({ type: "text", text: channelKnowledge });
+  const studio = buildStudioVideoBlock(projectId);
+  if (studio) blocks.push({ type: "text", text: studio });
+  blocks.push({ type: "text", text: buildAgentSurfaceBlock(projectId) });
+  if (options?.isFirstTurn && projectId && isWritingProjectId(projectId)) {
+    const firstTurn = buildStudioFirstTurnBlock(projectId, options.firstUserText ?? "");
+    if (firstTurn) blocks.push({ type: "text", text: firstTurn });
+  }
   if (projectId) {
+    const projectHint = isWritingProjectId(projectId)
+      ? "The project_id above is the open writing fiche (studio:<videoId>). Use get_studio_video and upsert_studio_script with its video_id. Do not pass it to apply_workflow, get_canvas_state or list_past_generations unless they ask for a thumbnail."
+      : "The project_id above identifies the current canvas. Pass it as the `project_id` argument to any tool that takes one (apply_workflow, get_canvas_state, list_past_generations, etc.).";
     blocks.push({
       type: "text",
-      text: `<project_id>${projectId}</project_id>\n\nThe project_id above identifies the current canvas. Pass it as the \`project_id\` argument to any tool that takes one (apply_workflow, get_canvas_state, list_past_generations, etc.).`,
+      text: `<project_id>${projectId}</project_id>\n\n${projectHint}`,
     });
   }
   blocks.push({
