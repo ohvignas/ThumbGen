@@ -52,4 +52,27 @@ describe("new-machine env onboarding", () => {
     expect(result.stdout).toContain(root);
     expect(result.stdout).toMatch(/no env_file/);
   });
+
+  it("keeps comments off the same line as commands in install bash blocks", () => {
+    for (const file of ["README.md", "INSTALL.md"]) {
+      const blocks = [...read(file).matchAll(/```bash\n([\s\S]*?)```/g)].map((match) => match[1]);
+      expect(blocks.length, file).toBeGreaterThan(0);
+      for (const block of blocks) {
+        for (const line of block.split("\n")) {
+          const command = line.trim();
+          if (!command || command.startsWith("#")) continue;
+          expect(command, `${file}: ${command}`).not.toMatch(/\s#/);
+        }
+      }
+    }
+  });
+
+  it("tells a machine that already has ThumbGen to git pull instead of clone", () => {
+    const readme = read("README.md");
+    const install = read("INSTALL.md");
+    expect(readme).toMatch(/already exists/);
+    expect(readme).toMatch(/git pull/);
+    expect(install).toMatch(/existe déjà/);
+    expect(install).toMatch(/git pull/);
+  });
 });

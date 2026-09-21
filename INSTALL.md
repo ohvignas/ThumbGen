@@ -4,10 +4,22 @@ Interface en français. Clés API **optionnelles au démarrage** : l’UI s’ou
 
 ## Nouvelle machine
 
+Les commentaires sont sur leur propre ligne : un `#` après `cp` est lu par zsh comme un argument (`cp: vides: Not a directory`).
+
 ```bash
 git clone https://github.com/ohvignas/ThumbGen.git
 cd ThumbGen
-cp .env.example .env          # fichier vide, sans clés — tu peux le laisser tel quel
+cp .env.example .env
+docker compose up -d --build
+```
+
+`.env` est un fichier vide, sans clés — tu peux le laisser tel quel et coller les clés dans Réglages.
+
+Si `git clone` échoue parce que le dossier `ThumbGen` existe déjà, ne reclones pas :
+
+```bash
+cd ThumbGen
+git pull
 docker compose up -d --build
 ```
 
@@ -28,8 +40,10 @@ Si tu utilises des **git worktrees**, lance Compose depuis le **dépôt principa
 Il est **à côté de** `docker-compose.yml` (pas dans `src/`, pas dans le conteneur).
 
 ```bash
-npm run where-env             # ou, sans Node :  sh scripts/where-env.sh
+npm run where-env
 ```
+
+Sans Node : `sh scripts/where-env.sh`.
 
 La commande affiche les chemins **absolus** de `.env` et `.env.example`, et s’ils existent.
 
