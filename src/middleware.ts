@@ -7,9 +7,28 @@ import {
   passwordMatches,
   shouldSecureCookie,
 } from "@/lib/auth/site-session";
+import { SETUP_TOKEN_QUERY, setupTokenMatchesHash } from "@/lib/auth/setup-token-edge";
 
 export async function middleware(request: NextRequest) {
   const SITE_PASSWORD = process.env.SITE_PASSWORD;
+  const path = request.nextUrl.pathname;
+
+  // One-time password setup: open only while a setup-token hash is configured,
+  // and (on GET) only when ?t= matches. No permanent open change route.
+  if (path === "/definir-mot-de-passe") {
+    const setupHash = process.env.SITE_PASSWORD_SETUP_TOKEN_HASH?.trim().toLowerCase() ?? "";
+    if (!setupHash) {
+      return new NextResponse("Not Found", { status: 404 });
+    }
+    if (request.method === "GET") {
+      const token = request.nextUrl.searchParams.get(SETUP_TOKEN_QUERY) ?? "";
+      if (!(await setupTokenMatchesHash(token, setupHash))) {
+        return new NextResponse("Not Found", { status: 404 });
+      }
+    }
+    // POST: do not read the body here (would consume it); the route re-checks the token.
+    return NextResponse.next();
+  }
 
   // Skip auth if no password is set
   if (!SITE_PASSWORD) return NextResponse.next();
@@ -22,7 +41,6 @@ export async function middleware(request: NextRequest) {
   // through here because cookies can't be used for cross-origin MCP clients.
   // Image-serving routes are exempted via the matcher below for the same reason
   // (cookies don't follow <img> requests reliably across all browsers).
-  const path = request.nextUrl.pathname;
   if (path === "/api/mcp" || path.startsWith("/api/mcp/")) return NextResponse.next();
 
   // Valid session cookie (verifier, not the raw password)
