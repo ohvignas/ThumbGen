@@ -231,13 +231,22 @@ describe("prompt node persistence", () => {
     expect(useCanvasStore.getState().dirty).toBe(false);
   });
 
-  it("does not tombstone a generator edge on a React Flow remount remove", () => {
+  it("applies React Flow edge remove via applyEdgeChanges (Delete / Backspace / deleteElements)", () => {
     const edge = { id: "e-prompt", source: prompt.id, target: "gen", targetHandle: "prompt-in" };
     seed([prompt, generator], [edge]);
     useCanvasStore.getState().onEdgesChange([{ type: "remove", id: edge.id }]);
-    expect(useCanvasStore.getState().edges.map((item) => item.id)).toEqual([edge.id]);
-    expect(useCanvasStore.getState().deletedEdgeIds).toEqual([]);
-    expect(useCanvasStore.getState().dirty).toBe(false);
+    expect(useCanvasStore.getState().edges).toEqual([]);
+    expect(useCanvasStore.getState().deletedEdgeIds).toEqual(["e-prompt"]);
+  });
+
+  it("does not restore a tombstoned edge when React Flow remounts with add", () => {
+    const edge = { id: "e-prompt", source: prompt.id, target: "gen", targetHandle: "prompt-in" };
+    seed([prompt, generator], [edge]);
+    useCanvasStore.getState().removeEdge("e-prompt");
+    expect(useCanvasStore.getState().edges).toEqual([]);
+    useCanvasStore.getState().onEdgesChange([{ type: "add", item: edge }]);
+    expect(useCanvasStore.getState().edges).toEqual([]);
+    expect(useCanvasStore.getState().deletedEdgeIds).toEqual(["e-prompt"]);
   });
 
   it("does not tombstone a selected prompt on a React Flow remount remove (user is editing it)", () => {
@@ -252,6 +261,44 @@ describe("prompt node persistence", () => {
     useCanvasStore.getState().deleteSelected();
     expect(useCanvasStore.getState().nodes.map((n) => n.id)).toEqual(["gen"]);
     expect(useCanvasStore.getState().deletedNodeIds).toEqual([prompt.id]);
+  });
+
+  it("tombstones a selected edge via deleteSelected and removeEdge", () => {
+    const edge = { id: "e-prompt", source: prompt.id, target: "gen", targetHandle: "prompt-in", selected: true };
+    seed([prompt, generator], [edge]);
+    useCanvasStore.getState().deleteSelected();
+    expect(useCanvasStore.getState().edges).toEqual([]);
+    expect(useCanvasStore.getState().deletedEdgeIds).toEqual(["e-prompt"]);
+
+    seed([prompt, generator], [{ ...edge, selected: false }]);
+    useCanvasStore.getState().removeEdge("e-prompt");
+    expect(useCanvasStore.getState().edges).toEqual([]);
+    expect(useCanvasStore.getState().deletedEdgeIds).toEqual(["e-prompt"]);
+  });
+
+  it("duplicateSelected copies edges between the selected nodes with new ids", () => {
+    seed(
+      [
+        { ...prompt, selected: true },
+        { ...generator, selected: true },
+      ],
+      [{ id: "e-prompt", source: prompt.id, target: "gen", targetHandle: "prompt-in" }],
+    );
+    const newIds = useCanvasStore.getState().duplicateSelected();
+    expect(newIds).toHaveLength(2);
+    const { nodes, edges } = useCanvasStore.getState();
+    expect(nodes).toHaveLength(4);
+    const promptCopy = nodes.find((node) => newIds.includes(node.id) && node.type === "prompt")!;
+    const genCopy = nodes.find((node) => newIds.includes(node.id) && node.type === "generator")!;
+    expect(promptCopy.selected).toBe(true);
+    expect(genCopy.selected).toBe(true);
+    expect(promptCopy.position).toEqual({ x: prompt.position.x + 80, y: prompt.position.y + 80 });
+    expect(genCopy.position).toEqual({ x: generator.position.x + 80, y: generator.position.y + 80 });
+    const copiedEdge = edges.find((edge) => edge.id !== "e-prompt")!;
+    expect(copiedEdge.source).toBe(promptCopy.id);
+    expect(copiedEdge.target).toBe(genCopy.id);
+    expect(copiedEdge.id).not.toBe("e-prompt");
+    expect(edges).toHaveLength(2);
   });
 
   it("does not adopt a server tombstone for a prompt still on the live canvas", async () => {

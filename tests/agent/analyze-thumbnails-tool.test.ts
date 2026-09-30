@@ -145,6 +145,20 @@ describe("analyze_thumbnails", () => {
     expect(create).toHaveBeenCalledTimes(2);
   });
 
+  it("accepts youtube: ids from the last competitor search", async () => {
+    const conversationId = conversationWithBrief();
+    saveCompetitorSearch(conversationId, [hit("cached00001")]);
+    saveThumbnailAnalysis("cached00001", analysis());
+    const create = vi.fn(async () => completion(JSON.stringify(analysis())));
+    const result = await executeAnalyzeThumbnails(
+      { conversationId, getClient: () => client(create) },
+      { video_ids: ["youtube:cached00001"] },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(create).not.toHaveBeenCalled();
+    expect(text(result)).toMatch(/Ce qui marche :/);
+  });
+
   it("does not fetch or log in fake mode", async () => {
     vi.mocked(isFakeAgentEnabled).mockReturnValue(true);
     const spy = vi.spyOn(generationsLog, "logGeneration");

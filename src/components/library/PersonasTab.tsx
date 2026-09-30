@@ -43,34 +43,30 @@ export default function PersonasTab() {
   const visible = items ? filterBySearch(items, (persona) => persona.label, query) : null;
 
   // Webcam wizard (3 angles + name) and per-angle import (front required) share this.
+  // Photos are persisted as sent: "Retirer le fond" is optional in the dialog.
+  // A failed strip must never block or silently abort the save.
   const savePersona = async (photos: Partial<Record<PersonaAngle, string>>, name: string) => {
+    if (!PERSONA_ANGLES.some((angle) => photos[angle])) {
+      setError("Ajoute au moins une photo du personnage.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const { stripPhotoBackgrounds } = await import("@/lib/remove-bg");
-      let ready = photos;
-      try {
-        ready = await stripPhotoBackgrounds(photos, PERSONA_ANGLES);
-      } catch {
-        setError("Impossible de retirer le fond — réessaie.");
-        return;
-      }
       const res = await fetch("/api/personas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: name || `Personnage ${(items?.length ?? 0) + 1}`, photos: ready }),
+        body: JSON.stringify({ label: name || `Personnage ${(items?.length ?? 0) + 1}`, photos }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         setError(body.error ?? "Échec de l'enregistrement du personnage — réessaie.");
-        setCreation(null);
         return;
       }
       setCreation(null);
       await reload();
     } catch {
       setError("Échec de l'enregistrement du personnage — vérifie ta connexion et réessaie.");
-      setCreation(null);
     } finally {
       setSaving(false);
     }
@@ -246,7 +242,9 @@ export default function PersonasTab() {
         </DialogContent>
       </Dialog>
 
-      {creation === "webcam" && <WebcamCaptureModal onClose={() => setCreation(null)} onComplete={savePersona} />}
+      {creation === "webcam" && (
+        <WebcamCaptureModal onClose={() => setCreation(null)} onComplete={savePersona} saveError={error} />
+      )}
 
       {creation === "import" && (
         <PersonaImportDialog
@@ -254,6 +252,7 @@ export default function PersonasTab() {
           prepareFile={(file) => fileToDataUrl(file, PHOTO_IMPORT)}
           onSubmit={savePersona}
           saving={saving}
+          saveError={error}
         />
       )}
 

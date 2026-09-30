@@ -53,11 +53,7 @@ export function useCanvasShortcuts({ onAutoLayout }: { onAutoLayout: () => void 
           return;
         case "duplicate": {
           event.preventDefault();
-          const newIds = store.nodes
-            .filter((candidate) => candidate.selected)
-            .map((node) => store.duplicateNode(node.id))
-            .filter((id) => id !== "");
-          if (newIds.length > 0) store.selectOnly(newIds);
+          store.duplicateSelected();
           return;
         }
         case "delete":

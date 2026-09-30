@@ -82,8 +82,9 @@ describe("hasOpenOverlay", () => {
     expect(hasOpenOverlay(fakeDoc(['[data-open] [role="listbox"]']))).toBe(true);
   });
 
-  it("detects a dialog even when no listbox is present", () => {
-    expect(hasOpenOverlay(fakeDoc(['[role="dialog"]']))).toBe(true);
+  it("detects an open dialog even when no listbox is present", () => {
+    expect(hasOpenOverlay(fakeDoc(['[data-open][role="dialog"]']))).toBe(true);
+    expect(hasOpenOverlay(fakeDoc(['[data-open] [role="dialog"]']))).toBe(true);
   });
 
   it("returns false when none of the overlay selectors match anything", () => {
@@ -107,6 +108,16 @@ describe("hasOpenOverlay", () => {
       },
     };
     expect(hasOpenOverlay(closedButMountedListboxDoc)).toBe(false);
+  });
+
+  it("does not treat a closed-but-still-mounted dialog (NodePicker / Logs sheet) as an overlay", () => {
+    const closedButMountedDialogDoc = {
+      querySelector(selectors: string): Element | null {
+        const parts = selectors.split(",").map((s) => s.trim());
+        return parts.includes('[role="dialog"]') ? ({} as Element) : null;
+      },
+    };
+    expect(hasOpenOverlay(closedButMountedDialogDoc)).toBe(false);
   });
 });
 

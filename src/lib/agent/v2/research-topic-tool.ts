@@ -23,12 +23,13 @@ import type { ToolResult } from "@/lib/agent/tools/types";
 import { isFakeAgentEnabled } from "./fake-agent-model";
 import { FAKE_RESEARCH } from "./fake-f3b-fixtures";
 import { toolResultToModelOutput } from "./tool-adapter";
+import { normalizeResearchLanguage } from "./search-args";
 
 export const RESEARCH_TOPIC_TOOL_NAME = "research_topic";
 
 export const researchTopicInputSchema = z.object({
   query: z.string().trim().min(1).max(300),
-  language: z.enum(["fr", "en"]),
+  language: z.preprocess((value) => normalizeResearchLanguage(value) ?? "fr", z.enum(["fr", "en"])),
   refresh: z.boolean().optional(),
 });
 export type ResearchTopicInput = z.output<typeof researchTopicInputSchema>;

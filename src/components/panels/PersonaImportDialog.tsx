@@ -20,23 +20,41 @@ export default function PersonaImportDialog({
   prepareFile,
   onSubmit,
   saving,
+  saveError,
 }: {
   onClose: () => void;
   prepareFile: (file: File) => Promise<string>;
   onSubmit: (photos: Partial<Record<PersonaAngle, string>>, name: string) => Promise<void>;
   saving: boolean;
+  saveError?: string | null;
 }) {
   const [photos, setPhotos] = useState<Partial<Record<PersonaAngle, string>>>({});
   const [name, setName] = useState("");
   const [removingBg, setRemovingBg] = useState(false);
   const [bgError, setBgError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   const hasPhoto = PERSONA_ANGLES.some((angle) => photos[angle]);
+  const formError = localError ?? saveError ?? null;
 
   const pick = async (angle: PersonaAngle, file: File | undefined) => {
     if (!file) return;
-    const dataUrl = await prepareFile(file);
-    setBgError(null);
-    setPhotos((previous) => ({ ...previous, [angle]: dataUrl }));
+    try {
+      const dataUrl = await prepareFile(file);
+      setBgError(null);
+      setLocalError(null);
+      setPhotos((previous) => ({ ...previous, [angle]: dataUrl }));
+    } catch {
+      setLocalError("Image illisible — choisis un JPEG, PNG ou WebP.");
+    }
+  };
+
+  const submit = () => {
+    if (!photos.front) {
+      setLocalError("La photo de face est obligatoire.");
+      return;
+    }
+    setLocalError(null);
+    void onSubmit(photos, name.trim());
   };
 
   const stripBackgrounds = async () => {
@@ -116,13 +134,14 @@ export default function PersonaImportDialog({
             {removingBg ? REMOVING_BG_LABEL : REMOVE_BG_LABEL}
           </Button>
           {bgError && <p className="text-sm text-destructive">{bgError}</p>}
+          {formError && <p className="text-sm text-destructive">{formError}</p>}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onClose}>
             Annuler
           </Button>
-          <Button disabled={!photos.front || saving || removingBg} onClick={() => void onSubmit(photos, name.trim())}>
+          <Button type="button" disabled={!hasPhoto || saving || removingBg} onClick={submit}>
             {saving ? "Enregistrement…" : "Créer le personnage"}
           </Button>
         </DialogFooter>

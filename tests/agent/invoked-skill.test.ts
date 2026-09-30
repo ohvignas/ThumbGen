@@ -10,17 +10,23 @@ import { AGENT_SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
 const BODY_MARKER = "graphite-on-paper";
 
 describe("skillHasOpenSubject", () => {
-  it("is true for all five writing skills and false for generate_sketch", () => {
+  it("is true for writing and search skills and false for generate_sketch", () => {
     for (const skill of [
       "write_video",
       "studio_format",
       "studio_titles",
       "studio_description",
       "studio_script",
+      "research_topic",
+      "find_competitor_thumbnails",
+      "search_youtube",
+      "find_logos",
+      "analyze_thumbnails",
     ]) {
       expect(skillHasOpenSubject(skill), skill).toBe(true);
     }
     expect(skillHasOpenSubject("generate_sketch")).toBe(false);
+    expect(skillHasOpenSubject("thumbnail-packaging")).toBe(false);
   });
 });
 
@@ -64,6 +70,17 @@ describe("buildInvokedSkillBlock", () => {
     expect(block).toContain("brainstorm");
     expect(block).not.toContain("Étape n/7");
     expect(block.endsWith("</invoked_skill>")).toBe(true);
+  });
+
+  it("lets /recherche and /concurrents run instead of blocking as an empty idea", () => {
+    for (const slash of ["/recherche", "/concurrents", "/youtube"]) {
+      const invoked = resolveInvokedSkill(slash)!;
+      expect(invoked, slash).toBeTruthy();
+      const block = buildInvokedSkillBlock(invoked, { ideaEmpty: true });
+      expect(block, slash).not.toContain("The idea is EMPTY");
+      expect(block, slash).not.toContain(`Do NOT call ${invoked.skill} this turn`);
+      expect(block, slash).toContain("Follow it this turn");
+    }
   });
 
   it("lets /ecrire follow write_video even when the remainder is empty", () => {

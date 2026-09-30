@@ -36,15 +36,13 @@ export function isEditableTarget(target: EventTarget | null): boolean {
  * this a shortcut key typed while it's open (like the picker's « n ») would
  * still fire.
  *
- * The listbox part is scoped to `[data-open] [role="listbox"]`, not a bare
- * `[role="listbox"]`: Base UI keeps a Select's listbox mounted in the DOM
- * (0×0, inert) after it closes instead of removing it — only its `[data-open]`
- * wrapper flips to `data-closed`. A bare role selector would therefore stay
- * "open" forever after the first time any Select is opened in the session,
- * silently disabling every shortcut but Escape from then on.
+ * Dialog / menu / listbox parts are scoped to `[data-open]`: Base UI keeps
+ * Sheet and Select popups mounted (inert, `data-closed`) after they close.
+ * A bare `[role="dialog"]` would match the always-mounted NodePicker and
+ * Logs sheets and silently disable Delete / Backspace for the whole session.
  */
 export const OVERLAY_SELECTOR =
-  '[role="dialog"], [role="alertdialog"], [role="menu"], [data-open] [role="listbox"], .excalidraw';
+  '[data-open][role="dialog"], [data-open] [role="dialog"], [data-open][role="alertdialog"], [data-open] [role="alertdialog"], [data-open][role="menu"], [data-open] [role="menu"], [data-open] [role="listbox"], .excalidraw';
 
 export function hasOpenOverlay(doc: { querySelector(selectors: string): Element | null }): boolean {
   return doc.querySelector(OVERLAY_SELECTOR) !== null;

@@ -22,10 +22,22 @@ import type { ToolResult } from "@/lib/agent/tools/types";
 import { isFakeAgentEnabled } from "./fake-agent-model";
 import { FAKE_COMPETITION } from "./fake-f3b-fixtures";
 import { toolResultToModelOutput } from "./tool-adapter";
+import { bareYoutubeVideoId } from "./search-args";
 
 export const ANALYZE_THUMBNAILS_TOOL_NAME = "analyze_thumbnails";
 export const analyzeThumbnailsInputSchema = z.object({
-  video_ids: z.array(z.string().trim().min(6).max(20)).min(1).max(12),
+  video_ids: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(32)
+        .transform(bareYoutubeVideoId)
+        .pipe(z.string().min(6).max(20)),
+    )
+    .min(1)
+    .max(12),
 });
 export type AnalyzeThumbnailsInput = z.output<typeof analyzeThumbnailsInputSchema>;
 export type AnalyzeClient = Pick<OpenAI, "chat">;
@@ -182,7 +194,7 @@ export async function executeAnalyzeThumbnails(
   if (!search || search.length === 0) return error("Aucune recherche de concurrents à analyser. Relance find_competitor_thumbnails.", true);
 
   const byId = new Map(search.map((row) => [row.videoId, row]));
-  const requested = [...new Set(input.video_ids)].filter((id) => byId.has(id)).slice(0, 12);
+  const requested = [...new Set(input.video_ids.map(bareYoutubeVideoId))].filter((id) => byId.has(id)).slice(0, 12);
   if (requested.length === 0) return error("Aucun identifiant ne correspond à la dernière recherche.", true);
 
   const cached: Array<{ hit: CompetitorHit; analysis: ThumbAnalysis }> = [];

@@ -34,6 +34,7 @@ Wire a character, reference images, logos and prompts into a generator on an inf
   - [Réglages (settings)](#réglages-settings)
   - [MCP server](#mcp-server)
 - [Quick start with Docker](#quick-start-with-docker)
+- [Updating on a machine that already has ThumbGen](#updating-on-a-machine-that-already-has-thumbgen)
 - [Local development without Docker](#local-development-without-docker)
 - [Configuration](#configuration)
 - [Costs](#costs)
@@ -251,21 +252,33 @@ Open **http://localhost:3000**. You land on « Mes miniatures ». Keys are optio
 - **Logs:** `docker logs -f thumbgen`
 - **Stop:** `docker compose down` (your data stays in `./data`)
 
-**Update**
-
-```bash
-git pull
-docker compose up -d --build
-```
-
-The database schema is created and migrated automatically on start.
-
 **Back up**
 
 Use **Réglages → Données & sauvegardes** to create and download a consistent backup while the app runs. Or stop the container and copy the whole `data/` folder (SQLite runs in WAL mode: if `thumbgen.db-wal` and `thumbgen.db-shm` exist, copy them with the `.db`).
 
 > [!IMPORTANT]
 > `OPENAI_API_KEY`, `YOUTUBE_API_KEY` and `SITE_PASSWORD` are also passed as build arguments. After changing `.env`, run `docker compose up -d --build`, not just `restart`.
+
+## Updating on a machine that already has ThumbGen
+
+There is **no in-app one-click update**. Giving the Next.js process permission to run `git` or `docker` on the host would be unsafe. Réglages → Données & sauvegardes shows the same command to copy.
+
+From the repo folder (the one that contains `docker-compose.yml`):
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+If the shell is not already in that folder:
+
+```bash
+cd ThumbGen
+git pull
+docker compose up -d --build
+```
+
+`--build` is required: a container restart without a rebuild does not pick up JS/TS changes. The database schema is created and migrated automatically on start. `./data` (including `thumbgen.db`) is not in git and is left untouched.
 
 ## Local development without Docker
 

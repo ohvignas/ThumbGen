@@ -68,7 +68,7 @@ Leave the default on when you will comment on design. Set `false` only to harves
 | Value | First request | Fallback if first pass returns fewer than 4 hits |
 |---|---|---|
 | `FR` (default) | `regionCode=FR` + `relevanceLanguage=fr` | 1) drop region, keep `fr` → header `fr (langue, toutes régions)`; 2) if still under 4, drop language → `any (aucun match FR)` |
-| `US` | `regionCode=US` + `relevanceLanguage=us` | none |
+| `US` | `regionCode=US` + `relevanceLanguage=en` | none |
 | `any` | no region, no language | none |
 
 Fallback runs **only** for default/explicit `FR`. Each extra `search.list` costs another 100 units. Header adds `(fallback global après FR < 4 résultats)` when a fallback was kept.
