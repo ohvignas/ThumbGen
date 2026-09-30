@@ -9,6 +9,7 @@ import {
   useStoreApi,
   type NodeMouseHandler,
   type OnConnectEnd,
+  type EdgeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -20,7 +21,7 @@ import GeneratorNode from "./nodes/GeneratorNode";
 import PreviewNode from "./nodes/PreviewNode";
 import SketchNode from "./nodes/SketchNode";
 import TextOverlayNode from "./nodes/TextOverlayNode";
-import CustomEdge from "./edges/CustomEdge";
+import CustomEdge, { EDGE_INTERACTION_WIDTH } from "./edges/CustomEdge";
 import ZoomBar from "./panels/ZoomBar";
 import ChatPanel from "./panels/ChatPanel";
 import ContextMenu from "./panels/ContextMenu";
@@ -57,6 +58,7 @@ const edgeTypes = {
 const defaultEdgeOptions = {
   type: "custom",
   animated: false,
+  interactionWidth: EDGE_INTERACTION_WIDTH,
 };
 
 type CanvasMenu =
@@ -77,6 +79,7 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     openNodePicker,
     loadProject,
     selectOnly,
+    selectOnlyEdges,
     currentProjectId,
   } = useCanvasStore();
   const { screenToFlowPosition } = useReactFlow();
@@ -182,6 +185,18 @@ function CanvasInner({ projectId }: { projectId?: string }) {
     [screenToFlowPosition],
   );
 
+  const onEdgeClick: EdgeMouseHandler = useCallback(
+    (event, edge) => {
+      event.stopPropagation();
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && isEditableTarget(focused)) {
+        focused.blur();
+      }
+      selectOnlyEdges([edge.id]);
+    },
+    [selectOnlyEdges],
+  );
+
   const onNodeContextMenu: NodeMouseHandler<AppNode> = useCallback((event, node) => {
     // Right-clicking a field (Prompt textarea, Texte overlay input, the node
     // rename input) or a generated image must keep the browser's own menu
@@ -228,15 +243,16 @@ function CanvasInner({ projectId }: { projectId?: string }) {
         onConnectEnd={onConnectEnd}
         onPaneContextMenu={onPaneContextMenu}
         onNodeContextMenu={onNodeContextMenu}
+        onEdgeClick={onEdgeClick}
+        elevateEdgesOnSelect
         onPaneClick={() => setMenu(null)}
         fitView={false}
         snapToGrid
         snapGrid={[20, 20]}
         minZoom={0.02}
         maxZoom={2}
-        // Keyboard delete is handled in useCanvasShortcuts → deleteSelected.
-        // React Flow remount `remove` used to tombstone live prompt nodes.
-        deleteKeyCode={null}
+        deleteKeyCode={["Backspace", "Delete"]}
+        edgesFocusable
         // Default is Space: holding it pans, and the window listener
         // preventDefault's Space unless the event target is an input. A
         // Prompt click that selected the node (not the textarea) then made

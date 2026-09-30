@@ -26,9 +26,11 @@ const STEPS: { angle: Angle; title: string; instruction: string }[] = [
 export default function WebcamCaptureModal({
   onClose,
   onComplete,
+  saveError,
 }: {
   onClose: () => void;
   onComplete: (photos: Record<Angle, string>, name: string) => void | Promise<void>;
+  saveError?: string | null;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -211,7 +213,9 @@ export default function WebcamCaptureModal({
             >
               {removingBg ? "Suppression du fond…" : "Retirer le fond"}
             </button>
-            {bgError && <p className="text-xs text-destructive mb-2">{bgError}</p>}
+            {(bgError || saveError) && (
+              <p className="text-xs text-destructive mb-2">{bgError ?? saveError}</p>
+            )}
             <input
               type="text"
               autoFocus

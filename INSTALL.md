@@ -53,6 +53,27 @@ Créer le fichier s’il manque :
 cp .env.example .env
 ```
 
+## Mettre à jour (machine déjà installée)
+
+Il n’y a **pas** de mise à jour en un clic dans le navigateur (ThumbGen n’a pas le droit de lancer `git` ou `docker` sur l’hôte). Réglages → Données & sauvegardes affiche la même commande à copier.
+
+Dans le dossier du dépôt (celui qui contient `docker-compose.yml`) :
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Si le terminal n’est pas déjà dans ce dossier :
+
+```bash
+cd ThumbGen
+git pull
+docker compose up -d --build
+```
+
+`--build` est obligatoire : un simple redémarrage du conteneur ne charge pas le nouveau code. `./data` (dont `thumbgen.db`) n’est pas dans git et n’est pas touché.
+
 ## Données
 
 Tout vit dans `./data/` (SQLite `thumbgen.db`), monté dans le conteneur. `docker compose down` ne l’efface pas. Ne lance pas un second Next.js sur le même fichier.

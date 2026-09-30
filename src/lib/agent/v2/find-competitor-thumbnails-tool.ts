@@ -34,12 +34,23 @@ import type { ToolResult } from "@/lib/agent/tools/types";
 import { isFakeAgentEnabled } from "./fake-agent-model";
 import { FAKE_COMPETITOR_HITS } from "./fake-f3b-fixtures";
 import { toolResultToModelOutput } from "./tool-adapter";
+import { resolveCompetitorQueries } from "./search-args";
 
 export const FIND_COMPETITOR_THUMBNAILS_TOOL_NAME = "find_competitor_thumbnails";
-export const findCompetitorThumbnailsInputSchema = z.object({
-  query_fr: z.string().trim().min(1).max(200),
-  query_en: z.string().trim().min(1).max(200),
-});
+export const findCompetitorThumbnailsInputSchema = z
+  .object({
+    query_fr: z.string().optional(),
+    query_en: z.string().optional(),
+    query: z.string().optional(),
+  })
+  .transform((raw, ctx) => {
+    const resolved = resolveCompetitorQueries(raw);
+    if (!resolved) {
+      ctx.addIssue({ code: "custom", message: "Passe query_fr et query_en (ou query)." });
+      return z.NEVER;
+    }
+    return resolved;
+  });
 export type FindCompetitorThumbnailsInput = z.output<typeof findCompetitorThumbnailsInputSchema>;
 export type FindCompetitorThumbnailsContext = { conversationId: string; now?: Date };
 
@@ -216,7 +227,7 @@ export async function executeFindCompetitorThumbnails(
 export function buildFindCompetitorThumbnailsTool(context: FindCompetitorThumbnailsContext): Tool {
   return aiTool({
     description: [
-      "Searches competing YouTube videos in French and English and ranks them. Use when competing packaging would help. query_fr + query_en. Returns youtube:<videoId> lines. Max 2 searches per conversation. Then analyze_thumbnails. If there is no YouTube key or quota is exhausted: skip competitors, don't invent them.",
+      "Searches competing YouTube videos in French and English and ranks them. Use when competing packaging would help. Prefer query_fr + query_en; a single query is mirrored to both. Returns youtube:<videoId> lines. Max 2 searches per conversation. Then analyze_thumbnails. If there is no YouTube key or quota is exhausted: skip competitors, don't invent them.",
       "Returns lines youtube:<videoId> | channel | views | ×score | age | language — never an image. At most 2 searches per conversation.",
       "If there is no YouTube key or the quota is exhausted: skip competitors and continue.",
     ].join("\n"),

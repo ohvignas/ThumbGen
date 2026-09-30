@@ -25,15 +25,23 @@ export function emptyInvokedUserMessage(invoked: InvokedSkill): string {
   ].join(" ");
 }
 
-/** Writing skills already have the open fiche — a bare slash is not an empty idea. */
+/** Skills that can run from channel profile / conversation without a leftover idea. */
+const OPEN_SUBJECT_SKILLS = new Set([
+  "write_video",
+  "studio_format",
+  "studio_titles",
+  "studio_description",
+  "studio_script",
+  "research_topic",
+  "find_competitor_thumbnails",
+  "search_youtube",
+  "find_logos",
+  "analyze_thumbnails",
+]);
+
+/** Writing and search skills already have a subject — a bare slash is not an empty idea. */
 export function skillHasOpenSubject(skill: string): boolean {
-  return (
-    skill === "write_video" ||
-    skill === "studio_format" ||
-    skill === "studio_titles" ||
-    skill === "studio_description" ||
-    skill === "studio_script"
-  );
+  return OPEN_SUBJECT_SKILLS.has(skill);
 }
 
 export function buildInvokedSkillBlock(invoked: InvokedSkill, options?: { ideaEmpty?: boolean }): string {

@@ -181,6 +181,18 @@ body {
   cursor: pointer;
 }
 
+/* Official EdgeLabelRenderer / EdgeToolbar portal: default CSS is
+   pointer-events:none and no z-index. Node toolbar sits at 1001 so the
+   delete button is above the SVG interaction stroke and nodes. */
+.react-flow__edgelabel-renderer {
+  z-index: 1001;
+}
+
+/* Selected edge already shows the X; the fat hit stroke must not cover it. */
+.react-flow__edge.selected .react-flow__edge-interaction {
+  pointer-events: none;
+}
+
 /* Controls - hidden, we use our own zoom bar */
 .react-flow__controls {
   display: none !important;

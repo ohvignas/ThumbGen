@@ -43,14 +43,15 @@ Do not:
 
 ## How
 
-Exactly two strings. Both required. No other fields.
+Prefer both strings. A single `query` (or only one of the two) is mirrored so a 400 does not abort the search.
 
 ```
 query_fr: string   # 1–200 chars after trim — French search
 query_en: string   # 1–200 chars after trim — English search
+query?: string     # optional fallback when the model only has one phrase
 ```
 
-Zod rejects empty, missing, or >200. Do not pad a fake query.
+Empty on every field is refused. Do not pad a fake query.
 
 ### Queries
 

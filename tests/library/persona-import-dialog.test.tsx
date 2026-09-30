@@ -65,4 +65,30 @@ describe("PersonaImportDialog", () => {
     const img = document.body.querySelector<HTMLImageElement>('img[alt="Face"]');
     expect(img?.src).toContain("CUTOUT");
   });
+
+  it("shows a save error in the dialog and still calls onSubmit with the photos", async () => {
+    const onSubmit = vi.fn(async () => {});
+    const prepareFile = vi.fn(async () => "data:image/jpeg;base64,ORIG");
+    await act(async () => {
+      root.render(
+        <PersonaImportDialog
+          onClose={() => {}}
+          prepareFile={prepareFile}
+          onSubmit={onSubmit}
+          saving={false}
+          saveError="Échec de l'enregistrement du personnage — réessaie."
+        />,
+      );
+    });
+    expect(document.body.textContent).toContain("Échec de l'enregistrement du personnage — réessaie.");
+
+    const input = document.body.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File(["x"], "face.jpg", { type: "image/jpeg" });
+    await act(async () => {
+      Object.defineProperty(input!, "files", { configurable: true, value: [file] });
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => button("Créer le personnage")!.click());
+    expect(onSubmit).toHaveBeenCalledWith({ front: "data:image/jpeg;base64,ORIG" }, "");
+  });
 });

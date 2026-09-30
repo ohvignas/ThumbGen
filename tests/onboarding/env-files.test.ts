@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
+import { THUMBGEN_UPDATE_COMMAND } from "@/lib/update-command";
 
 const root = process.cwd();
 
@@ -74,5 +75,19 @@ describe("new-machine env onboarding", () => {
     expect(readme).toMatch(/git pull/);
     expect(install).toMatch(/existe déjà/);
     expect(install).toMatch(/git pull/);
+  });
+
+  it("documents the host update command and refuses an in-app updater", () => {
+    const readme = read("README.md");
+    const install = read("INSTALL.md");
+    expect(THUMBGEN_UPDATE_COMMAND).toBe("git pull\ndocker compose up -d --build");
+    expect(readme).toMatch(/## Updating on a machine that already has ThumbGen/);
+    expect(readme).toMatch(/no in-app one-click update/i);
+    expect(install).toMatch(/## Mettre à jour \(machine déjà installée\)/);
+    expect(install).toMatch(/pas.*mise à jour en un clic/i);
+    for (const text of [readme, install]) {
+      expect(text).toContain("git pull");
+      expect(text).toContain("docker compose up -d --build");
+    }
   });
 });

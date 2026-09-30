@@ -181,11 +181,17 @@ interface CanvasState {
   // fetches. Does not start a paid generation.
   cancelStuckGenerations: () => number;
   removeNode: (nodeId: string) => void;
+  /** Persist a user-clicked edge delete (the X on a selected trait). */
+  removeEdge: (edgeId: string) => void;
   /** Keyboard ⌫/Delete: drop selected nodes and edges. Not used by React Flow remounts. */
   deleteSelected: () => void;
   duplicateNode: (nodeId: string) => string;
+  /** ⌘D on a selection: copy nodes and the edges between them. */
+  duplicateSelected: () => string[];
   setAllSelected: (selected: boolean) => void;
   selectOnly: (ids: string[]) => void;
+  /** Click on a trait: select that edge and nothing else so Delete is unambiguous. */
+  selectOnlyEdges: (ids: string[]) => void;
   nodePicker: NodePickerState | null;
   openNodePicker: (state: NodePickerState) => void;
   closeNodePicker: () => void;
@@ -538,26 +544,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   onEdgesChange: (changes) => {
     const prev = get();
-    // Same remount hole as nodes: React Flow `remove` is not a user delete.
-    const applied = changes.filter((change) => change.type !== "remove");
-    if (applied.length === 0) return;
-    const appliedEdges = applyEdgeChanges(applied, prev.edges);
-    const appliedIds = new Set(appliedEdges.map((edge) => edge.id));
-    const restored = prev.edges.filter((edge) => !appliedIds.has(edge.id));
-    const edges = restored.length > 0 ? [...appliedEdges, ...restored] : appliedEdges;
-    const viewOnly = applied.every((change) => change.type === "select");
+    const applied = applyEdgeChanges(changes, prev.edges);
+    const removedIds = new Set(changes.filter((change) => change.type === "remove").map((change) => change.id));
+    const tombs = new Set(prev.deletedEdgeIds);
+    const edges = applied.filter((edge) => !removedIds.has(edge.id) && !tombs.has(edge.id));
+    const viewOnly = changes.every((change) => change.type === "select");
     if (viewOnly) {
       set({ nodes: prev.nodes, edges });
       return;
     }
-    const structuralOnly = applied.every((change) => change.type === "select" || isStructuralFlowChange(change));
     const next = withDeletions(prev, { nodes: prev.nodes, edges });
     if (persistCanvasEqual(prev, next)) {
       set({ nodes: prev.nodes, edges });
       return;
     }
-    if (ignoreFlowReconcile && structuralOnly) return;
-    ignoreFlowReconcile = 0;
     set(next);
     if (get().loaded) {
       pushHistory(get, set);
@@ -779,6 +779,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }
   },
 
+  removeEdge: (edgeId) => {
+    const prev = get();
+    if (!prev.edges.some((edge) => edge.id === edgeId)) return;
+    set(
+      withDeletions(prev, {
+        nodes: prev.nodes,
+        edges: prev.edges.filter((edge) => edge.id !== edgeId),
+      }),
+    );
+    if (get().loaded) {
+      pushHistory(get, set);
+      debouncedSave(get(), set);
+    }
+  },
+
   deleteSelected: () => {
     const prev = get();
     const dropNodes = new Set(prev.nodes.filter((node) => node.selected).map((node) => node.id));
@@ -832,6 +847,53 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     return id;
   },
 
+  duplicateSelected: () => {
+    const prev = get();
+    const selected = prev.nodes.filter((node) => node.selected);
+    if (selected.length === 0) return [];
+    const idMap = new Map<string, string>();
+    const copies: AppNode[] = [];
+    for (const source of selected) {
+      const id = uuid();
+      idMap.set(source.id, id);
+      const data = JSON.parse(JSON.stringify(source.data)) as NodeData;
+      delete data.isGenerating;
+      if (data.genStatus === "loading") delete data.genStatus;
+      const agentFields = data as Record<string, unknown>;
+      delete agentFields.placedByAgentAt;
+      delete agentFields.agentCreatedAt;
+      delete agentFields.agentLinks;
+      copies.push({
+        id,
+        type: source.type,
+        position: { x: source.position.x + 80, y: source.position.y + 80 },
+        selected: true,
+        data,
+      });
+    }
+    const selectedIds = new Set(selected.map((node) => node.id));
+    const newEdges = prev.edges
+      .filter((edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target))
+      .map((edge) => ({
+        ...edge,
+        id: uuid(),
+        source: idMap.get(edge.source)!,
+        target: idMap.get(edge.target)!,
+        selected: true,
+      }));
+    set(
+      withDeletions(prev, {
+        nodes: [...prev.nodes.map((node) => (node.selected ? { ...node, selected: false } : node)), ...copies],
+        edges: [...prev.edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge)), ...newEdges],
+      }),
+    );
+    if (get().loaded) {
+      pushHistory(get, set);
+      debouncedSave(get(), set);
+    }
+    return copies.map((copy) => copy.id);
+  },
+
   // Selection is view state: no history entry, no save.
   setAllSelected: (selected) => {
     set({
@@ -851,6 +913,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         return Boolean(n.selected) === shouldSelect ? n : { ...n, selected: shouldSelect };
       }),
       edges: get().edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+    });
+  },
+
+  selectOnlyEdges: (ids) => {
+    const idSet = new Set(ids);
+    set({
+      nodes: get().nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+      edges: get().edges.map((e) => {
+        const shouldSelect = idSet.has(e.id);
+        return Boolean(e.selected) === shouldSelect ? e : { ...e, selected: shouldSelect };
+      }),
     });
   },
 
