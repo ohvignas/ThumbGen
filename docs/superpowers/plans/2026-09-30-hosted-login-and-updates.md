@@ -30,6 +30,10 @@ A later Vercel-shaped rewrite would need **all** of: hosted SQLite or Postgres (
 
 [Vercel Agent](https://vercel.com/docs/agent) is **PR code review**, **incident investigation** (Observability Plus), and **free SDK install** (Web Analytics / Speed Insights). It is configured under the Vercel project **AI** settings. It does **not** host ThumbGen and does **not** replace Docker. Optional later: enable Agent on GitHub PRs (~$0.30/review + tokens) if the repo is connected to Vercel for that feature only. Do not treat “Vercel Agent skill” as permission to deploy.
 
+### Vercel Connect ≠ hosting
+
+[Vercel Connect](https://vercel.com/docs/connect) is **scoped OAuth tokens** (Slack, GitHub, MCP, Snowflake, generic OAuth) via Vercel OIDC. It does **not** deploy ThumbGen and does **not** give teammates a URL to the SQLite app. Friends still need the Mini/VPS Docker instance (or their own clone + empty `data/`). Serverless Vercel stays blocked by local BLOBs (`src/lib/db.ts`) and the 15 min in-process RSS timer (`src/instrumentation.ts`). Do **not** add `@vercel/connect` to ThumbGen unless someone names Slack, GitHub, or an MCP server to wire. This machine has no Vercel CLI and no `.vercel` link, so `vercel connect list` cannot run here; do not run `vercel connect create` without explicit approval (it opens a browser).
+
 ### Recommended host this week
 
 **Keep Docker on the existing Mac Mini (or one small always-on machine).** Share a URL with Tailscale (Serve/Funnel) or, if the LAN is trusted, bind `0.0.0.0:3000` instead of `127.0.0.1:3000`. Harden later with real login + HTTPS. Lowest friction, lowest energy, data stays on the disk you already have.
@@ -283,7 +287,8 @@ Replace `SITE_PASSWORD` as the long-term gate. **Do not ship a half-auth** (e.g.
 - Touching `data/thumbgen.db`.
 - A browser button that runs Docker.
 - Hostinger shared Node archive deploy.
-- Enabling Vercel Agent as a substitute for hosting.
+- Enabling Vercel Agent or Vercel Connect as a substitute for hosting.
+- Adding `@vercel/connect` unless the human names Slack, GitHub, or a specific MCP server.
 
 ---
 
