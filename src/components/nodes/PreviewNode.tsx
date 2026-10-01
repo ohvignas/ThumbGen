@@ -3,6 +3,8 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { generatedImageIdFromUrl, imageDisplayUrl } from "@/lib/canvas/image-refs";
+import WholeImage from "@/components/images/WholeImage";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 import { toast } from "@/components/ui/toast";
 import { useState } from "react";
 import NodeShell from "./NodeShell";
@@ -109,7 +111,7 @@ export default function PreviewNode({ id, data }: NodeProps<AppNode>) {
       {currentImage && !isLoading && (
         <>
           <div className="relative rounded-xl overflow-hidden">
-            <img src={currentImage} alt="Miniature générée" className="w-full" />
+            <WholeImage src={withDisplayThumb(currentImage)} alt="Miniature générée" className="w-full" />
             {isCover && (
               <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
                 Gagnante

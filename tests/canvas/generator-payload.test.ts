@@ -67,6 +67,11 @@ describe("inputPreview", () => {
 
   it("shows an image input's picture, or its label when it has none", () => {
     expect(inputPreview("ref", [n("r", "preview", { generatedImages: ["/g"] })])).toEqual({ kind: "image", src: "/g", more: 0 });
+    expect(inputPreview("ref", [n("r", "preview", { generatedImages: ["/api/generated-images/image?id=p1"] })])).toEqual({
+      kind: "image",
+      src: "/api/generated-images/image?id=p1&w=1280",
+      more: 0,
+    });
     expect(inputPreview("logo", [n("l", "swipeFile", { label: "Marque" })])).toEqual({ kind: "text", text: "Marque", more: 0 });
     expect(inputPreview("sketch", [n("s", "sketch", {})])).toEqual({ kind: "text", text: "Sans image", more: 0 });
   });

@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // @resvg/resvg-js (library logos, SVG → PNG) loads a platform-specific native
   // binary with a runtime require(): it must not be bundled. Next only knows
   // sharp, better-sqlite3, … by default.
-  serverExternalPackages: ["@resvg/resvg-js"],
+  serverExternalPackages: ["@resvg/resvg-js", "sharp"],
   // NOTE: Next.js 16 default middleware/proxy client body limit is 10MB. Our
   // /api/chat-uploads route caps at 5MB and /api/agent/transcribe at 25MB.
   // The transcribe ceiling could be hit by long voice notes — if so we'll

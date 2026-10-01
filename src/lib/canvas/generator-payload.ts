@@ -4,7 +4,8 @@
  * Image fetching is injected (`ImageLoader`) so this stays unit-testable.
  */
 import type { NodeData } from "@/store/canvas-store";
-import { compactGenerationImageRef, isServerResolvableGenerationRef, toImageSourceRef } from "@/lib/canvas/image-refs";
+import { compactGenerationImageRef, imageDisplayUrl, isServerResolvableGenerationRef, toImageSourceRef } from "@/lib/canvas/image-refs";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 import { PERSONA_ANGLES, personaImageUrl } from "@/lib/personas";
 import type { InputSlot, ResolvedVariantInputs } from "./generator-variants";
 
@@ -99,7 +100,7 @@ export function inputPreview(slot: InputSlot, nodes: readonly PayloadNode[]): In
     return { kind: "text", text: text ? firstLine(text) : "Prompt vide", more };
   }
   const src = slot === "face" ? faceImageSources(first.data)[0] : nodeImageSource(first.data);
-  if (src) return { kind: "image", src, more };
+  if (src) return { kind: "image", src: withDisplayThumb(imageDisplayUrl(src) ?? src), more };
   return { kind: "text", text: first.data.label || "Sans image", more };
 }
 

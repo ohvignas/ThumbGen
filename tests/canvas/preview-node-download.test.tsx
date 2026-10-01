@@ -90,9 +90,11 @@ describe("PreviewNode thumbnail download", () => {
       );
     });
     expect(container.textContent).not.toContain("Aucune image");
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "/api/generated-images/image?id=73e71e83-0ee3-4b89-bebc-dda314c35e48",
+    const img = container.querySelector("img");
+    expect(img?.getAttribute("src")).toBe(
+      "/api/generated-images/image?id=73e71e83-0ee3-4b89-bebc-dda314c35e48&w=1280",
     );
+    expect(img?.getAttribute("data-loaded")).toBe("false");
   });
 
   it("hides the buttons and disables menu items when there is no image", async () => {

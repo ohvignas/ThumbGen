@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { ImagePlus, Plus, Unlink } from "lucide-react";
+import WholeImage from "@/components/images/WholeImage";
 import { Button } from "@/components/ui/button";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 import type { LinkedStudioProject } from "@/lib/studio/link-project";
 
 const SLOTS = ["A", "B", "C"] as const;
@@ -54,8 +56,8 @@ export default function LinkedThumbs({
                     className="block size-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                   >
                     {project.coverImageUrl ? (
-                      <img
-                        src={project.coverImageUrl}
+                      <WholeImage
+                        src={withDisplayThumb(project.coverImageUrl)}
                         alt={project.name}
                         className="size-full object-cover transition-transform duration-300 motion-reduce:transition-none motion-safe:group-hover:scale-[1.02]"
                       />

@@ -105,6 +105,7 @@ describe("catalogMentionableImages", () => {
       { visibleId: "#P1", image: "stored:gi_p1", imageNode: "prev", label: "Nano #1 · 1/2 · gagnante" },
       { visibleId: "#ABC123", image: "stored:gi_abc123", imageNode: "prev", label: "Nano #1 · 2/2" },
     ]);
+    expect(rows.map((row) => row.previewUrl)).toEqual([`${PREVIEW}&w=1280`, `${VARIANT}&w=1280`]);
   });
 
   it("does not list generator A/B history when no aperçu card is on the board", () => {

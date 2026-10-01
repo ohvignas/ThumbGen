@@ -1,5 +1,6 @@
 import { imageDisplayUrl, toImageSourceRef } from "@/lib/canvas/image-refs";
 import { visibleImageIdFromValue } from "@/lib/canvas/visible-image-id";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 
 export type MentionableImage = {
   visibleId: string;
@@ -67,10 +68,11 @@ function pushImage(
   if (seen.has(image) || seen.has(visibleId)) return;
   seen.add(image);
   seen.add(visibleId);
-  const previewUrl =
+  const rawPreview =
     typeof value === "string" && (value.startsWith("/") || value.startsWith("data:"))
       ? value
       : imageDisplayUrl(image) ?? undefined;
+  const previewUrl = rawPreview ? withDisplayThumb(rawPreview) : undefined;
   out.push({ visibleId, image, imageNode, label, ...(previewUrl ? { previewUrl } : {}) });
 }
 

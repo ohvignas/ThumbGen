@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import MiniaturesView from "@/app/miniatures/MiniaturesView";
 import { HQ_DOWNLOAD_LABEL, LQ_DOWNLOAD_LABEL } from "@/lib/canvas/download-thumbnail";
+import { DISPLAY_THUMB_WIDTH } from "@/lib/images/display-thumb";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -16,6 +17,7 @@ vi.mock("@/components/agent-runs/RunIndicator", () => ({
 }));
 
 const COVER = "/api/generated-images/image?id=aaaa1111-bbbb-cccc-dddd-eeeeeeeeeeee";
+const COVER_THUMB = `${COVER}&w=${DISPLAY_THUMB_WIDTH}`;
 
 const WITH_COVER = {
   id: "proj_with_cover",
@@ -71,10 +73,19 @@ afterEach(async () => {
 });
 
 describe("MiniaturesView cover", () => {
-  it("shows the winning thumbnail on a card that has one, and the default icon otherwise", () => {
-    const cover = container.querySelector<HTMLImageElement>(`img[src="${COVER}"]`);
+  it("shows the winning thumbnail on a card that has one, and the default icon otherwise", async () => {
+    const cover = container.querySelector<HTMLImageElement>(`img[src="${COVER_THUMB}"]`);
     expect(cover).not.toBeNull();
     expect(cover?.alt).toBe("Avec couverture");
+    expect(cover?.getAttribute("data-loaded")).toBe("false");
+    expect(cover?.style.opacity).toBe("0");
+    expect(container.querySelector(`img[src="${COVER}"]`)).toBeNull();
+
+    await act(async () => {
+      cover!.dispatchEvent(new Event("load"));
+    });
+    expect(cover?.getAttribute("data-loaded")).toBe("true");
+    expect(cover?.style.opacity).toBe("");
     expect(container.querySelector('[data-image-id="#EEEEEE"]')?.textContent).toBe("#EEEEEE");
 
     const untitled = Array.from(container.querySelectorAll("img")).filter((img) => img.alt === "Sans couverture");

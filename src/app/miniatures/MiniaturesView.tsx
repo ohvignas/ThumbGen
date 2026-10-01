@@ -38,7 +38,9 @@ import {
   type ThumbnailDownloadQuality,
 } from "@/lib/canvas/download-thumbnail";
 import ImageIdBadge from "@/components/ImageIdBadge";
+import WholeImage from "@/components/images/WholeImage";
 import { visibleImageIdFromValue } from "@/lib/canvas/visible-image-id";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 
 type VideoProject = {
   id: string;
@@ -83,8 +85,8 @@ function ProjectTile({ id, coverUrl, name, children }: { id: string; coverUrl?: 
   if (coverUrl && !broken) {
     return (
       <div className="relative aspect-video overflow-hidden bg-muted">
-        <img
-          src={coverUrl}
+        <WholeImage
+          src={withDisplayThumb(coverUrl)}
           alt={name}
           className="size-full object-cover"
           onError={() => setBroken(true)}
