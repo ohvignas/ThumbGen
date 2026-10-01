@@ -37,7 +37,10 @@ describe("LinkedThumbs", () => {
     expect(container.querySelector("[data-thumb-slot='B']")).not.toBeNull();
     expect(container.querySelector("[data-thumb-slot='C']")).not.toBeNull();
     expect(container.querySelector("a")?.getAttribute("href")).toBe("/m/proj_1");
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/generated-images/image?id=abc");
+    const thumb = container.querySelector("img");
+    expect(thumb?.getAttribute("src")).toBe("/api/generated-images/image?id=abc&w=1280");
+    expect(thumb?.getAttribute("data-loaded")).toBe("false");
+    expect(thumb?.style.opacity).toBe("0");
     expect(container.querySelectorAll("[data-thumb-slot]")).toHaveLength(3);
     expect(container.textContent).toContain("Lier une miniature");
     expect(container.textContent).toContain("Créer une miniature");

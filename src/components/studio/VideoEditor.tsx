@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, Trash2 } from "lucide-react";
+import WholeImage from "@/components/images/WholeImage";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 import LinkedThumbs from "@/components/studio/LinkedThumbs";
 import StudioEditorChrome from "@/components/studio/StudioEditorChrome";
 import TitleVariantsTable from "@/components/studio/TitleVariantsTable";
@@ -534,7 +536,7 @@ export default function VideoEditor({ videoId }: { videoId: string }) {
                   >
                     <span className="flex aspect-video h-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
                       {project.coverImageUrl ? (
-                        <img src={project.coverImageUrl} alt="" className="size-full object-cover" />
+                        <WholeImage src={withDisplayThumb(project.coverImageUrl)} alt="" className="size-full object-cover" />
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

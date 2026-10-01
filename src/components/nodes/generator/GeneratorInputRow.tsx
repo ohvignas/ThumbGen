@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InputPreview } from "@/lib/canvas/generator-payload";
+import WholeImage from "@/components/images/WholeImage";
 
 /**
  * One input of the Générateur: its target handle sits on the node's left edge,
@@ -43,7 +44,7 @@ export default function GeneratorInputRow({
           </Badge>
         )}
         {preview.kind === "image" && (
-          <img
+          <WholeImage
             src={preview.src}
             alt=""
             className={cn("size-7 shrink-0 rounded object-cover", inherited && "opacity-50")}

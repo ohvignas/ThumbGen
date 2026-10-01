@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getDb } from "@/lib/db";
+import { bufferedImageResponse } from "@/lib/images/buffered-image-response";
 
 export const runtime = "nodejs";
 
@@ -14,10 +15,5 @@ export async function GET(
 
   if (!row) return new Response("Not found", { status: 404 });
 
-  return new Response(new Uint8Array(row.data), {
-    headers: {
-      "Content-Type": row.mime_type,
-      "Cache-Control": "private, max-age=86400",
-    },
-  });
+  return bufferedImageResponse(row.data, row.mime_type, "private, max-age=86400");
 }

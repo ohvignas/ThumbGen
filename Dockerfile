@@ -53,6 +53,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/file-uri-to-path ./n
 # resvg (logo SVG → PNG) loads @resvg/resvg-js-linux-*-gnu through a runtime
 # require the standalone trace can miss — same reason as better-sqlite3 above
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@resvg ./node_modules/@resvg
+# sharp resizes stored miniatures to baseline JPEG thumbs. It is optional via
+# next and the standalone trace misses the native binary (same as better-sqlite3).
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/sharp ./node_modules/sharp
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@img ./node_modules/@img
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/detect-libc ./node_modules/detect-libc
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/semver ./node_modules/semver
 
 # Create data directory for local persistence
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data

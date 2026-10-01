@@ -1,5 +1,7 @@
 "use client";
 import { cn } from "cn";
+import WholeImage from "@/components/images/WholeImage";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 import type { MentionableImage } from "@/lib/canvas/mentionable-images";
 
 export default function MentionPicker({
@@ -44,8 +46,8 @@ export default function MentionPicker({
             >
               {item.previewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.previewUrl}
+                <WholeImage
+                  src={withDisplayThumb(item.previewUrl)}
                   alt=""
                   className="h-8 w-14 shrink-0 rounded border border-border object-cover"
                 />

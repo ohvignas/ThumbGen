@@ -2,6 +2,9 @@
 
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
+import { imageDisplayUrl } from "@/lib/canvas/image-refs";
+import WholeImage from "@/components/images/WholeImage";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 import { useCallback, useState } from "react";
 import NodeShell from "./NodeShell";
 import { ThumbnailDownloadButtons, thumbnailDownloadMenuItems } from "./ThumbnailDownloadActions";
@@ -160,7 +163,11 @@ export default function TextOverlayNode({ id, data }: NodeProps<AppNode>) {
 
       {(resultImage || sourceImage) && (
         <div className="relative mb-3 rounded-xl overflow-hidden">
-          <img src={resultImage || sourceImage || ""} alt="Miniature" className="w-full" />
+          <WholeImage
+            src={withDisplayThumb(imageDisplayUrl(resultImage || sourceImage || "") ?? (resultImage || sourceImage || ""))}
+            alt="Miniature"
+            className="w-full"
+          />
           <ImageIdBadge id={visibleImageIdFromValue(resultImage || sourceImage)} />
         </div>
       )}

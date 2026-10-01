@@ -3,6 +3,8 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useCanvasStore, AppNode } from "@/store/canvas-store";
 import { imageDisplayUrl } from "@/lib/canvas/image-refs";
+import WholeImage from "@/components/images/WholeImage";
+import { withDisplayThumb } from "@/lib/images/display-thumb";
 import { openSketchEditorDetail } from "@/lib/canvas/sketch-scene";
 import NodeShell from "./NodeShell";
 
@@ -62,8 +64,8 @@ export default function SketchNode({ id, data }: NodeProps<AppNode>) {
             background: "var(--ink-2)",
           }}
         >
-          <img
-            src={previewSrc}
+          <WholeImage
+            src={withDisplayThumb(previewSrc)}
             alt="Croquis"
             className="w-full h-full object-contain"
           />
