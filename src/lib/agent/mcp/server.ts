@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { listTools } from "@/lib/agent/tools";
+import { MCP_BRIEF_TOOLS, runMcpBriefTool } from "./brief-tools";
 
 /**
  * Builds an McpServer instance that exposes every tool currently registered
@@ -44,6 +45,16 @@ export function buildMcpServer(): McpServer {
         }
         return await tool.handler(parsed.data);
       },
+    );
+  }
+
+  // Brief tools are built per chat conversation, outside the registry; over
+  // MCP they run on the named project's "MCP" conversation.
+  for (const tool of MCP_BRIEF_TOOLS) {
+    server.registerTool(
+      tool.name,
+      { description: tool.description, inputSchema: tool.shape },
+      async (args: unknown) => await runMcpBriefTool(tool, (args ?? {}) as Record<string, unknown>),
     );
   }
 
