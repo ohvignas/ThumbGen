@@ -47,6 +47,21 @@ describe("generate_sketch", () => {
     expect(row.mime_type).toBe("image/png");
   });
 
+  it("sends the chosen OpenAI model slug and prices it", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ b64_json: onePxPng, media_type: "image/png" }] }),
+    });
+
+    const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
+    const r = await generateSketchTool.handler({ prompt: "final", style: "polished", model: "gpt-image-2.5-sunburst" });
+
+    expect(r.isError).toBeFalsy();
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("openai/gpt-image-2.5-sunburst");
+    expect((r.content[0] as { text: string }).text).toContain("cost: $0.050");
+  });
+
   it("returns error when API key is missing", async () => {
     getDb().prepare("DELETE FROM settings WHERE key = ?").run("openrouterApiKey");
     const previousEnv = process.env.OPENROUTER_API_KEY;
