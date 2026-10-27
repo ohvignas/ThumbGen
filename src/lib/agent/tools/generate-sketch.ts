@@ -25,12 +25,18 @@ const InputSchema = z.object({
   // OPTIONAL: extra reference images (logo, swipe-file, prior thumbnail) to
   // condition composition / brand. Pass an array of stored:/generated:/uploaded: refs.
   reference_sources: z.array(z.string()).optional(),
+  // OPTIONAL: "gpt-image-2.5-sunburst" for a final-quality image (precise text
+  // and accents, $0.05) instead of the cheap Gemini draft.
+  model: z.enum(["gemini-3.1-flash-image", "gpt-image-2.5-sunburst"]).optional(),
 });
 
 const ASPECT_MAP: Record<string, string> = { "16x9": "16:9", "9x16": "9:16", "1x1": "1:1" };
 // Gemini 3.1 Flash Image: same price as 2.5 (MODEL_COSTS), better layouts and references.
 const SKETCH_MODEL = "gemini-3.1-flash-image";
-const OPENROUTER_SKETCH_SLUG = "google/gemini-3.1-flash-image";
+const OPENROUTER_SLUGS: Record<string, string> = {
+  "gemini-3.1-flash-image": "google/gemini-3.1-flash-image",
+  "gpt-image-2.5-sunburst": "openai/gpt-image-2.5-sunburst",
+};
 const OPENROUTER_IMAGES_ENDPOINT = "https://openrouter.ai/api/v1/images";
 
 const PENCIL_SUFFIX =
@@ -39,9 +45,10 @@ const PENCIL_SUFFIX =
 export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
   name: "generate_sketch",
   description:
-    "Generates a cheap Gemini Flash Image draft (pencil sketch by default). Use to show composition ideas before the user clicks Générer. Costs money. ALWAYS pass face_source: stored:persona_<id> when their face is in the sketch. Optional reference_sources. Not the final thumbnail — that is the canvas generator. Don't loop retries. Aspect defaults to 16x9. Returns generated:sk_<id>.",
+    "Generates a cheap Gemini Flash Image draft (pencil sketch by default). Use to show composition ideas before the user clicks Générer. Costs money. ALWAYS pass face_source: stored:persona_<id> when their face is in the sketch. Optional reference_sources. model gpt-image-2.5-sunburst (with style polished) gives final quality at $0.05. Not the final thumbnail — that is the canvas generator. Don't loop retries. Aspect defaults to 16x9. Returns generated:sk_<id>.",
   inputSchema: InputSchema,
-  handler: async ({ prompt, aspect_ratio, style, face_source, reference_sources }) => {
+  handler: async ({ prompt, aspect_ratio, style, face_source, reference_sources, model }) => {
+    const sketchModel = model ?? SKETCH_MODEL;
     const start = Date.now();
     const ratio = aspect_ratio ?? "16x9";
     const useStyle = style ?? "pencil_sketch";
@@ -86,7 +93,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     const stylized = useStyle === "pencil_sketch" ? `${prompt}${PENCIL_SUFFIX}` : prompt;
     const scene = `Generate a YouTube thumbnail draft. ${stylized}`;
     const body = {
-      model: OPENROUTER_SKETCH_SLUG,
+      model: OPENROUTER_SLUGS[sketchModel],
       prompt: applyReferenceRolesToPrompt(scene, referenceEntries),
       n: 1,
       aspect_ratio: ASPECT_MAP[ratio],
@@ -116,7 +123,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
       const errText = await res.text().catch(() => "");
       logGeneration({
         provider: "openrouter",
-        model: SKETCH_MODEL,
+        model: sketchModel,
         endpoint: "generate",
         timeMs: Date.now() - start,
         imageCount: 0,
@@ -145,7 +152,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     const bytes = Buffer.from(base64, "base64");
 
     const id = `sk_${uuid().replace(/-/g, "")}`;
-    const costEstimate = getCostPerImage(SKETCH_MODEL); // per-image cost from model-costs
+    const costEstimate = getCostPerImage(sketchModel); // per-image cost from model-costs
 
     getDb()
       .prepare(
@@ -156,7 +163,7 @@ export const generateSketchTool: ToolDefinition<z.infer<typeof InputSchema>> = {
     const usage = result.usage || {};
     logGeneration({
       provider: "openrouter",
-      model: SKETCH_MODEL,
+      model: sketchModel,
       endpoint: "generate",
       timeMs: Date.now() - start,
       imageCount: 1,
