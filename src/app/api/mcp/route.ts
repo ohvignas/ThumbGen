@@ -8,17 +8,31 @@ import "@/lib/agent/tools/all"; // populate registry
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// One server instance per process; sessions are tracked by the transport.
-let _transport: WebStandardStreamableHTTPServerTransport | null = null;
-async function getTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
-  if (_transport) return _transport;
+// A stateful transport serves exactly one session, so each initialize gets its
+// own server + transport, keyed by session id. Later requests carry the
+// Mcp-Session-Id header and are routed to their transport.
+const _transports = new Map<string, WebStandardStreamableHTTPServerTransport>();
+
+async function createTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
   const server = buildMcpServer();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => crypto.randomUUID(),
+    onsessioninitialized: (id) => {
+      _transports.set(id, transport);
+    },
+    onsessionclosed: (id) => {
+      _transports.delete(id);
+    },
   });
   await server.connect(transport);
-  _transport = transport;
   return transport;
+}
+
+function sessionNotFound(): Response {
+  return Response.json(
+    { jsonrpc: "2.0", error: { code: -32001, message: "Session not found" }, id: null },
+    { status: 404 },
+  );
 }
 
 function isAuthorized(req: NextRequest): boolean {
@@ -48,7 +62,14 @@ function originAllowed(req: NextRequest): boolean {
 async function handle(req: NextRequest): Promise<Response> {
   if (!originAllowed(req)) return new Response("Forbidden origin", { status: 403 });
   if (!isAuthorized(req)) return new Response("Unauthorized", { status: 401 });
-  const transport = await getTransport();
+  const sessionId = req.headers.get("mcp-session-id");
+  if (sessionId) {
+    const transport = _transports.get(sessionId);
+    // 404 tells the client to re-initialize (e.g. after a server restart).
+    if (!transport) return sessionNotFound();
+    return await transport.handleRequest(req);
+  }
+  const transport = await createTransport();
   return await transport.handleRequest(req);
 }
 

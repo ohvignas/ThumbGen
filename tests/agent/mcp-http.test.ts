@@ -78,7 +78,49 @@ describe("/api/mcp", () => {
       authToken: key,
       // no origin
     }) as never);
-    expect([200, 400]).toContain(res.status);
-    // 200 if the transport handles it; 400 if the SDK validates something else (still passing the auth+origin gate is what we test)
+    expect(res.status).toBe(200);
+  });
+
+  it("serves several sessions side by side", async () => {
+    const init = (name: string) => ({
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name, version: "1" } },
+    });
+    const a = await POST(makeReq({ body: init("a"), authToken: key }) as never);
+    const b = await POST(makeReq({ body: init("b"), authToken: key }) as never);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    const idA = a.headers.get("mcp-session-id")!;
+    const idB = b.headers.get("mcp-session-id")!;
+    expect(idA).not.toBe(idB);
+
+    const list = new Request("http://localhost/api/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${key}`,
+        "mcp-session-id": idA,
+        "mcp-protocol-version": "2025-06-18",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+    });
+    const res = await POST(list as never);
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 for an unknown session id", async () => {
+    const req = new Request("http://localhost/api/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${key}`,
+        "mcp-session-id": "does-not-exist",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list" }),
+    });
+    const res = await POST(req as never);
+    expect(res.status).toBe(404);
   });
 });
