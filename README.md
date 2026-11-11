@@ -177,7 +177,7 @@ Skills live in `src/lib/agent/skills/`: one folder per tool (`generate_sketch`, 
 5. To show it in the composer `/` picker, add a row in `src/lib/agent/skills/slash-catalog.ts` (`slash`, `skill` = frontmatter `name`, `title`, `description`, optional `aliases`).
 6. If the skill documents a **new tool**, implement the tool as well (`src/lib/agent/tools/` for the shared registry / MCP, or a chat-only tool on the agent route). Markdown alone does not register a tool.
 
-`read_skill` is chat-only: ThumbGen does not give the model a filesystem, and MCP clients do not see this tool.
+The registry's `read_skill` is chat-only: ThumbGen does not give the model a filesystem. MCP clients get their own `list_skills` and `read_skill`, which serve the same skills plus `mcp-workflow`, the end-to-end order for a client with no ThumbGen window.
 
 ### Bibliothèque (library)
 
@@ -216,6 +216,8 @@ Keys entered here are stored in the local database and never sent to the browser
 ### MCP server
 
 ThumbGen exposes its agent tools over the [Model Context Protocol](https://modelcontextprotocol.io) at `/api/mcp` (streamable HTTP, bearer token), so Claude Desktop, Claude Code, Cursor and other MCP clients can read and build your canvases. See [Connecting an MCP client](#connecting-an-mcp-client).
+
+An MCP client can also run the whole job without the app open: `list_skills` / `read_skill`, `create_project`, `create_upload_link` (import a local image through a signed link), `apply_workflow`, `run_generator` (paid: the server-side twin of « Générer »), `view_canvas_images` and `export_image` (signed download link at an exact size, 1280×720 under 2 MB by default). Signed links are valid 15 minutes and are voided when the MCP key is regenerated.
 
 ## Quick start with Docker
 

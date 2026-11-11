@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { buildMcpServer } from "@/lib/agent/mcp/server";
+import { mcpRequestOrigin, originFromHeaders } from "@/lib/agent/mcp/signed-links";
 import { ensureMcpApiKey } from "@/lib/settings";
 import "@/lib/agent/tools/all"; // populate registry
 
@@ -63,14 +64,18 @@ async function handle(req: NextRequest): Promise<Response> {
   if (!originAllowed(req)) return new Response("Forbidden origin", { status: 403 });
   if (!isAuthorized(req)) return new Response("Unauthorized", { status: 401 });
   const sessionId = req.headers.get("mcp-session-id");
+  let transport: WebStandardStreamableHTTPServerTransport | undefined;
   if (sessionId) {
-    const transport = _transports.get(sessionId);
+    transport = _transports.get(sessionId);
     // 404 tells the client to re-initialize (e.g. after a server restart).
     if (!transport) return sessionNotFound();
-    return await transport.handleRequest(req);
+  } else {
+    transport = await createTransport();
   }
-  const transport = await createTransport();
-  return await transport.handleRequest(req);
+  // Tools that hand back a link (upload, export) need the origin the client used.
+  const origin = originFromHeaders(req.headers, req.url);
+  const active = transport;
+  return origin ? await mcpRequestOrigin.run(origin, () => active.handleRequest(req)) : await active.handleRequest(req);
 }
 
 export const POST = handle;

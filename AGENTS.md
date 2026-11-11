@@ -22,7 +22,8 @@ This file is for **people and coding agents that edit this repository**. It is *
 ## Agent skills (Brainstorm)
 
 - Catalog: `src/lib/agent/skills/catalog.ts` (`name` + `description` only in the system prompt).
-- Body: `read_skill` (`src/lib/agent/tools/read-skill.ts`), chat-only, not MCP.
+- Body: `read_skill` (`src/lib/agent/tools/read-skill.ts`), chat-only. MCP clients have their own `list_skills` / `read_skill` in `src/lib/agent/mcp/workflow-tools.ts`, which add the `mcp-workflow` guide.
+- MCP-only tools (`src/lib/agent/mcp/workflow-tools.ts`): `create_project`, `create_upload_link`, `run_generator` (paid, server-side twin of « Générer »), `export_image`. Not in the chat registry: in the app the user does those things. Upload and export go through signed links (`/api/mcp/upload`, `/api/mcp/export`, HMAC keyed by the MCP API key, 15 min).
 - One folder per tool plus `thumbnail-packaging` and `existing-workflow`.
 - System prompt: `src/lib/agent/system-prompt.ts` — identity, cost, `finish_turn`, catalog. No `THUMBNAIL JOURNEY` / `STEPS` 1–7.
 - In-app `/` picker: `src/lib/agent/skills/slash-catalog.ts` (user-facing aliases; `/croquis` → `generate_sketch`; `/create-prompt` / `/create-propt` → `create-prompt`). Not Cursor personal skills.
