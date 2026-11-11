@@ -2,6 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { listTools } from "@/lib/agent/tools";
 import { MCP_BRIEF_TOOLS, runMcpBriefTool } from "./brief-tools";
+import { MCP_WORKFLOW_TOOLS } from "./workflow-tools";
+
+const MCP_INSTRUCTIONS =
+  "ThumbGen builds YouTube thumbnails on a node canvas. Call list_skills first, then read_skill(\"mcp-workflow\") for the end-to-end order: create_project → create_upload_link (local images) → apply_workflow → run_generator (paid) → view_canvas_images → export_image. A face is always a Personnage (list_personas). run_generator and generate_sketch cost money: call them only when the user asked for images.";
 
 /**
  * Builds an McpServer instance that exposes every tool currently registered
@@ -9,7 +13,7 @@ import { MCP_BRIEF_TOOLS, runMcpBriefTool } from "./brief-tools";
  * (typically by importing `@/lib/agent/tools/all`) BEFORE calling this.
  */
 export function buildMcpServer(): McpServer {
-  const server = new McpServer({ name: "thumbgen", version: "1.0.0" });
+  const server = new McpServer({ name: "thumbgen", version: "1.1.0" }, { instructions: MCP_INSTRUCTIONS });
 
   for (const tool of listTools()) {
     // Chat-only tools (finish_turn) mean nothing to an external MCP client.
@@ -55,6 +59,16 @@ export function buildMcpServer(): McpServer {
       tool.name,
       { description: tool.description, inputSchema: tool.shape },
       async (args: unknown) => await runMcpBriefTool(tool, (args ?? {}) as Record<string, unknown>),
+    );
+  }
+
+  // MCP-only workflow tools (skills, project creation, file in/out, paid run):
+  // what a client without a ThumbGen window cannot do otherwise.
+  for (const tool of MCP_WORKFLOW_TOOLS) {
+    server.registerTool(
+      tool.name,
+      { description: tool.description, inputSchema: tool.shape },
+      async (args: unknown) => await tool.run((args ?? {}) as Record<string, unknown>),
     );
   }
 

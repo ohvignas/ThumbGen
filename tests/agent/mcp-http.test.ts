@@ -109,6 +109,38 @@ describe("/api/mcp", () => {
     expect(res.status).toBe(200);
   });
 
+  it("hands back upload links on the origin the client reached, behind a reverse proxy", async () => {
+    const headers = {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${key}`,
+      host: "127.0.0.1:3000",
+      "x-forwarded-host": "thumbgen.example.com",
+      "x-forwarded-proto": "https",
+    };
+    const init = await POST(new Request("http://127.0.0.1:3000/api/mcp", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1, method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "proxy", version: "1" } },
+      }),
+    }) as never);
+    const sessionId = init.headers.get("mcp-session-id")!;
+    const res = await POST(new Request("http://127.0.0.1:3000/api/mcp", {
+      method: "POST",
+      headers: { ...headers, "mcp-session-id": sessionId, "mcp-protocol-version": "2025-06-18" },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 2, method: "tools/call",
+        params: { name: "create_upload_link", arguments: { title: "maquette.png" } },
+      }),
+    }) as never);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("https://thumbgen.example.com/api/mcp/upload?token=");
+    expect(body).not.toContain("127.0.0.1:3000/api/mcp/upload");
+  });
+
   it("returns 404 for an unknown session id", async () => {
     const req = new Request("http://localhost/api/mcp", {
       method: "POST",

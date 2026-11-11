@@ -109,7 +109,9 @@ describe("finish_turn tool", () => {
     expect(names).toContain("list_logos");
     expect(names).toContain("generate_sketch");
     expect(names).not.toContain(FINISH_TURN_TOOL_NAME);
-    expect(names).not.toContain("read_skill");
+    // The registry's read_skill stays chat-only; MCP clients get their own
+    // read_skill (mcp/workflow-tools.ts), which also serves the mcp-workflow guide.
+    expect(names.filter((name) => name === "read_skill")).toHaveLength(1);
   });
 });
 
