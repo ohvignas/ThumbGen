@@ -72,7 +72,7 @@ describe("getTypedSettings", () => {
       agentMaxSteps: 25,
       agentAutoTitle: true,
       agentResponseLanguage: "fr",
-      favoriteModel: "gemini-3.1-flash-image",
+      favoriteModel: "gpt-image-2.6-sunburst",
       defaultAspectRatio: "16x9",
       defaultImageCount: 1,
       defaultResolution: "2K",

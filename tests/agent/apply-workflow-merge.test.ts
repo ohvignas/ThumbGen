@@ -211,7 +211,7 @@ describe("apply_workflow — non-destructive merge", () => {
     const gen = nodes.find((n) => n.id === "g-1")!;
     expect(gen.position).toEqual({ x: 500, y: 40 });
     expect(gen.data).toMatchObject({
-      model: "gpt-image-2.5-sunburst",
+      model: "gpt-image-2.6-sunburst",
       aspectRatio: "16x9",
       numImages: 2,
       imageSize: "2K",

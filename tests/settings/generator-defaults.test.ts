@@ -15,7 +15,7 @@ describe("generator defaults", () => {
 
   it("uses the schema defaults until the settings are loaded", () => {
     expect(FALLBACK_GENERATOR_DEFAULTS).toEqual({
-      model: "gemini-3.1-flash-image",
+      model: "gpt-image-2.6-sunburst",
       aspectRatio: "16x9",
       numImages: 1,
       imageSize: "2K",

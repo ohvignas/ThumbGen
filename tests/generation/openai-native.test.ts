@@ -71,6 +71,8 @@ describe("openai native helpers", () => {
   it("maps ThumbGen OpenAI ids to native models and fidelity", () => {
     expect(isOpenAINativeModel("gpt-image-1")).toBe(true);
     expect(isOpenAINativeModel("gpt-image-2.5-sunburst")).toBe(true);
+    expect(isOpenAINativeModel("gpt-image-2.6-sunburst")).toBe(true);
+    expect(isOpenAINativeModel("gpt-image-2.6-flare")).toBe(true);
     expect(isOpenAINativeModel("gemini-3.1-flash-image")).toBe(false);
     expect(openaiInputFidelity("gpt-image-1")).toBe("high");
     expect(openaiInputFidelity("gpt-image-2")).toBeNull();

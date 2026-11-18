@@ -10,7 +10,7 @@
  * inputs: https://developers.openai.com/api/docs/guides/image-generation
  * https://developers.openai.com/cookbook/examples/generate_images_with_high_input_fidelity
  *
- * gpt-image-2 and gpt-image-2.5 process every image input at high fidelity
+ * gpt-image-2, gpt-image-2.5 and gpt-image-2.6 process every image input at high fidelity
  * automatically — sending `input_fidelity` 400s. Identity still goes first:
  * the first file keeps the richest texture.
  */
@@ -27,6 +27,8 @@ const MAX_ERROR_DETAIL_LENGTH = 300;
 
 /** ThumbGen canvas ids that exist as native OpenAI Image API model names. */
 export const OPENAI_NATIVE_MODELS: Record<string, string> = {
+  "gpt-image-2.6-sunburst": "gpt-image-2.6-sunburst",
+  "gpt-image-2.6-flare": "gpt-image-2.6-flare",
   "gpt-image-2.5-sunburst": "gpt-image-2.5-sunburst",
   "gpt-image-2.5-flare": "gpt-image-2.5-flare",
   "gpt-image-2": "gpt-image-2",
@@ -41,7 +43,7 @@ const GPT_IMAGE_1_SIZE: Record<string, string> = {
   "9x16": "1024x1536",
 };
 
-/** gpt-image-2 / 2.5: edges multiple of 16, 655_360–8_294_400 px, max edge 3840. */
+/** gpt-image-2 / 2.5 / 2.6: edges multiple of 16, 655_360–8_294_400 px, max edge 3840. */
 const FLEX_SIZE: Record<ImageResolution, Record<string, string>> = {
   "1K": { "1x1": "1024x1024", "16x9": "1536x864", "9x16": "864x1536" },
   "2K": { "1x1": "2048x2048", "16x9": "2048x1152", "9x16": "1152x2048" },
