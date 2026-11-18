@@ -29,7 +29,7 @@ describe("generateActionState", () => {
   });
 
   it("uses the default model and omits an unknown cost", () => {
-    expect(generateActionState("iv-generator", [generator({})], [])).toMatchObject({ label: "Générer · 1 image · ~0,02 $" });
+    expect(generateActionState("iv-generator", [generator({})], [])).toMatchObject({ label: "Générer · 1 image · ~0,05 $" });
     expect(generateActionState("iv-generator", [generator({ model: "mystery-model" })], [])).toEqual({
       status: "ready",
       label: "Générer · 1 image",

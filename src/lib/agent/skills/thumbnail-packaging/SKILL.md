@@ -151,7 +151,7 @@ Pick from `nano-banana` \| `openai` \| `seedream` (not ideogram / grok). Don't a
 Prices for **16×9, one image per variant** (labels as the app writes them):
 
 - nano-banana — Gemini 3.1 Flash — "Nano Banana · ~0,02 $ / image"
-- openai — GPT Image 2.5 Sunburst (précis) — "GPT Image · ~0,05 $ / image"
+- openai — GPT Image 2.6 Sunburst (précis) — "GPT Image · ~0,05 $ / image"
 - seedream — Seedream 4.5 (ByteDance) — "Seedream · ~0,02 $ / image"
 
 Sketches are always Flash Image ~$0.02, n=1, 1K — not this table. Final run bills only when **they** click « Générer ».

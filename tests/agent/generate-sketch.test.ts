@@ -55,10 +55,10 @@ describe("generate_sketch", () => {
     });
 
     const { generateSketchTool } = await import("@/lib/agent/tools/generate-sketch");
-    const r = await generateSketchTool.handler({ prompt: "final", style: "polished", model: "gpt-image-2.5-sunburst" });
+    const r = await generateSketchTool.handler({ prompt: "final", style: "polished", model: "gpt-image-2.6-sunburst" });
 
     expect(r.isError).toBeFalsy();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("openai/gpt-image-2.5-sunburst");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("openai/gpt-image-2.6-sunburst");
     expect((r.content[0] as { text: string }).text).toContain("cost: $0.050");
   });
 

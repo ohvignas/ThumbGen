@@ -13,6 +13,9 @@ import {
 describe("image model catalogue", () => {
   it("keeps the exact OpenRouter slugs the route used before the extraction", () => {
     expect(MODEL_SLUGS).toEqual({
+      "gpt-image-2.6-sunburst": "openai/gpt-image-2.6-sunburst",
+      "gpt-image-2.6-flare": "openai/gpt-image-2.6-flare",
+      "gemini-nano-banana-2.1": "google/gemini-nano-banana-2.1",
       "gemini-3-pro-image": "google/gemini-3-pro-image",
       "gemini-3.1-flash-image": "google/gemini-3.1-flash-image",
       "gemini-3.1-flash-lite-image": "google/gemini-3.1-flash-lite-image",
@@ -21,13 +24,18 @@ describe("image model catalogue", () => {
       "gpt-image-2.5-flare": "openai/gpt-image-2.5-flare",
       "gpt-image-2": "openai/gpt-image-2",
       "gpt-image-1": "openai/gpt-image-1",
+      "mai-image-2.7": "microsoft/mai-image-2.7",
+      "bytedance-seed/seedream-5-5": "bytedance-seed/seedream-5-5",
       "bytedance-seed/seedream-4.5": "bytedance-seed/seedream-4.5",
+      "flux-3-image": "black-forest-labs/flux-3-image",
+      "grok-imagine-image-2.0": "x-ai/grok-imagine-image-2.0",
     });
   });
 
   it("has unique ids, a known default and a group for every model", () => {
     expect(new Set(IMAGE_MODEL_IDS).size).toBe(IMAGE_MODELS.length);
     expect(IMAGE_MODEL_IDS).toContain(DEFAULT_IMAGE_MODEL);
+    expect(DEFAULT_IMAGE_MODEL).toBe("gpt-image-2.6-sunburst");
     for (const model of IMAGE_MODELS) expect(IMAGE_MODEL_GROUPS).toContain(model.group);
   });
 

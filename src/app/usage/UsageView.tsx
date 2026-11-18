@@ -36,6 +36,7 @@ const PERIODS: { id: Period; label: string }[] = [
 ];
 
 const MODEL_LABELS: Record<string, string> = {
+  "gemini-nano-banana-2.1": "Nano Banana 2.1",
   "gemini-2.5-flash-image": "Gemini 2.5 Flash",
   "gemini-3.1-flash-image": "Gemini 3.1 Flash",
   "gemini-3.1-flash-lite-image": "Gemini 3.1 Flash Lite",
@@ -46,6 +47,11 @@ const MODEL_LABELS: Record<string, string> = {
   "gpt-image-2": "GPT Image 2",
   "gpt-image-2.5-flare": "GPT Image 2.5 Flare",
   "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst",
+  "gpt-image-2.6-flare": "GPT Image 2.6 Flare",
+  "gpt-image-2.6-sunburst": "GPT Image 2.6 Sunburst",
+  "mai-image-2.7": "MAI-Image-2.7",
+  "flux-3-image": "FLUX 3 Image",
+  "bytedance-seed/seedream-5-5": "Seedream 5.5",
   "grok-imagine-image-2.0": "Grok Imagine 2.0",
   "bytedance-seed/seedream-4.5": "Seedream 4.5",
 };

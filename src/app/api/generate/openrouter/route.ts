@@ -35,8 +35,8 @@ import { debugLog } from "@/lib/debug-log";
 // OpenRouter's flat input_references bag does not expose.
 const ENDPOINT = "https://openrouter.ai/api/v1/images";
 
-// The id → OpenRouter slug map lives in src/lib/image-models.ts. Ideogram,
-// Grok and gpt-image-1.5 have no OpenRouter equivalent and are absent from it.
+// The id → OpenRouter slug map lives in src/lib/image-models.ts. Ideogram
+// and gpt-image-1.5 have no OpenRouter equivalent and are absent from it.
 
 /** Stay under the Next.js 16 ~10MB proxy body cap. Compact refs are a few KB. */
 const GENERATION_REQUEST_MAX_BYTES = 8 * 1024 * 1024;

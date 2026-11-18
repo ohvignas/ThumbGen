@@ -9,7 +9,7 @@
  */
 export const BLUEPRINT_MODELS = [
   { id: "nano-banana", canvasModel: "gemini-3.1-flash-image", name: "Nano Banana" },
-  { id: "openai", canvasModel: "gpt-image-2.5-sunburst", name: "GPT Image" },
+  { id: "openai", canvasModel: "gpt-image-2.6-sunburst", name: "GPT Image" },
   { id: "seedream", canvasModel: "bytedance-seed/seedream-4.5", name: "Seedream" },
 ] as const;
 

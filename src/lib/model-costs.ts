@@ -1,9 +1,10 @@
 /**
  * Per-image cost estimates (USD). Numbers are best-effort approximations
- * derived from the providers' published pricing as of early 2026.
+ * derived from the providers' published pricing (last reviewed Nov 2026).
  */
 export const MODEL_COSTS: Record<string, number> = {
   // Google Gemini
+  "gemini-nano-banana-2.1": 0.05,
   "gemini-2.5-flash-image": 0.02,
   "gemini-3.1-flash-image": 0.02,
   "gemini-3.1-flash-lite-image": 0.01,
@@ -11,6 +12,8 @@ export const MODEL_COSTS: Record<string, number> = {
   // Ideogram
   "ideogram": 0.08,
   // OpenAI
+  "gpt-image-2.6-sunburst": 0.05,
+  "gpt-image-2.6-flare": 0.03,
   "gpt-image-2.5-sunburst": 0.05,
   "gpt-image-2.5-flare": 0.03,
   "gpt-image-2": 0.04,
@@ -18,7 +21,12 @@ export const MODEL_COSTS: Record<string, number> = {
   "gpt-image-1": 0.02,
   // xAI Grok
   "grok-imagine-image-2.0": 0.03,
+  // Microsoft AI
+  "mai-image-2.7": 0.035,
+  // Black Forest Labs
+  "flux-3-image": 0.03,
   // Via OpenRouter
+  "bytedance-seed/seedream-5-5": 0.03,
   "bytedance-seed/seedream-4.5": 0.02,
 };
 
